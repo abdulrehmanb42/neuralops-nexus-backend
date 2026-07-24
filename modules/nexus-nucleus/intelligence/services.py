@@ -99,7 +99,13 @@ def get_persona_by_mention(company, mention_name: str):
     from nucleus.models import Persona
     return (
         Persona.objects.filter(company=company, is_active=True)
-        .select_related("prompt", "model", "identity_user")
+        .select_related(
+            "prompt",
+            "model",
+            "identity_user",
+            "agent__model",
+            "agent__mcp_server",
+        )
         .filter(name__iexact=mention_name)
         .first()
     )

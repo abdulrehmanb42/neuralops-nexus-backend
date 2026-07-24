@@ -290,8 +290,14 @@ async def _trigger_personas(
         })
 
     for persona in personas:
-        if not persona.model:  # M8 will handle agent personas
-            logger.info("[chat/api] skipping persona=%s (no model; agent support in M8)", persona)
+        source_type = getattr(persona, "source_type", "model")
+        if source_type == "model" and not persona.model:
+            logger.info("[chat/api] skipping persona=%s (no model configured)", persona)
+            continue
+        if source_type == "agent" and not (
+            getattr(persona, "agent", None) and persona.agent.model
+        ):
+            logger.info("[chat/api] skipping persona=%s (agent has no model configured)", persona)
             continue
         asyncio.create_task(
             chat_svc.trigger_ai_response_async(

@@ -562,6 +562,19 @@ class MCPServer(TenantBaseModel):
 
     max_retries = models.PositiveIntegerField(default=3)
 
+    # -- M8: embedding control ------------------------------------------------
+    is_first_party = models.BooleanField(
+        default=False,
+        help_text="True = marketplace-published MCP (we own it). "
+                  "False = external/third-party (no embedding allowed).",
+    )
+
+    embed_output = models.BooleanField(
+        default=False,
+        help_text="Opt-in: embed MCP tool results to ChromaDB. "
+                  "Only meaningful when is_first_party=True.",
+    )
+
     class Meta:
         db_table = "intelligence_mcp_server"
         constraints = [

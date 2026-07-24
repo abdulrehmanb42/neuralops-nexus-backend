@@ -102,7 +102,7 @@ class AgenticManager:
         # 7. Parse output markers from the full assembled response
         raw_full = "".join(full_content)
         from apps.output_types.markers import parse_output_markers
-        clean_content, marker_type = parse_output_markers(raw_full)
+        clean_content, marker_type, embed_description = parse_output_markers(raw_full)
 
         # Marker type overrides the resolved type if present
         if marker_type and OutputTypeRegistry.get(marker_type):
@@ -117,14 +117,16 @@ class AgenticManager:
             final_type = resolved_type
             final_render_as = "text"
             clean_content = raw_full
+            embed_description = None  # plain text embeds as-is, no description needed
 
-        # 8. Yield message_done with clean content + type metadata
+        # 8. Yield message_done with clean content + type metadata + embed description
         yield AgentEvent(
             type="message_done",
             id=job.msg_id,
             content=clean_content,
             output_type=final_type,
             render_as=final_render_as,
+            embed_description=embed_description,  # M8: None for text/code, set for html/form/terminal
         )
 
     async def _resolve_output_type(self, job: TriggerJob) -> str:

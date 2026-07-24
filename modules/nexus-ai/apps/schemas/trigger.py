@@ -13,11 +13,25 @@ class ModelConfig(BaseModel):
     supports_vision: bool = False
 
 
+class MCPServerConfig(BaseModel):
+    """MCP server descriptor passed from nexus-nucleus in the TriggerJob."""
+    id: str
+    name: str
+    transport: str                   # "stdio" | "http" | "sse" | "websocket"
+    url: str | None = None           # for http/sse/websocket
+    command: str | None = None       # for stdio
+    config: dict = {}
+    timeout_seconds: int = 60
+    is_first_party: bool = False
+    embed_output: bool = False
+
+
 class PersonaConfig(BaseModel):
     id: str
     name: str                        # "NeuralBot"
     system_prompt: str
     model: ModelConfig
+    mcp_servers: list[MCPServerConfig] = []  # M8: empty = plain LLM, non-empty = agent
 
 
 class HistoryMessage(BaseModel):
@@ -67,3 +81,7 @@ class AgentEvent(BaseModel):
     # M7: output type metadata — populated in message_done
     output_type: str | None = None   # resolved type: "chart", "terminal", "text", etc.
     render_as: str | None = None     # renderer hint: "html" | "code" | "text" | "terminal"
+
+    # M8: embed description — text inside <<<EMBED>>>...<<<END_EMBED>>> block
+    # Only present for html/form/terminal render_as. Used instead of raw HTML for embedding.
+    embed_description: str | None = None

@@ -33,9 +33,13 @@ log = logging.getLogger(__name__)
 
 class PydanticAIRunner(AgentRunner):
     """
-    Streams LLM responses via LiteLLM.
+    Streams LLM responses via LiteLLM (plain model) or pydantic-ai Agent (MCP).
     Receives the fully-assembled messages list from PromptBuilder and
     yields message_delta events.
+
+    Routing:
+        job.persona.mcp_servers is empty  → LiteLLM direct streaming (fast path)
+        job.persona.mcp_servers non-empty → pydantic-ai Agent with MCP tools
     """
 
     async def run_stream(
@@ -43,6 +47,13 @@ class PydanticAIRunner(AgentRunner):
         job: TriggerJob,
         messages: list[dict],
     ) -> AsyncIterator[AgentEvent]:
+        # M8: persona has MCP servers — delegate to pydantic-ai agent runner
+        if job.persona.mcp_servers:
+            async for event in self._run_with_mcp(job, messages):
+                yield event
+            return
+
+        # Default: LiteLLM direct streaming (unchanged from pre-M8)
         model_config = job.persona.model
         kwargs = _build_litellm_kwargs(model_config, messages)
 
@@ -81,6 +92,121 @@ class PydanticAIRunner(AgentRunner):
                 response=full_response,
                 prompt_tokens=prompt_tokens,
                 completion_tokens=completion_tokens,
+                latency_ms=latency_ms,
+                status=status,
+                error=error_msg,
+            )
+
+    async def _run_with_mcp(
+        self,
+        job: TriggerJob,
+        messages: list[dict],
+    ) -> AsyncIterator[AgentEvent]:
+        """
+        Run the persona via pydantic-ai Agent with MCP tool servers.
+
+        History conversion (OpenAI → pydantic-ai):
+            system message  → agent system_prompt kwarg
+            user messages   → ModelRequest(UserPromptPart)
+            assistant msgs  → ModelResponse(TextPart)
+        The final user message becomes the prompt passed to agent.run_stream().
+        """
+        from pydantic_ai import Agent
+        from pydantic_ai.models.litellm import LiteLLMModel
+        from pydantic_ai.messages import (
+            ModelRequest, ModelResponse,
+            UserPromptPart, TextPart,
+        )
+
+        # Build MCP server clients
+        mcp_server_clients = []
+        for s in job.persona.mcp_servers:
+            if s.transport == "stdio":
+                from pydantic_ai.mcp import MCPServerStdio
+                cmd_parts = (s.command or "").split()
+                if cmd_parts:
+                    mcp_server_clients.append(
+                        MCPServerStdio(cmd_parts[0], args=cmd_parts[1:])
+                    )
+            else:  # http | sse | websocket
+                from pydantic_ai.mcp import MCPServerStreamableHTTP
+                if s.url:
+                    mcp_server_clients.append(MCPServerStreamableHTTP(s.url))
+
+        # Build LiteLLM model
+        model_config = job.persona.model
+        model_kwargs: dict = {}
+        if model_config.provider == "local":
+            model_kwargs["base_url"] = f"{settings.OLLAMA_BASE_URL}/v1"
+            model_kwargs["api_key"] = "local"
+        elif model_config.api_key:
+            model_kwargs["api_key"] = model_config.api_key
+
+        pydantic_model = LiteLLMModel(
+            model_name=model_config.model_id, **model_kwargs
+        )
+
+        # Split system prompt out of the messages list
+        system_prompt = ""
+        remainder: list[dict] = []
+        for m in messages:
+            if m["role"] == "system" and not system_prompt:
+                system_prompt = m["content"]
+            else:
+                remainder.append(m)
+
+        # Convert history to pydantic-ai ModelMessage format
+        # All turns except the final user message become message_history
+        pydantic_history: list = []
+        for m in remainder[:-1]:
+            if m["role"] == "user":
+                pydantic_history.append(
+                    ModelRequest(parts=[UserPromptPart(content=m["content"])])
+                )
+            elif m["role"] == "assistant":
+                pydantic_history.append(
+                    ModelResponse(parts=[TextPart(content=m["content"])])
+                )
+
+        current_message = remainder[-1]["content"] if remainder else ""
+
+        agent: Agent = Agent(
+            model=pydantic_model,
+            system_prompt=system_prompt,
+            mcp_servers=mcp_server_clients,
+        )
+
+        full_response = ""
+        t0 = time.monotonic()
+        status = "success"
+        error_msg = None
+
+        try:
+            async with agent.run_mcp_servers():
+                async with agent.run_stream(
+                    current_message,
+                    message_history=pydantic_history,
+                ) as result:
+                    async for delta in result.stream_text(delta=True):
+                        full_response += delta
+                        yield AgentEvent(
+                            type="message_delta",
+                            id=job.msg_id,
+                            delta=delta,
+                        )
+        except Exception as exc:
+            status = "error"
+            error_msg = str(exc)
+            log.error("[runner] mcp error for job %s: %s", job.job_id, exc)
+            raise
+        finally:
+            latency_ms = int((time.monotonic() - t0) * 1000)
+            await _post_ai_request_log(
+                job=job,
+                messages=messages,
+                response=full_response,
+                prompt_tokens=0,
+                completion_tokens=0,
                 latency_ms=latency_ms,
                 status=status,
                 error=error_msg,

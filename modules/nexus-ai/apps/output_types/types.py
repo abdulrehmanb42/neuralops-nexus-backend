@@ -68,7 +68,10 @@ OutputTypeRegistry.register(OutputTypeSpec(
     icon="globe",
     system_instruction=(
         "Respond with a complete, self-contained HTML page. "
-        "Wrap your entire response in output markers:\n\n"
+        "Use this EXACT structure:\n\n"
+        "<<<EMBED>>>\n"
+        "One or two plain-English sentences describing what this page does (no HTML).\n"
+        "<<<END_EMBED>>>\n"
         "<<<OUTPUT:html>>>\n"
         "<!DOCTYPE html>\n"
         "<html>...</html>\n"
@@ -194,7 +197,10 @@ OutputTypeRegistry.register(OutputTypeSpec(
     icon="clipboard-list",
     system_instruction=(
         "Respond with a complete, self-contained HTML page containing a styled interactive form. "
-        "Wrap your entire response in output markers:\n\n"
+        "Use this EXACT structure:\n\n"
+        "<<<EMBED>>>\n"
+        "One or two plain-English sentences describing the form's purpose and fields.\n"
+        "<<<END_EMBED>>>\n"
         "<<<OUTPUT:form>>>\n"
         "<!DOCTYPE html>\n"
         "<html>...</html>\n"
@@ -226,7 +232,10 @@ OutputTypeRegistry.register(OutputTypeSpec(
     icon="terminal",
     system_instruction=(
         "Respond as terminal/shell output. "
-        "Wrap your entire response in output markers:\n\n"
+        "Use this EXACT structure:\n\n"
+        "<<<EMBED>>>\n"
+        "One plain-English sentence summarising what commands were run and what they achieved.\n"
+        "<<<END_EMBED>>>\n"
         "<<<OUTPUT:terminal>>>\n"
         "$ command-here\n"
         "output here\n"
