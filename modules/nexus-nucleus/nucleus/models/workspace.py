@@ -310,6 +310,55 @@ class ChatReaction(BaseModel):
         ]
 
 
+class ChatSession(BaseModel):
+    """
+    Per-user, per-topic AI session.
+
+    Created when a user fires @session — allows subsequent plain messages
+    to trigger the active personas automatically (no re-mention needed).
+    Timer is fixed from session open time, not rolling.
+    UniqueConstraint(user, topic) — one active session per user per topic.
+    """
+
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name="chat_sessions",
+    )
+
+    topic = models.ForeignKey(
+        "nucleus.ChatTopic",
+        on_delete=models.CASCADE,
+        related_name="chat_sessions",
+    )
+
+    personas = models.ManyToManyField(
+        "nucleus.Persona",
+        related_name="chat_sessions",
+        blank=True,
+    )
+
+    expires_at = models.DateTimeField(
+        help_text="Fixed expiry from session open time. Not rolling.",
+    )
+
+    class Meta:
+        db_table = "workspace_chat_session"
+        constraints = [
+            models.UniqueConstraint(
+                fields=["user", "topic"],
+                name="uniq_user_topic_chat_session",
+            )
+        ]
+        indexes = [
+            models.Index(fields=["user", "topic"]),
+            models.Index(fields=["expires_at"]),
+        ]
+
+    def __str__(self):
+        return f"Session({self.user}, {self.topic})"
+
+
 class ChatAttachment(BaseModel):
     class AttachmentType(models.TextChoices):
         IMAGE = "image", "Image"

@@ -1,5 +1,5 @@
 """
-Chat API — human-to-human messaging + AI trigger (M3 + M7).
+Chat API — human-to-human messaging + AI trigger (M3 + M7 + M7.1).
 
 Flow:
     POST /messages/
@@ -7,9 +7,18 @@ Flow:
         2. Save message to DB (sender = authenticated user)
         3. Fire-and-forget async publish to Centrifugo topic:{topic_id}
         4. Fire-and-forget async embed to nexus-ai (M2)
-        5. Detect @output_type directive (M7) — strip from message, pass to trigger
-        6. Detect @persona mention (M3) — trigger AI response fire-and-forget
-        7. Return immediately — React receives the message via WebSocket
+        5. Detect @session / @session close directive (M7.1)
+        6. Detect @output_type directive (M7) — strip from message, pass to trigger
+        7. Detect ALL @persona mentions (M3 + M7.1)
+        8. Apply session routing priority (M7.1):
+              (a) @session close                → close session, no AI trigger
+              (b) @mentions + @session          → close old, open new session,
+                                                  trigger mentioned personas
+              (c) @mentions (no @session)       → trigger mentioned only,
+                                                  session unchanged
+              (d) no @mention, session active   → trigger all session personas
+              (e) no @mention, no session       → no AI trigger
+        9. Return immediately — React receives the message via WebSocket
 
     GET /messages/
         Return last 100 messages (history) when a topic is opened.
@@ -31,8 +40,15 @@ from chat import services as chat_svc
 from workspace import services as ws_svc
 from intelligence import services as intel_svc
 
-# Matches @Word — finds the first @mention in the message
+# Matches @Word — finds ALL @mentions in the message.
+# @session and @session close are stripped before this regex runs.
 _MENTION_RE = re.compile(r'@([\w]+)')
+
+# Reserved keywords that are never persona names.
+_RESERVED = frozenset({
+    "session", "close",
+    "text", "code", "chart", "html", "table", "diagram", "form", "terminal",
+})
 
 router = Router(tags=["Chat"], auth=SupabaseBearer())
 
@@ -66,6 +82,20 @@ _list_messages = sync_to_async(chat_svc.list_messages)
 _save_user_message = sync_to_async(chat_svc.save_user_message)
 _get_persona_by_mention = sync_to_async(intel_svc.get_persona_by_mention)
 _list_messages_sync = sync_to_async(chat_svc.list_messages)
+_get_active_session = sync_to_async(chat_svc.get_active_session)
+_create_session = sync_to_async(chat_svc.create_session)
+_close_session = sync_to_async(chat_svc.close_session)
+
+
+def _get_session_timeout_sync(company) -> int:
+    """Return session_timeout_minutes from company AI config, or default 30."""
+    try:
+        return company.ai_config.session_timeout_minutes
+    except Exception:  # ai_config may not exist yet
+        return 30
+
+
+_get_session_timeout = sync_to_async(_get_session_timeout_sync)
 
 
 # ── GET /messages/ — load history ─────────────────────────────────────────────
@@ -147,66 +177,131 @@ async def send_message(
         )
     )
 
-    # 4. M7: Extract @output_type directive before persona detection
+    # 4. M7.1: Extract @session directive first (before output_type or mention parsing)
+    has_session_open, is_session_close, after_session = chat_svc.extract_session_directive(
+        payload.content.strip()
+    )
+
+    # 5. M7: Extract @output_type directive
     #    e.g. "@Nova show me sales @chart" → output_type="chart", clean="@Nova show me sales"
-    output_type, clean_message = chat_svc.extract_output_type(payload.content.strip())
+    output_type, clean_message = chat_svc.extract_output_type(after_session)
 
-    # 5. Detect @persona mention — trigger AI response fire-and-forget (M3)
-    mention_match = _MENTION_RE.search(clean_message)
-    if mention_match:
-        mention_name = mention_match.group(1)
-        persona = await _get_persona_by_mention(company, mention_name)
-        logger.info("[chat/api] mention=%s persona=%s model=%s", mention_name, persona, getattr(persona, 'model', None))
-        if persona and persona.model:
-            raw_history = await _list_messages_sync(topic_id, limit=20)
-            ai_history = []
-            for m in raw_history:
-                # Skip the message we just saved (passed separately as user_message,
-                # so including it here would send it to the LLM twice).
-                if m["id"] == msg["id"]:
-                    continue
-                # Skip empty / PENDING AI messages
-                if not m["content"]:
-                    continue
-                role = "user" if m["sender_type"] == "human" else "assistant"
-                render_as = m.get("render_as", "text")
-                output_type_val = m.get("output_type", "text")
-                content = m["content"].strip()
-                # Skip botched AI responses — they poison the LLM context and
-                # cause it to keep reproducing the same wrong pattern.
-                if role == "assistant":
-                    _VISUAL_TYPES = {"chart", "table", "diagram", "html", "form"}
-                    # Case 1: Expected HTML but got plain text (old behaviour before
-                    # our "no markers → text" rule)
-                    if render_as == "html" and not (
-                        content.startswith("<!DOCTYPE") or content.startswith("<html")
-                    ):
-                        continue
-                    # Case 2: Visual output type but no markers found — fell back to
-                    # render_as="text" (our new rule). The content is a conversational
-                    # failure like "I've reviewed the provided request.".
-                    if output_type_val in _VISUAL_TYPES and render_as == "text":
-                        continue
-                ai_history.append({
-                    "role": role,
-                    "content": m["content"],
-                    "sender_name": m["sender_name"],
-                })
-            asyncio.create_task(
-                chat_svc.trigger_ai_response_async(
-                    company=company,
-                    project=project,
-                    topic=topic,
-                    persona=persona,
-                    user_message=clean_message,  # @output_type stripped
-                    history=ai_history,
-                    topic_id=topic_id,
-                    output_type=output_type,     # M7: "auto" | "chart" | "code" | ...
-                )
+    # 6. M7.1: Collect ALL @persona mentions (filter out reserved keywords)
+    raw_mentions = _MENTION_RE.findall(clean_message)  # list of names
+    mention_names = [n for n in raw_mentions if n.lower() not in _RESERVED]
+
+    # Resolve mentions to Persona objects (parallel)
+    mentioned_personas = []
+    for name in mention_names:
+        p = await _get_persona_by_mention(company, name)
+        if p:
+            mentioned_personas.append(p)
+            logger.info("[chat/api] mention=%s resolved persona=%s", name, p)
+
+    # 7. M7.1: Apply session routing priority
+
+    if is_session_close:
+        # Rule 1: @session close — close session, no AI trigger
+        await _close_session(user.id, topic.id)
+        logger.info("[chat/api] session closed for user=%s topic=%s", user.id, topic_id)
+
+    elif mentioned_personas and has_session_open:
+        # Rule 2: @mentions + @session — open new session with mentioned personas
+        timeout = await _get_session_timeout(company)
+        await _create_session(user, topic, mentioned_personas, timeout)
+        logger.info(
+            "[chat/api] session opened personas=%s timeout=%sm",
+            [p.name for p in mentioned_personas], timeout,
+        )
+        # Trigger mentioned personas for this message too
+        await _trigger_personas(mentioned_personas, company, project, topic,
+                                 topic_id, msg, clean_message, output_type)
+
+    elif mentioned_personas:
+        # Rule 3: @mentions (no @session) — trigger only mentioned, session unchanged
+        await _trigger_personas(mentioned_personas, company, project, topic,
+                                 topic_id, msg, clean_message, output_type)
+
+    else:
+        # Rules 4 + 5: no explicit mention — check session
+        active_session = await _get_active_session(user.id, topic.id)
+        if active_session:
+            # Rule 4: session active — trigger all session personas
+            session_personas = list(active_session.personas.all())
+            logger.info(
+                "[chat/api] session auto-trigger personas=%s",
+                [p.name for p in session_personas],
             )
+            await _trigger_personas(session_personas, company, project, topic,
+                                     topic_id, msg, clean_message, output_type)
+        # Rule 5: no mention, no session — human-only message, nothing to do
 
-    # 6. Return immediately
+    # 8. Return immediately
     return {
         "message": msg,
         "channel": centrifugo_channel,
     }
+
+
+async def _trigger_personas(
+    personas: list,
+    company,
+    project,
+    topic,
+    topic_id: str,
+    msg: dict,
+    clean_message: str,
+    output_type: str,
+) -> None:
+    """
+    Fire AI trigger tasks for each persona in parallel.
+    Builds history once and spawns one asyncio task per persona.
+    Only triggers personas that have a model (source_type=model for now;
+    source_type=agent handled in M8).
+    """
+    if not personas:
+        return
+
+    # Build history once (shared across all persona triggers)
+    raw_history = await _list_messages_sync(topic_id, limit=20)
+    ai_history = []
+    for m in raw_history:
+        # Skip the message we just saved (sent separately as user_message)
+        if m["id"] == msg["id"]:
+            continue
+        if not m["content"]:
+            continue
+        role = "user" if m["sender_type"] == "human" else "assistant"
+        render_as = m.get("render_as", "text")
+        output_type_val = m.get("output_type", "text")
+        content = m["content"].strip()
+        if role == "assistant":
+            _VISUAL_TYPES = {"chart", "table", "diagram", "html", "form"}
+            if render_as == "html" and not (
+                content.startswith("<!DOCTYPE") or content.startswith("<html")
+            ):
+                continue
+            if output_type_val in _VISUAL_TYPES and render_as == "text":
+                continue
+        ai_history.append({
+            "role": role,
+            "content": m["content"],
+            "sender_name": m["sender_name"],
+        })
+
+    for persona in personas:
+        if not persona.model:  # M8 will handle agent personas
+            logger.info("[chat/api] skipping persona=%s (no model; agent support in M8)", persona)
+            continue
+        asyncio.create_task(
+            chat_svc.trigger_ai_response_async(
+                company=company,
+                project=project,
+                topic=topic,
+                persona=persona,
+                user_message=clean_message,
+                history=ai_history,
+                topic_id=topic_id,
+                output_type=output_type,
+            )
+        )

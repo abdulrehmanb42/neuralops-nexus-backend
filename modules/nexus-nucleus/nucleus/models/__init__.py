@@ -38,6 +38,7 @@ from .workspace import (
     ChatMessage,
     ChatReadMarker,
     ChatReaction,
+    ChatSession,
     ChatAttachment,
     KnowledgeBase,
     KnowledgeFile,
