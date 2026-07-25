@@ -704,7 +704,124 @@
 
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
- MILESTONE 9 — Terminal + Interactive Outputs (depends on M8)
+ MILESTONE 9 — /command Configuration System
+ Goal: Configure models, agents, personas and MCP servers from the chat UI
+       via slash commands with inline forms and test buttons
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+  DESIGN DECISIONS
+  ────────────────
+  Slash commands are detected in MessageInput when the user types "/".
+  Each command opens an inline form rendered in the chat — no separate
+  settings page needed. Submit saves to DB via API. Test button fires a
+  live request and shows the result inline.
+
+  SLASH COMMANDS
+  ──────────────
+  /add_model      → add AI model
+  /add_mcp        → add MCP server
+  /add_agent      → add agent (internal or external)
+  /add_persona    → add persona (model / internal agent / external agent)
+  /list_models    → list all models as inline cards
+  /list_personas  → list all personas as inline cards
+  /list_agents    → list all agents as inline cards
+  /list_mcp       → list all MCP servers as inline cards
+
+  FORM FIELDS
+  ───────────
+  /add_model
+    name          display name e.g. "GPT-4o Mini"
+    provider      litellm | local
+    model_id      e.g. openai/gpt-4o-mini, ollama/llama3.2:3b
+    api_key       optional — blank for local
+    api_base      optional — e.g. http://IP:11434 for Ollama
+    temperature   default 0.7
+    max_tokens    default 4096
+    [Test]        sends "hello" to the model, shows response or error
+
+  /add_mcp
+    name          e.g. "GitHub MCP"
+    transport     http | stdio | sse
+    url           for http/sse transport
+    command       for stdio transport (e.g. "npx -y @modelcontextprotocol/server-github")
+    is_first_party  toggle — marketplace-owned vs external
+    embed_output    toggle — opt-in embedding of tool results
+    [Test]          pings the MCP server, shows tools list or error
+
+  /add_agent
+    name          e.g. "GitHubAgent"
+    type          Internal | External
+
+    [If Internal]
+      model       dropdown of existing AIModels
+      mcp_server  dropdown of existing MCPServers
+      [Test]      sends "list your tools" → shows tool call loop result
+
+    [If External]
+      endpoint_url  the agent's HTTP/SSE endpoint
+      api_key       their API key for auth
+      headers       key-value pairs (optional)
+      [Test]        sends "hello" to endpoint, shows response or error
+
+  /add_persona
+    name          e.g. "Nova" — used for @mention
+    type          Model Persona | Internal Agent | External Agent
+
+    [If Model Persona]
+      model         dropdown of existing AIModels
+      system_prompt textarea
+      output_type   dropdown: auto | text | code | html | chart | form | terminal
+      [Test]        sends "hello, introduce yourself" → streams response inline
+
+    [If Internal Agent]
+      agent         dropdown of existing internal Agents
+      system_prompt textarea
+      output_type   dropdown
+      [Test]        sends "hello, list your capabilities" → streams response
+
+    [If External Agent]
+      endpoint_url  the agent's HTTP/SSE endpoint
+      api_key       their API key for auth
+      system_prompt textarea (sent as context header)
+      output_type   dropdown
+      [Test]        sends "hello" → shows proxied response inline
+
+  BACKEND TASKS
+  ─────────────
+  [ ] intelligence/api.py: POST /api/v1/ai-models/
+  [ ] intelligence/api.py: GET  /api/v1/ai-models/
+  [ ] intelligence/api.py: POST /api/v1/ai-models/{id}/test/
+        → fire "hello" to the model, return {ok, response, latency_ms, error}
+  [ ] intelligence/api.py: POST /api/v1/mcp-servers/
+  [ ] intelligence/api.py: GET  /api/v1/mcp-servers/
+  [ ] intelligence/api.py: POST /api/v1/mcp-servers/{id}/test/
+        → ping MCP, return {ok, tools[], error}
+  [ ] intelligence/api.py: POST /api/v1/agents/
+  [ ] intelligence/api.py: GET  /api/v1/agents/
+  [ ] intelligence/api.py: POST /api/v1/agents/{id}/test/
+        → send test message, return {ok, response, error}
+  [ ] intelligence/api.py: POST /api/v1/personas/
+  [ ] intelligence/api.py: GET  /api/v1/personas/
+  [ ] intelligence/api.py: POST /api/v1/personas/{id}/test/
+        → stream test response back as SSE
+  [ ] Agent model: add external_url, external_api_key, external_headers fields
+        + migration
+  [ ] Persona model: add external support (source_type="external") + migration
+
+  FRONTEND TASKS
+  ──────────────
+  [ ] MessageInput: detect "/" → show command palette dropdown
+  [ ] CommandPalette component: list all /commands with descriptions
+  [ ] SlashCommandForm component: renders the right form per command
+  [ ] ModelForm, MCPForm, AgentForm, PersonaForm inline components
+  [ ] Each form: validation + submit → POST to nucleus API
+  [ ] Test button per form: fires test request → shows result inline
+  [ ] ListCards component: renders /list_* results as cards in chat
+  [ ] Success/error feedback inline in chat after submit
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+ MILESTONE 10 — Terminal + Interactive Outputs (depends on M8)
  Goal: Terminal-style interaction via MCP, run-in-terminal on code blocks
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
@@ -719,13 +836,14 @@
  EXECUTION ORDER
 ================================================================================
 
-  M1 → M2 → M3 → M4 → M5 → M6 → M7 → M7.1 → M8 → M9
+  M1 → M2 → M3 → M4 → M5 → M6 → M7 → M7.1 → M8 → M9 → M10
 
   M3 gives you a fully working AI trigger.
   M4 adds full audit logging from day one.
   M5 adds context retrieval on top of working AI.
   M7.1 adds session management — multi-turn without re-mentioning.
   M8 adds MCP agents — model + tools, real agent capabilities.
-  M9 adds terminal output type on top of M8's MCP foundation.
+  M9 adds /command configuration — no Django admin needed for setup.
+  M10 adds terminal output type on top of M8's MCP foundation.
 
 ================================================================================
