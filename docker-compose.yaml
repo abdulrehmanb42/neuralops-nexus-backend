@@ -194,6 +194,37 @@ services:
     networks:
       - nexus-network
 
+  # NEXUS-MCP: First-party MCP tool server
+  # Hosts BestBuy, Walmart, ERP (Odoo), and SSH tools.
+  # Add to NeuralOps via /add_mcp → transport: http, url: http://nexus-mcp:8000
+  # To add new tools: drop a file in modules/nexus-mcp/tools/, mount in server.py, rebuild.
+  nexus-mcp:
+    build:
+      context: ./modules/nexus-mcp
+      dockerfile: Dockerfile
+    container_name: nexus-mcp
+    environment:
+      # BestBuy
+      - BESTBUY_API_KEY=${BESTBUY_API_KEY:-}
+      # Walmart
+      - WALMART_CLIENT_ID=${WALMART_CLIENT_ID:-}
+      - WALMART_CLIENT_SECRET=${WALMART_CLIENT_SECRET:-}
+      # ERP (Odoo)
+      - ERP_TYPE=${ERP_TYPE:-odoo}
+      - ERP_URL=${ERP_URL:-}
+      - ERP_DB=${ERP_DB:-odoo}
+      - ERP_USERNAME=${ERP_USERNAME:-admin}
+      - ERP_PASSWORD=${ERP_PASSWORD:-admin}
+      # SSH
+      - SSH_DEFAULT_HOST=${SSH_DEFAULT_HOST:-}
+      - SSH_DEFAULT_PORT=${SSH_DEFAULT_PORT:-22}
+      - SSH_DEFAULT_USER=${SSH_DEFAULT_USER:-}
+      - SSH_DEFAULT_PASSWORD=${SSH_DEFAULT_PASSWORD:-}
+      - SSH_DEFAULT_KEY_PATH=${SSH_DEFAULT_KEY_PATH:-}
+    networks:
+      - nexus-network
+    restart: unless-stopped
+
   # NEURALOPS REACT APP: The UI
   neuralops-react-app:
     build:
