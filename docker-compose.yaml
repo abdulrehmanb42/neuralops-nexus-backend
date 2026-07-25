@@ -126,14 +126,14 @@ services:
   #   EMBEDDING_MODEL=ollama/nomic-embed-text
   #   EMBEDDING_BASE_URL=http://nexus-ollama:11434
   # Then: docker exec nexus-ollama ollama pull nomic-embed-text
-  ollama:
-    image: ollama/ollama:latest
-    container_name: nexus-ollama
-    volumes:
-      - ./data/ollama_data:/root/.ollama
-    networks:
-      - nexus-network
-    restart: unless-stopped
+  # ollama:
+  #   image: ollama/ollama:latest
+  #   container_name: nexus-ollama
+  #   volumes:
+  #     - ./data/ollama_data:/root/.ollama
+  #   networks:
+  #     - nexus-network
+  #   restart: unless-stopped
 
   # REALTIME: Centrifugo transport with Redis engine
   realtime:
