@@ -76,7 +76,7 @@ def _resolve(host: str, port: int, username: str, password: str, key_path: str) 
 
 
 @mcp.tool()
-async def ssh_execute(
+async def execute(
     command: str,
     host: str = "",
     port: int = 0,
@@ -129,7 +129,7 @@ async def ssh_execute(
 
 
 @mcp.tool()
-async def ssh_list_files(
+async def list_files(
     path: str = "~",
     host: str = "",
     port: int = 0,
@@ -177,7 +177,7 @@ async def ssh_list_files(
 
 
 @mcp.tool()
-async def ssh_read_file(
+async def read_file(
     file_path: str,
     host: str = "",
     port: int = 0,
@@ -227,7 +227,7 @@ async def ssh_read_file(
 
 
 @mcp.tool()
-async def ssh_server_status(
+async def server_status(
     host: str = "",
     port: int = 0,
     username: str = "",

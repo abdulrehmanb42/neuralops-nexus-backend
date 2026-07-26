@@ -9,4 +9,4 @@ COPY . .
 
 EXPOSE 8000
 
-CMD ["fastmcp", "run", "server.py", "--transport", "streamable-http", "--host", "0.0.0.0", "--port", "8000"]
+CMD ["python", "server.py"]

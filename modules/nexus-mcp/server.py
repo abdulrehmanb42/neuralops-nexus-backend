@@ -31,9 +31,9 @@ mcp = FastMCP(
     ),
 )
 
-mcp.mount("shopping", shopping_mcp)
-mcp.mount("erp", erp_mcp)
-mcp.mount("ssh", ssh_mcp)
+mcp.mount(shopping_mcp, "shopping")
+mcp.mount(erp_mcp, "erp")
+mcp.mount(ssh_mcp, "ssh")
 
 if __name__ == "__main__":
     mcp.run(transport="streamable-http", host="0.0.0.0", port=8000)

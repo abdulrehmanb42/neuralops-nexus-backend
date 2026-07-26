@@ -6,6 +6,12 @@ No seller verification required.
 
 Sign up at serpapi.com (100 free searches/month).
 Set SERPAPI_KEY env var.
+
+Tool names (after mount prefix "shopping"):
+  shopping_search           — search any/filtered store
+  shopping_compare_prices   — price comparison table
+  shopping_search_bestbuy   — BestBuy shortcut
+  shopping_search_walmart   — Walmart shortcut
 """
 import httpx
 from fastmcp import FastMCP
@@ -15,7 +21,6 @@ mcp = FastMCP("Shopping")
 
 SERPAPI_URL = "https://serpapi.com/search"
 
-# Store name aliases for filtering
 STORE_ALIASES = {
     "bestbuy": "Best Buy",
     "walmart": "Walmart",
@@ -41,18 +46,14 @@ async def _search(query: str, extra_params: dict | None = None) -> dict:
 
 
 @mcp.tool()
-async def shopping_search(
-    query: str,
-    store: str = "",
-    limit: int = 10,
-) -> str:
+async def search(query: str, store: str = "", limit: int = 10) -> str:
     """
     Search for products across all major retailers using Google Shopping.
 
     Args:
         query: Product search term (e.g. 'iPhone 15', 'Samsung 4K TV')
-        store: Filter by store name — bestbuy, walmart, amazon, target, or leave blank for all
-        limit: Max results to show (default 10)
+        store: Filter by store — bestbuy, walmart, amazon, target, or blank for all
+        limit: Max results (default 10)
 
     Returns:
         HTML table of products with name, store, price, and link.
@@ -69,15 +70,18 @@ async def shopping_search(
     if not results:
         return f"No products found for '{query}'."
 
-    # Filter by store if requested
     store_label = STORE_ALIASES.get(store.lower().strip(), store.strip())
     if store_label:
         results = [r for r in results if store_label.lower() in r.get("source", "").lower()]
         if not results:
-            return f"No results from '{store_label}' for '{query}'. Try a different store or leave store blank."
+            return f"No results from '{store_label}' for '{query}'. Try leaving store blank."
 
     results = results[:limit]
 
+    store_colors = {
+        "best buy": "#003b64", "walmart": "#0071ce",
+        "amazon": "#ff9900", "target": "#cc0000",
+    }
     rows = ""
     for p in results:
         title = (p.get("title") or "")[:60]
@@ -87,30 +91,22 @@ async def shopping_search(
         reviews = p.get("reviews", "")
         link = p.get("link", "#")
         thumbnail = p.get("thumbnail", "")
-
         rating_str = f"{rating}⭐ ({reviews})" if rating else "—"
         img = f'<img src="{thumbnail}" width="40" height="40" style="object-fit:contain" />' if thumbnail else ""
-
-        # Color code by store
-        store_colors = {
-            "best buy": "#003b64", "walmart": "#0071ce",
-            "amazon": "#ff9900", "target": "#cc0000",
-        }
-        store_color = next((v for k, v in store_colors.items() if k in source.lower()), "#555")
-
+        color = next((v for k, v in store_colors.items() if k in source.lower()), "#555")
         rows += f"""
         <tr>
           <td style="width:50px">{img}</td>
           <td><a href="{link}" target="_blank">{title}</a></td>
-          <td><span style="background:{store_color};color:white;padding:2px 8px;border-radius:4px;font-size:12px">{source}</span></td>
+          <td><span style="background:{color};color:white;padding:2px 8px;border-radius:4px;font-size:12px">{source}</span></td>
           <td style="text-align:right;font-weight:bold;color:green">{price}</td>
           <td style="font-size:12px">{rating_str}</td>
         </tr>"""
 
-    store_heading = f" — {store_label}" if store_label else " — All Stores"
+    heading = f" — {store_label}" if store_label else " — All Stores"
     return f"""<<<HTML>>>
 <div style="font-family:sans-serif">
-  <h3>🛍️ Shopping: "{query}"{store_heading} ({len(results)} results)</h3>
+  <h3>🛍️ Shopping: "{query}"{heading} ({len(results)} results)</h3>
   <table border="1" cellpadding="6" cellspacing="0" style="border-collapse:collapse;width:100%">
     <thead style="background:#333;color:white">
       <tr><th></th><th>Product</th><th>Store</th><th>Price</th><th>Rating</th></tr>
@@ -123,7 +119,7 @@ async def shopping_search(
 
 
 @mcp.tool()
-async def shopping_compare_prices(query: str) -> str:
+async def compare_prices(query: str) -> str:
     """
     Compare prices for a product across all major retailers.
 
@@ -131,7 +127,7 @@ async def shopping_compare_prices(query: str) -> str:
         query: Product to compare (e.g. 'iPad Air 2024', 'Sony WH-1000XM5')
 
     Returns:
-        HTML price comparison table sorted by price (cheapest first).
+        HTML price comparison table sorted cheapest first.
     """
     if not SERPAPI_KEY:
         return "❌ SERPAPI_KEY is not configured."
@@ -145,7 +141,6 @@ async def shopping_compare_prices(query: str) -> str:
     if not results:
         return f"No products found for '{query}'."
 
-    # Group by store, keep lowest price per store
     by_store: dict[str, dict] = {}
     for p in results:
         source = p.get("source", "Unknown")
@@ -154,7 +149,6 @@ async def shopping_compare_prices(query: str) -> str:
             price_num = float(price_str.replace("$", "").replace(",", ""))
         except Exception:
             price_num = float("inf")
-
         if source not in by_store or price_num < by_store[source]["price_num"]:
             by_store[source] = {
                 "title": (p.get("title") or "")[:55],
@@ -166,25 +160,19 @@ async def shopping_compare_prices(query: str) -> str:
             }
 
     sorted_stores = sorted(by_store.items(), key=lambda x: x[1]["price_num"])
-    if not sorted_stores:
-        return f"Could not compare prices for '{query}'."
-
-    cheapest_price = sorted_stores[0][1]["price_num"]
+    cheapest = sorted_stores[0][1]["price_num"] if sorted_stores else float("inf")
 
     rows = ""
     for i, (store, info) in enumerate(sorted_stores):
         badge = " 🏆 Best Price" if i == 0 else ""
         diff = ""
-        if i > 0 and cheapest_price < float("inf") and info["price_num"] < float("inf"):
-            extra = info["price_num"] - cheapest_price
-            diff = f'<span style="color:#d9534f;font-size:12px"> (+${extra:.2f})</span>'
-
+        if i > 0 and cheapest < float("inf") and info["price_num"] < float("inf"):
+            diff = f'<span style="color:#d9534f;font-size:12px"> (+${info["price_num"]-cheapest:.2f})</span>'
         rating_str = f"{info['rating']}⭐" if info["rating"] else ""
         img = f'<img src="{info["thumbnail"]}" width="35" height="35" style="object-fit:contain" />' if info["thumbnail"] else ""
-        row_bg = "#f0fff0" if i == 0 else "white"
-
+        bg = "#f0fff0" if i == 0 else "white"
         rows += f"""
-        <tr style="background:{row_bg}">
+        <tr style="background:{bg}">
           <td style="width:45px">{img}</td>
           <td><a href="{info['link']}" target="_blank">{info['title']}</a></td>
           <td><b>{store}</b></td>
@@ -202,36 +190,18 @@ async def shopping_compare_prices(query: str) -> str:
     </thead>
     <tbody>{rows}</tbody>
   </table>
-  <p style="color:#888;font-size:11px">Prices from Google Shopping — click product to buy</p>
+  <p style="color:#888;font-size:11px">Prices from Google Shopping — click to buy</p>
 </div>
 <<<END>>>"""
 
 
 @mcp.tool()
-async def shopping_search_bestbuy(query: str, limit: int = 10) -> str:
-    """
-    Search products specifically on BestBuy via Google Shopping.
-
-    Args:
-        query: Product search term
-        limit: Max results
-
-    Returns:
-        HTML table of BestBuy products.
-    """
-    return await shopping_search(query, store="bestbuy", limit=limit)
+async def search_bestbuy(query: str, limit: int = 10) -> str:
+    """Search BestBuy products via Google Shopping."""
+    return await search(query, store="bestbuy", limit=limit)
 
 
 @mcp.tool()
-async def shopping_search_walmart(query: str, limit: int = 10) -> str:
-    """
-    Search products specifically on Walmart via Google Shopping.
-
-    Args:
-        query: Product search term
-        limit: Max results
-
-    Returns:
-        HTML table of Walmart products.
-    """
-    return await shopping_search(query, store="walmart", limit=limit)
+async def search_walmart(query: str, limit: int = 10) -> str:
+    """Search Walmart products via Google Shopping."""
+    return await search(query, store="walmart", limit=limit)

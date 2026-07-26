@@ -203,6 +203,8 @@ services:
       context: ./modules/nexus-mcp
       dockerfile: Dockerfile
     container_name: nexus-mcp
+    ports:
+      - "8010:8000"
     environment:
       # Shopping (SerpAPI — covers BestBuy, Walmart, Amazon, Target etc.)
       - SERPAPI_KEY=${SERPAPI_KEY:-}

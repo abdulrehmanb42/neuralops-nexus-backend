@@ -77,7 +77,7 @@ async def _call(model: str, method: str, args: list, kwargs: dict | None = None)
 # ---------------------------------------------------------------------------
 
 @mcp.tool()
-async def erp_list_orders(
+async def list_orders(
     state: str = "all",
     limit: int = 20,
 ) -> str:
@@ -151,7 +151,7 @@ async def erp_list_orders(
 
 
 @mcp.tool()
-async def erp_get_order_detail(order_name: str) -> str:
+async def get_order_detail(order_name: str) -> str:
     """
     Get full detail of a sales order by order name (e.g. S00042).
 
@@ -230,7 +230,7 @@ async def erp_get_order_detail(order_name: str) -> str:
 
 
 @mcp.tool()
-async def erp_create_order_form(customer_name: str = "") -> str:
+async def create_order_form(customer_name: str = "") -> str:
     """
     Show a form to create a new sales order in the ERP.
 
@@ -299,7 +299,7 @@ async def erp_create_order_form(customer_name: str = "") -> str:
 # ---------------------------------------------------------------------------
 
 @mcp.tool()
-async def erp_list_customers(limit: int = 20, search: str = "") -> str:
+async def list_customers(limit: int = 20, search: str = "") -> str:
     """
     List customers from the ERP system.
 
@@ -359,7 +359,7 @@ async def erp_list_customers(limit: int = 20, search: str = "") -> str:
 # ---------------------------------------------------------------------------
 
 @mcp.tool()
-async def erp_inventory_report(limit: int = 30) -> str:
+async def inventory_report(limit: int = 30) -> str:
     """
     Get current inventory/stock levels report.
 
