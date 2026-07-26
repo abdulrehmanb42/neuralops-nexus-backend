@@ -13,7 +13,30 @@ import paramiko
 from config import (
     SSH_DEFAULT_HOST, SSH_DEFAULT_PORT, SSH_DEFAULT_USER,
     SSH_DEFAULT_PASSWORD, SSH_DEFAULT_KEY_PATH, SSH_COMMAND_TIMEOUT,
+    SSH_ALLOWED_PATHS, SSH_ALLOWED_COMMANDS,
 )
+
+
+def _check_path(path: str) -> str | None:
+    """Return error message if path is not allowed, else None."""
+    if not SSH_ALLOWED_PATHS:
+        return None  # no restriction configured
+    normalized = path.rstrip("/")
+    for allowed in SSH_ALLOWED_PATHS:
+        if normalized.startswith(allowed.rstrip("/")):
+            return None
+    return f"❌ Access denied: '{path}' is outside allowed paths ({', '.join(SSH_ALLOWED_PATHS)})."
+
+
+def _check_command(command: str) -> str | None:
+    """Return error message if command is not allowed, else None."""
+    if not SSH_ALLOWED_COMMANDS:
+        return None  # no restriction configured
+    cmd_lower = command.strip().lower()
+    for allowed in SSH_ALLOWED_COMMANDS:
+        if cmd_lower.startswith(allowed.lower()):
+            return None
+    return f"❌ Command not allowed: '{command.split()[0]}'. Allowed: {', '.join(SSH_ALLOWED_COMMANDS)}."
 
 mcp = FastMCP("SSH")
 
@@ -79,6 +102,9 @@ async def ssh_execute(
     if not host:
         return "❌ No SSH host configured. Set SSH_DEFAULT_HOST or pass host parameter."
 
+    if err := _check_command(command):
+        return err
+
     def _run():
         client = _connect(host, port, username, password, key_path)
         try:
@@ -129,6 +155,9 @@ async def ssh_list_files(
     if not host:
         return "❌ No SSH host configured."
 
+    if err := _check_path(path):
+        return err
+
     def _run():
         client = _connect(host, port, username, password, key_path)
         try:
@@ -175,6 +204,9 @@ async def ssh_read_file(
     host, port, username, password, key_path = _resolve(host, port, username, password, key_path)
     if not host:
         return "❌ No SSH host configured."
+
+    if err := _check_path(file_path):
+        return err
 
     def _run():
         client = _connect(host, port, username, password, key_path)

@@ -204,11 +204,8 @@ services:
       dockerfile: Dockerfile
     container_name: nexus-mcp
     environment:
-      # BestBuy
-      - BESTBUY_API_KEY=${BESTBUY_API_KEY:-}
-      # Walmart
-      - WALMART_CLIENT_ID=${WALMART_CLIENT_ID:-}
-      - WALMART_CLIENT_SECRET=${WALMART_CLIENT_SECRET:-}
+      # Shopping (SerpAPI — covers BestBuy, Walmart, Amazon, Target etc.)
+      - SERPAPI_KEY=${SERPAPI_KEY:-}
       # ERP (Odoo)
       - ERP_TYPE=${ERP_TYPE:-odoo}
       - ERP_URL=${ERP_URL:-}
@@ -221,6 +218,8 @@ services:
       - SSH_DEFAULT_USER=${SSH_DEFAULT_USER:-}
       - SSH_DEFAULT_PASSWORD=${SSH_DEFAULT_PASSWORD:-}
       - SSH_DEFAULT_KEY_PATH=${SSH_DEFAULT_KEY_PATH:-}
+      - SSH_ALLOWED_PATHS=${SSH_ALLOWED_PATHS:-}
+      - SSH_ALLOWED_COMMANDS=${SSH_ALLOWED_COMMANDS:-}
     networks:
       - nexus-network
     restart: unless-stopped
