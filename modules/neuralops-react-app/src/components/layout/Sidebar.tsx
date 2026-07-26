@@ -265,7 +265,7 @@ function ProjectNode({
   return (
     <div className="mb-2">
       {/* Project header */}
-      <div className="group flex w-full items-center gap-1 rounded-md px-2 py-1.5 text-sm hover:bg-sidebar-accent">
+      <div className="flex w-full items-center gap-1 rounded-md px-2 py-1.5 text-sm hover:bg-sidebar-accent">
         <button onClick={onToggle} className="flex flex-1 items-center gap-1">
           {open ? (
             <ChevronDown className="h-3.5 w-3.5 text-foreground-muted" />
@@ -277,11 +277,12 @@ function ProjectNode({
         </button>
         {canManage && (
           <button
-            aria-label="Add channel"
-            className="ml-auto text-foreground-muted opacity-0 hover:text-foreground group-hover:opacity-100"
+            aria-label="Add topic"
+            title="Add topic"
+            className="ml-auto shrink-0 rounded p-0.5 text-foreground-muted hover:bg-sidebar-accent hover:text-foreground"
             onClick={(e) => { e.stopPropagation(); onAddChannel(); }}
           >
-            <Plus className="h-3 w-3" />
+            <Plus className="h-3.5 w-3.5" />
           </button>
         )}
       </div>
@@ -290,11 +291,22 @@ function ProjectNode({
         <div className="ml-3 mt-1 border-l border-sidebar-border pl-2">
           {/* Channels */}
           {project.channels.length === 0 && (
-            <div className="px-2 py-1 text-xs text-foreground-muted">No channels yet</div>
+            <div className="px-2 py-1 text-xs text-foreground-muted">No topics yet</div>
           )}
           {project.channels.map((channel) => (
             <ChannelNode key={channel.id} projectId={project.id} channel={channel} />
           ))}
+
+          {/* Add topic button */}
+          {canManage && (
+            <button
+              onClick={onAddChannel}
+              className="mt-1 flex w-full items-center gap-1.5 rounded-md px-2 py-1 text-xs text-foreground-muted hover:bg-sidebar-accent hover:text-foreground"
+            >
+              <Plus className="h-3 w-3" />
+              <span>Add topic</span>
+            </button>
+          )}
 
           {/* Team section */}
           <div className="mt-2">
@@ -318,7 +330,8 @@ function ProjectNode({
               </button>
               <button
                 aria-label="Add team member"
-                className="ml-auto text-foreground-muted opacity-0 hover:text-foreground group-hover:opacity-100"
+                title="Add team member"
+                className="ml-auto shrink-0 rounded p-0.5 text-foreground-muted hover:bg-sidebar-accent hover:text-foreground"
                 onClick={(e) => { e.stopPropagation(); onAddTeamMember(); }}
               >
                 <Plus className="h-3 w-3" />

@@ -82,9 +82,6 @@ services:
     restart: unless-stopped
 
   # NEXUS-AI: The AI Worker
-  # LLM calls:       pydantic-ai → LiteLLM → any provider (model_id encodes provider)
-  # Embedding:       FastEmbed (local ONNX, default) or LiteLLM (remote)
-  # Switch provider: change EMBEDDING_PROVIDER / LLM_MODEL env vars, no rebuild needed
   nexus-ai:
     image: nexus-ai:2.0
     container_name: nexus-ai
@@ -105,8 +102,6 @@ services:
       - EMBEDDING_PROVIDER=${EMBEDDING_PROVIDER:-fastembed}
       - EMBEDDING_MODEL=${EMBEDDING_MODEL:-nomic-ai/nomic-embed-text-v1.5}
       - EMBEDDING_BASE_URL=${EMBEDDING_BASE_URL:-}
-      # Ollama URL — only needed when EMBEDDING_PROVIDER=litellm + ollama model,
-      # or LLM_MODEL starts with "ollama/". Dormant by default.
       - OLLAMA_BASE_URL=${OLLAMA_BASE_URL:-http://nexus-ollama:11434}
       - INTERNAL_API_KEY=${INTERNAL_API_KEY}
       - PYTHONPATH=/nexus-ai
@@ -114,26 +109,10 @@ services:
       - nexus-network
     depends_on:
       - chromadb
-      # - ollama  # Uncomment when switching EMBEDDING_PROVIDER=litellm + ollama model
     working_dir: /nexus-ai
     command: >
       sh -c "export PYTHONPATH=$PYTHONPATH:/nexus-ai &&
              python3 -m uvicorn apps.main:app --host 0.0.0.0 --port 8000 --reload"
-
-  # OLLAMA: Local model runner (dormant by default)
-  # Enable by adding to nexus-ai depends_on and setting:
-  #   EMBEDDING_PROVIDER=litellm
-  #   EMBEDDING_MODEL=ollama/nomic-embed-text
-  #   EMBEDDING_BASE_URL=http://nexus-ollama:11434
-  # Then: docker exec nexus-ollama ollama pull nomic-embed-text
-  # ollama:
-  #   image: ollama/ollama:latest
-  #   container_name: nexus-ollama
-  #   volumes:
-  #     - ./data/ollama_data:/root/.ollama
-  #   networks:
-  #     - nexus-network
-  #   restart: unless-stopped
 
   # REALTIME: Centrifugo transport with Redis engine
   realtime:
@@ -194,27 +173,35 @@ services:
     networks:
       - nexus-network
 
-  # NEXUS-MCP: First-party MCP tool server
-  # Hosts BestBuy, Walmart, ERP (Odoo), and SSH tools.
-  # Add to NeuralOps via /add_mcp → transport: http, url: http://nexus-mcp:8000
-  # To add new tools: drop a file in modules/nexus-mcp/tools/, mount in server.py, rebuild.
-  nexus-mcp:
+  # NEXUS-ERP-MCP: Odoo ERP tools
+  nexus-erp-mcp:
     build:
       context: ./modules/nexus-mcp
       dockerfile: Dockerfile
-    container_name: nexus-mcp
+    container_name: nexus-erp-mcp
     ports:
-      - "8010:8000"
+      - "8011:8000"
+    command: ["python", "server_erp.py"]
     environment:
-      # Shopping (SerpAPI — covers BestBuy, Walmart, Amazon, Target etc.)
-      - SERPAPI_KEY=${SERPAPI_KEY:-}
-      # ERP (Odoo)
       - ERP_TYPE=${ERP_TYPE:-odoo}
       - ERP_URL=${ERP_URL:-}
       - ERP_DB=${ERP_DB:-odoo}
       - ERP_USERNAME=${ERP_USERNAME:-admin}
       - ERP_PASSWORD=${ERP_PASSWORD:-admin}
-      # SSH
+    networks:
+      - nexus-network
+    restart: unless-stopped
+
+  # NEXUS-SSH-MCP: SSH / DevOps tools
+  nexus-ssh-mcp:
+    build:
+      context: ./modules/nexus-mcp
+      dockerfile: Dockerfile
+    container_name: nexus-ssh-mcp
+    ports:
+      - "8012:8000"
+    command: ["python", "server_ssh.py"]
+    environment:
       - SSH_DEFAULT_HOST=${SSH_DEFAULT_HOST:-}
       - SSH_DEFAULT_PORT=${SSH_DEFAULT_PORT:-22}
       - SSH_DEFAULT_USER=${SSH_DEFAULT_USER:-}
@@ -222,6 +209,22 @@ services:
       - SSH_DEFAULT_KEY_PATH=${SSH_DEFAULT_KEY_PATH:-}
       - SSH_ALLOWED_PATHS=${SSH_ALLOWED_PATHS:-}
       - SSH_ALLOWED_COMMANDS=${SSH_ALLOWED_COMMANDS:-}
+      - CODE_WORK_DIR=${CODE_WORK_DIR:-/home/ubuntu/code}
+    networks:
+      - nexus-network
+    restart: unless-stopped
+
+  # NEXUS-SERP-MCP: SerpAPI / Shopping tools
+  nexus-serp-mcp:
+    build:
+      context: ./modules/nexus-mcp
+      dockerfile: Dockerfile
+    container_name: nexus-serp-mcp
+    ports:
+      - "8013:8000"
+    command: ["python", "server_serp.py"]
+    environment:
+      - SERPAPI_KEY=${SERPAPI_KEY:-}
     networks:
       - nexus-network
     restart: unless-stopped

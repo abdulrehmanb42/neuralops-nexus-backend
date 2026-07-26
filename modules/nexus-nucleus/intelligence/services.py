@@ -45,6 +45,56 @@ def delete_ai_model(company, model_id: str) -> bool:
 
 # ── MCPServer ─────────────────────────────────────────────────────────────────
 
+def list_mcp_servers_all(company):
+    """List all MCP servers for the company (flat, not filtered by model)."""
+    from nucleus.models import MCPServer
+    return MCPServer.objects.filter(company=company, is_active=True).order_by("name")
+
+
+def create_mcp_server_standalone(company, data: dict):
+    """Create a standalone MCP server without tying it to a specific model."""
+    from nucleus.models import MCPServer
+    return MCPServer.objects.create(company=company, **data)
+
+
+def delete_mcp_server_standalone(company, server_id: str) -> bool:
+    from nucleus.models import MCPServer
+    server = MCPServer.objects.filter(company=company, id=server_id, is_active=True).first()
+    if not server:
+        return False
+    server.soft_delete()
+    return True
+
+
+def list_agents(company):
+    from nucleus.models import AIAgent
+    return (
+        AIAgent.objects.filter(company=company, is_active=True)
+        .select_related("model", "mcp_server")
+        .order_by("name")
+    )
+
+
+def create_agent(company, data: dict):
+    from nucleus.models import AIAgent, AIModel, MCPServer
+    model_id = data.pop("model_id", None)
+    mcp_server_id = data.pop("mcp_server_id", None)
+    model = AIModel.objects.filter(company=company, id=model_id, is_active=True).first() if model_id else None
+    mcp_server = MCPServer.objects.filter(company=company, id=mcp_server_id, is_active=True).first() if mcp_server_id else None
+    if not model:
+        raise ValueError("AIModel not found")
+    return AIAgent.objects.create(company=company, model=model, mcp_server=mcp_server, **data)
+
+
+def delete_agent(company, agent_id: str) -> bool:
+    from nucleus.models import AIAgent
+    agent = AIAgent.objects.filter(company=company, id=agent_id, is_active=True).first()
+    if not agent:
+        return False
+    agent.soft_delete()
+    return True
+
+
 def list_mcp_servers(company, ai_model_id: str):
     from nucleus.models import MCPServer, AIAgent
     # MCPServer links to AIAgent which links to AIModel

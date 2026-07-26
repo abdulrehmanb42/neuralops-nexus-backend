@@ -12,7 +12,7 @@ from ninja.errors import HttpError
 from authn.auth import SupabaseBearer
 from .schema import (
     ProjectCreateRequest, ProjectOut, ChannelOut, ChannelCreateRequest,
-    TopicCreateRequest, TopicOut,
+    TopicCreateRequest, TopicUpdateRequest, TopicOut,
     InviteRequest, InviteResponse, MemberOut, RemoveMemberResponse,
     TeamMemberOut, AddMemberRequest, InviteToProjectRequest, InviteToProjectOut,
     AvailableUserOut, AvailablePersonaOut,
@@ -140,6 +140,21 @@ def create_topic(request, project_id: str, channel_id: str, payload: TopicCreate
     if not channel:
         raise HttpError(404, "Channel not found.")
     topic = svc.create_topic(company=company, project=project, channel=channel, title=payload.title, creator=user)
+    return {
+        "id": str(topic.id), "title": topic.title, "slug": topic.slug,
+        "channel_id": str(topic.channel_id), "project_id": str(topic.project_id),
+    }
+
+
+@router.patch("/{project_id}/channels/{channel_id}/topics/{topic_id}/", response=TopicOut)
+def update_topic(request, project_id: str, channel_id: str, topic_id: str, payload: TopicUpdateRequest):
+    company, user, project = _resolve_project(request, project_id)
+    channel = svc.get_channel(company, project, channel_id)
+    if not channel:
+        raise HttpError(404, "Channel not found.")
+    topic = svc.update_topic(company, project, channel, topic_id, payload.title)
+    if not topic:
+        raise HttpError(404, "Topic not found.")
     return {
         "id": str(topic.id), "title": topic.title, "slug": topic.slug,
         "channel_id": str(topic.channel_id), "project_id": str(topic.project_id),

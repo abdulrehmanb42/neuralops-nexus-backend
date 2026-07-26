@@ -1,6 +1,6 @@
-import { Hash } from "lucide-react";
+import { Plus, Hash } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
-import { useTopics, useMarkTopicRead } from "@/hooks/useWorkspace";
+import { useTopics, useMarkTopicRead, useCreateTopic } from "@/hooks/useWorkspace";
 import { useUIStore } from "@/store/ui.store";
 import { useProjects } from "@/hooks/useWorkspace";
 
@@ -20,18 +20,35 @@ export function TopicList({
   const project = projects?.find((p) => p.id === projectId);
   const channel = project?.channels.find((c) => c.id === channelId);
 
+  const createTopic = useCreateTopic(projectId, channelId, (topic) => {
+    setActiveTopicId(topic.id);
+  });
+
   function handleTopicClick(topicId: string) {
     setActiveTopicId(topicId);
     markRead(topicId);
+  }
+
+  function handleNewTopic() {
+    const n = (topics?.length ?? 0) + 1;
+    createTopic.mutate({ title: `chat#${n}` });
   }
 
   return (
     <div className="flex h-full w-[220px] shrink-0 flex-col border-r border-sidebar-border bg-sidebar">
       <div className="flex items-center gap-2 border-b border-sidebar-border px-3 py-3">
         <Hash className="h-4 w-4 text-foreground-muted" />
-        <span className="truncate text-sm font-semibold text-foreground">
+        <span className="truncate text-sm font-semibold text-foreground flex-1">
           {channel?.name ?? "channel"}
         </span>
+        <button
+          onClick={handleNewTopic}
+          disabled={createTopic.isPending}
+          title="New conversation"
+          className="shrink-0 text-foreground-muted hover:text-foreground disabled:opacity-40"
+        >
+          <Plus className="h-3.5 w-3.5" />
+        </button>
       </div>
       <div className="flex-1 overflow-y-auto p-2">
         {isLoading && (
@@ -43,7 +60,7 @@ export function TopicList({
         )}
         {!isLoading && (!topics || topics.length === 0) && (
           <p className="px-2 py-3 text-xs text-foreground-muted">
-            No conversations yet. Send a message to start one.
+            Click <strong>+</strong> to start a new conversation.
           </p>
         )}
         {!isLoading &&
@@ -62,7 +79,6 @@ export function TopicList({
                       : "text-foreground-muted hover:bg-sidebar-accent hover:text-foreground"
                 }`}
               >
-                {/* Unread dot */}
                 <span
                   className={`h-2 w-2 shrink-0 rounded-full transition-colors ${
                     unread ? "bg-primary" : "bg-transparent"

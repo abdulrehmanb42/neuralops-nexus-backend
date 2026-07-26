@@ -15,3 +15,7 @@ export async function createAgent(input: Partial<Agent>): Promise<Agent> {
     body: JSON.stringify(input),
   });
 }
+
+export async function deleteAgent(id: string): Promise<void> {
+  return apiJson<void>(`/api/v1/agents/${id}/`, { method: "DELETE" });
+}

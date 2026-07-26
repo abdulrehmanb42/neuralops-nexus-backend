@@ -94,6 +94,21 @@ export async function createChannel(
   return data;
 }
 
+export async function renameTopic(
+  projectId: string,
+  channelId: string,
+  topicId: string,
+  title: string,
+): Promise<Topic> {
+  const res = await apiRequest(
+    `/api/v1/projects/${projectId}/channels/${channelId}/topics/${topicId}/`,
+    { method: "PATCH", body: JSON.stringify({ title }) },
+  );
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(data.detail ?? "Failed to rename topic");
+  return data;
+}
+
 export async function markTopicRead(
   projectId: string,
   channelId: string,

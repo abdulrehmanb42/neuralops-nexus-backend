@@ -5,6 +5,7 @@ import {
   sendMessage,
   type ApiMessage,
 } from "@/services/chat.service";
+import { renameTopic } from "@/services/workspace.service";
 import { useCentrifugo } from "./useCentrifugo";
 import { useAuthStore } from "@/store/auth.store";
 import type { ChatMessage, MessageRenderType } from "@/components/chat/types";
@@ -109,8 +110,12 @@ export function useTopicMessages(
 ) {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [loading, setLoading] = useState(false);
+  const [autoRenamed, setAutoRenamed] = useState(false);
   const { subscribe } = useCentrifugo();
   const currentUserId = useAuthStore((s) => s.userId);
+
+  // Reset auto-rename flag when topic changes
+  useEffect(() => { setAutoRenamed(false); }, [topicId]);
 
   // Load history
   useEffect(() => {
@@ -180,20 +185,37 @@ export function useTopicMessages(
       } else if (event.type === "message_done") {
         // Streaming complete — replace content with clean version + set renderer
         const renderType = toRenderType(event.render_as);
-        setMessages((prev) =>
-          prev.map((m) =>
+        setMessages((prev) => {
+          const updated = prev.map((m) =>
             m.id === event.id
               ? {
                   ...m,
                   isStreaming: false,
                   type: renderType,
                   output_type: event.output_type ?? "text",
-                  // Replace with nexus-ai's clean content (markers stripped)
                   content: event.content !== undefined ? event.content : m.content,
                 }
               : m,
-          ),
-        );
+          );
+          // Auto-rename: on first AI response, use the first human message as title
+          if (
+            !autoRenamed && projectId && channelId && topicId &&
+            updated.some((m) => m.sender.type === "agent" && m.id === event.id)
+          ) {
+            const firstHuman = updated.find((m) => m.sender.type === "human");
+            if (firstHuman) {
+              // Strip @mentions and output_type markers, trim to 60 chars
+              const title = firstHuman.content
+                .replace(/@\w+/g, "")
+                .replace(/@output_type:\w+/g, "")
+                .trim()
+                .slice(0, 60) || "chat";
+              setAutoRenamed(true);
+              renameTopic(projectId, channelId, topicId, title).catch(() => {});
+            }
+          }
+          return updated;
+        });
       }
     });
 

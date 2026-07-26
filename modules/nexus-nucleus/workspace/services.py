@@ -150,6 +150,22 @@ def create_topic(company, project, channel, title: str, creator=None):
     )
 
 
+def update_topic(company, project, channel, topic_id: str, title: str):
+    from nucleus.models import ChatTopic
+    from django.utils.text import slugify
+
+    topic = ChatTopic.objects.filter(
+        company=company, project=project, channel=channel,
+        id=topic_id, is_active=True
+    ).first()
+    if not topic:
+        return None
+    topic.title = title
+    topic.slug = _unique_topic_slug(channel, title)
+    topic.save(update_fields=["title", "slug", "updated_at"])
+    return topic
+
+
 def get_topic(company, project, channel, topic_id: str):
     from nucleus.models import ChatTopic
     return ChatTopic.objects.filter(

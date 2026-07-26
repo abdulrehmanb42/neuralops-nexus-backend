@@ -4,8 +4,6 @@ from dotenv import load_dotenv
 load_dotenv()
 
 # -- Shopping (SerpAPI Google Shopping) --------------------------------------
-# One key covers BestBuy, Walmart, Amazon, Target and more.
-# Sign up at serpapi.com — 100 free searches/month, no company verification.
 SERPAPI_KEY = os.getenv("SERPAPI_KEY", "")
 
 # -- ERP (Odoo) ---------------------------------------------------------------
@@ -23,14 +21,12 @@ SSH_DEFAULT_PASSWORD = os.getenv("SSH_DEFAULT_PASSWORD", "")
 SSH_DEFAULT_KEY_PATH = os.getenv("SSH_DEFAULT_KEY_PATH", "")
 SSH_COMMAND_TIMEOUT = int(os.getenv("SSH_COMMAND_TIMEOUT", "30"))
 
-# Comma-separated list of allowed path prefixes for ssh_list_files / ssh_read_file.
-# Example: "/var/log,/home/ubuntu/projects,/etc/nginx"
-# If empty, ALL paths are allowed (not recommended for production).
 _raw = os.getenv("SSH_ALLOWED_PATHS", "")
 SSH_ALLOWED_PATHS: list[str] = [p.strip() for p in _raw.split(",") if p.strip()]
 
-# Comma-separated list of allowed command prefixes for ssh_execute.
-# Example: "df,free,uptime,systemctl status,ls,cat,tail,ps"
-# If empty, ALL commands are allowed.
 _raw_cmds = os.getenv("SSH_ALLOWED_COMMANDS", "")
 SSH_ALLOWED_COMMANDS: list[str] = [c.strip() for c in _raw_cmds.split(",") if c.strip()]
+
+# -- Code Execution -----------------------------------------------------------
+# Working directory on the remote server where code files are written and run.
+CODE_WORK_DIR = os.getenv("CODE_WORK_DIR", "/home/ubuntu/code")

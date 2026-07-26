@@ -1,5 +1,5 @@
 """
-AI Intelligence API — AIModel, MCPServer, Persona, PromptTemplate, CompanyAIConfig.
+AI Intelligence API — AIModel, MCPServer, AIAgent, Persona, PromptTemplate, CompanyAIConfig.
 All endpoints require Supabase JWT auth and are company-scoped.
 """
 from typing import List
@@ -10,6 +10,7 @@ from authn.auth import SupabaseBearer
 from .schema import (
     AIModelIn, AIModelOut,
     MCPServerIn, MCPServerOut,
+    AIAgentIn, AIAgentOut,
     PersonaIn, PersonaPatchIn, PersonaOut,
     PromptTemplateOut,
     CompanyAIConfigIn, CompanyAIConfigOut,
@@ -63,7 +64,26 @@ def _mcp_out(server) -> MCPServerOut:
         config=server.config,
         timeout_seconds=server.timeout_seconds,
         max_retries=server.max_retries,
+        is_first_party=server.is_first_party,
+        embed_output=server.embed_output,
         is_active=server.is_active,
+    )
+
+
+def _agent_out(agent) -> AIAgentOut:
+    return AIAgentOut(
+        id=str(agent.id),
+        name=agent.name,
+        description=agent.description,
+        agent_type=agent.agent_type,
+        model_id=str(agent.model_id) if agent.model_id else None,
+        model_name=agent.model.name if agent.model else None,
+        mcp_server_id=str(agent.mcp_server_id) if agent.mcp_server_id else None,
+        mcp_server_name=agent.mcp_server.name if agent.mcp_server else None,
+        system_prompt=agent.system_prompt,
+        safety_mode=agent.safety_mode,
+        max_steps=agent.max_steps,
+        is_active=agent.is_active,
     )
 
 
@@ -117,7 +137,32 @@ def delete_ai_model(request, model_id: str):
     return 204, None
 
 
-# ── MCPServer endpoints ───────────────────────────────────────────────────────
+# ── MCPServer endpoints (flat) ────────────────────────────────────────────────
+
+@router.get("/mcp-servers/", response=List[MCPServerOut])
+def list_mcp_servers_all(request):
+    """List all MCP servers for the company."""
+    company = _company(request)
+    return [_mcp_out(s) for s in svc.list_mcp_servers_all(company)]
+
+
+@router.post("/mcp-servers/", response=MCPServerOut)
+def create_mcp_server_standalone(request, payload: MCPServerIn):
+    """Create a standalone MCP server."""
+    company = _company(request)
+    server = svc.create_mcp_server_standalone(company, payload.dict())
+    return _mcp_out(server)
+
+
+@router.delete("/mcp-servers/{server_id}/", response={204: None})
+def delete_mcp_server_standalone(request, server_id: str):
+    company = _company(request)
+    if not svc.delete_mcp_server_standalone(company, server_id):
+        raise HttpError(404, "MCP server not found.")
+    return 204, None
+
+
+# ── MCPServer endpoints (nested under model — legacy) ─────────────────────────
 
 @router.get("/ai-models/{model_id}/mcp-servers/", response=List[MCPServerOut])
 def list_mcp_servers(request, model_id: str):
@@ -140,6 +185,32 @@ def delete_mcp_server(request, model_id: str, server_id: str):
     company = _company(request)
     if not svc.delete_mcp_server(company, model_id, server_id):
         raise HttpError(404, "MCP server not found.")
+    return 204, None
+
+
+# ── AIAgent endpoints ─────────────────────────────────────────────────────────
+
+@router.get("/agents/", response=List[AIAgentOut])
+def list_agents(request):
+    company = _company(request)
+    return [_agent_out(a) for a in svc.list_agents(company)]
+
+
+@router.post("/agents/", response=AIAgentOut)
+def create_agent(request, payload: AIAgentIn):
+    company = _company(request)
+    try:
+        agent = svc.create_agent(company, payload.dict())
+    except ValueError as e:
+        raise HttpError(400, str(e))
+    return _agent_out(agent)
+
+
+@router.delete("/agents/{agent_id}/", response={204: None})
+def delete_agent(request, agent_id: str):
+    company = _company(request)
+    if not svc.delete_agent(company, agent_id):
+        raise HttpError(404, "Agent not found.")
     return 204, None
 
 

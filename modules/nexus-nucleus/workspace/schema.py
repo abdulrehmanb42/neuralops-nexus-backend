@@ -33,6 +33,10 @@ class TopicCreateRequest(Schema):
     title: str
 
 
+class TopicUpdateRequest(Schema):
+    title: str
+
+
 class TopicOut(Schema):
     id: str
     title: str
