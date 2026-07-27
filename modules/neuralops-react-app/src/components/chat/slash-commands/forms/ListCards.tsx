@@ -193,9 +193,20 @@ export function ListPersonasDialog({ open, onClose }: { open: boolean; onClose: 
               <span className="text-sm font-medium truncate">@{p.name}</span>
               <div className="flex items-center gap-1 shrink-0">
                 <Badge variant="secondary">{p.source_type}</Badge>
+                {p.prompt?.output_type && p.prompt.output_type !== "text" && (
+                  <Badge variant="outline">{p.prompt.output_type}</Badge>
+                )}
                 <DeleteBtn onDelete={() => remove(p.id, p.name)} />
               </div>
             </div>
+            {p.description && (
+              <div className="mt-1 text-xs text-muted-foreground">{p.description}</div>
+            )}
+            {p.prompt?.system_prompt && (
+              <div className="mt-2 rounded bg-muted px-2 py-1.5 text-xs text-muted-foreground font-mono whitespace-pre-wrap line-clamp-4">
+                {p.prompt.system_prompt}
+              </div>
+            )}
           </div>
         ))}
       </div>
