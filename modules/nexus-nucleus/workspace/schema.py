@@ -106,6 +106,7 @@ class InviteToProjectOut(Schema):
     scope: str
     message: str
     server_url: Optional[str] = None
+    invite_url: Optional[str] = None   # full link to share with the invitee
 
 
 class AvailableUserOut(Schema):

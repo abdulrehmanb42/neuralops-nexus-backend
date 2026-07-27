@@ -439,17 +439,21 @@ def invite_to_project(
     ).exists():
         raise ValueError(f"{email} has already been invited.")
 
-    token_hash = hashlib.sha256(secrets.token_urlsafe(32).encode()).hexdigest()
+    raw_token = secrets.token_urlsafe(32)
+    token_hash = hashlib.sha256(raw_token.encode()).hexdigest()
     Invitation.objects.create(
         company=company, email=email, role=role, invited_by=inviter,
         token_hash=token_hash, expires_at=timezone.now() + timedelta(days=30),
         access_payload={"project_id": str(project.id)},
     )
+    portal_url = getattr(settings, "NEURALOPS_PORTAL_URL", "").rstrip("/")
     server_url = getattr(settings, "NEURALOPS_SERVER_URL", "").rstrip("/")
+    invite_url = f"{portal_url}/invite?server_url={server_url}&token={raw_token}" if portal_url and server_url else None
     return {
         "ok": True, "is_new_user": True, "email": email, "scope": scope,
         "server_url": server_url or None,
-        "message": f"{email} invited. Ask them to sign up and connect to this server.",
+        "invite_url": invite_url,
+        "message": f"Invite link generated for {email}.",
     }
 
 

@@ -196,11 +196,17 @@ export function MessageInput({
           topic_id: scope === "topic" ? (topicId ?? undefined) : undefined,
           role: "member",
         });
-        if (result.is_new_user && result.server_url) {
+        if (result.is_new_user && result.invite_url) {
           toast.success(result.message, {
-            description: `Server address: ${result.server_url}`,
-            action: { label: "Copy address", onClick: () => { navigator.clipboard.writeText(result.server_url!); toast.success("Copied"); } },
-            duration: 20_000,
+            description: `Share this link with ${arg} to let them join.`,
+            action: {
+              label: "Copy invite link",
+              onClick: () => {
+                navigator.clipboard.writeText(result.invite_url!);
+                toast.success("Invite link copied!");
+              },
+            },
+            duration: 30_000,
           });
         } else { toast.success(result.message); }
       }
