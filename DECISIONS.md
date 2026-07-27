@@ -162,7 +162,25 @@ print('Done')
 
 ---
 
-## 11. MCP Tool Usage Rules
+## 11. Docker Container Names (node3)
+
+| Service    | Container name     |
+|------------|--------------------|
+| Django app | `nexus-nucleus`    |
+| PostgreSQL | `nexus-postgres`   |
+
+Backup command (credentials from `.env`):
+```bash
+cd /data/code/neuralops-backend
+source .env 2>/dev/null || export $(cat .env | grep -v ^# | xargs)
+docker exec nexus-postgres pg_dump -U $POSTGRES_USER $POSTGRES_DB > backups/neuralops_$(date +%Y%m%d_%H%M%S).sql
+```
+
+Backups live at: `/data/code/neuralops-backend/backups/`
+
+---
+
+## 12. MCP Tool Usage Rules
 
 - **File reads/writes on node3:** use `mcp__node3-neuralops-backend__*` tools
 - **Shell commands on node3:** NOT available via MCP — give the user the command to run manually
@@ -171,7 +189,7 @@ print('Done')
 
 ---
 
-## 12. /invite Slash Command — Persona vs Human
+## 13. /invite Slash Command — Persona vs Human
 
 **Decision:** `/invite` detects the argument type automatically:
 - `/invite @Ryan` or `/invite Ryan` — persona (no `@` in middle = not an email)
@@ -190,7 +208,22 @@ It adds the persona to the **current project** only (not global).
 
 ---
 
-## 13. Before Starting Any Task
+## 15. App Version — Changelog
+
+**Single source of truth:** `modules/neuralops-react-app/src/lib/version.ts`
+
+Increment `APP_VERSION` on every meaningful change. Update the log below.
+
+| Version | Date       | Changes                                      |
+|---------|------------|----------------------------------------------|
+| 0.1     | 2026-07-27 | Initial alpha — About dialog, version system |
+
+**About dialog:** `src/components/layout/AboutDialog.tsx`
+Opened via the `ⓘ` button in the Sidebar footer.
+
+---
+
+## 16. Before Starting Any Task
 
 1. Read this file (`DECISIONS.md`)
 2. Read the specific files you intend to edit — do not assume their contents

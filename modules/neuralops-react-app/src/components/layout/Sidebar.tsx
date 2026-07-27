@@ -13,6 +13,7 @@ import {
   Users,
   Bot,
   User,
+  Info,
 } from "lucide-react";
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
@@ -31,6 +32,7 @@ import { useProjects, useTeam, useRemoveTeamMember } from "@/hooks/useWorkspace"
 import { AddProjectDialog } from "@/components/workspace/AddProjectDialog";
 import { AddChannelDialog } from "@/components/workspace/AddChannelDialog";
 import { AddTeamMemberDialog } from "@/components/workspace/AddTeamMemberDialog";
+import { AboutDialog } from "@/components/layout/AboutDialog";
 import type { Project, Channel } from "@/services/workspace.service";
 
 export function Sidebar() {
@@ -50,6 +52,7 @@ export function Sidebar() {
   const [addProjectOpen, setAddProjectOpen] = useState(false);
   const [addChannelFor, setAddChannelFor] = useState<string | null>(null);
   const [addTeamFor, setAddTeamFor] = useState<string | null>(null);
+  const [aboutOpen, setAboutOpen] = useState(false);
 
   async function handleSignOut() {
     try {
@@ -181,6 +184,14 @@ export function Sidebar() {
         >
           <Users className="h-4 w-4" />
         </Button>
+        <Button
+          size="icon"
+          variant="ghost"
+          aria-label="About"
+          onClick={() => setAboutOpen(true)}
+        >
+          <Info className="h-4 w-4" />
+        </Button>
         <Link
           to="/app/settings"
           className="inline-flex h-9 w-9 items-center justify-center rounded-md hover:bg-sidebar-accent"
@@ -215,6 +226,8 @@ export function Sidebar() {
           </div>
         </SheetContent>
       </Sheet>
+
+      <AboutDialog open={aboutOpen} onOpenChange={setAboutOpen} />
 
       <AddProjectDialog
         open={addProjectOpen}
