@@ -167,7 +167,7 @@ export async function removeTeamMember(
 
 export async function inviteToProject(
   projectId: string,
-  payload: { email: string; scope?: string; topic_id?: string; role?: string },
+  payload: { email?: string; persona_name?: string; scope?: string; topic_id?: string; role?: string },
 ): Promise<{ ok: boolean; message: string; is_new_user: boolean; server_url?: string }> {
   const res = await apiRequest(`/api/v1/projects/${projectId}/team/invite/`, {
     method: "POST",

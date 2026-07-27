@@ -92,7 +92,8 @@ class AddMemberRequest(Schema):
 
 
 class InviteToProjectRequest(Schema):
-    email: str
+    email: Optional[str] = None        # human invite by email
+    persona_name: Optional[str] = None  # persona invite by name (e.g. "Ryan" or "@Ryan")
     scope: str = "topic"
     topic_id: Optional[str] = None
     role: str = "member"

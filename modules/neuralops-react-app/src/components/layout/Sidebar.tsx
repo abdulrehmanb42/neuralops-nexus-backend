@@ -354,7 +354,7 @@ function ProjectNode({
                         <User className="h-3 w-3 shrink-0 text-foreground-muted" />
                       )}
                       <span className="min-w-0 flex-1 truncate text-xs text-foreground">
-                        {member.name}
+                        @{member.name}
                       </span>
                       <span className="shrink-0 text-[10px] text-foreground-muted">
                         {member.role}

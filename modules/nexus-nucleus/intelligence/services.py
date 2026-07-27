@@ -187,9 +187,14 @@ def create_persona(company, user, data: dict) -> "Persona":
     model = AIModel.objects.filter(company=company, id=model_id, is_active=True).first() if model_id else None
     agent = AIAgent.objects.filter(company=company, id=agent_id, is_active=True).first() if agent_id else None
 
-    # Create shadow user for the persona
+    # Create shadow user for the persona (ensure unique username)
+    base_username = f"persona_{data['name'].lower().replace(' ', '_')}"
+    username, n = base_username, 1
+    while User.objects.filter(username=username).exists():
+        username = f"{base_username}_{n}"
+        n += 1
     shadow_user = User.objects.create(
-        username=f"persona_{data['name'].lower().replace(' ', '_')}",
+        username=username,
         user_type="persona",
         is_active=True,
     )
@@ -254,11 +259,20 @@ def patch_persona(company, persona_id: str, data: dict) -> "Persona | None":
 
 def delete_persona(company, persona_id: str) -> bool:
     from nucleus.models import Persona
+    import uuid
     persona = Persona.objects.filter(
         company=company, id=persona_id, is_active=True
-    ).first()
+    ).select_related("identity_user").first()
     if not persona:
         return False
+    # Free up name + username so the same persona can be re-created later
+    suffix = uuid.uuid4().hex[:8]
+    persona.name = f"{persona.name}_deleted_{suffix}"
+    persona.save(update_fields=["name"])
+    if persona.identity_user:
+        persona.identity_user.username = f"deleted_{suffix}"
+        persona.identity_user.is_active = False
+        persona.identity_user.save(update_fields=["username", "is_active"])
     persona.soft_delete()
     return True
 

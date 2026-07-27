@@ -18,14 +18,25 @@ def _format_member(member) -> dict:
     user = member.user
     if user.user_type == "persona":
         profile = getattr(user, "persona_profile", None)
-        name = profile.name if profile else user.username
-        avatar = profile.avatar.url if (profile and profile.avatar) else None
+        if profile and profile.is_active:
+            name = profile.name
+            avatar = profile.avatar.url if profile.avatar else None
+        else:
+            name = user.username
+            avatar = None
         email = ""
     else:
-        profile = getattr(user, "human_profile", None)
-        name = profile.full_name if profile else user.email
-        email = profile.email if profile else user.email
-        avatar = profile.avatar.url if (profile and profile.avatar) else None
+        name = user.get_display_name()
+        email = user.email or ""
+        avatar = None
+        try:
+            hp = user.human_profile
+            if hp.full_name:
+                name = hp.full_name
+            email = hp.email or email
+            avatar = hp.avatar.url if hp.avatar else None
+        except Exception:
+            pass
 
     return {
         "id": str(member.id),
@@ -46,6 +57,7 @@ def list_team(company, project) -> list:
 
     members = (
         ProjectMember.objects.filter(company=company, project=project, is_active=True)
+        .filter(user__is_active=True)  # exclude deactivated persona shadow users
         .select_related("user", "user__human_profile", "user__persona_profile")
         .order_by("role", "created_at")
     )

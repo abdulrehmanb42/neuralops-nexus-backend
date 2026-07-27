@@ -196,7 +196,8 @@ def invite_to_project(request, project_id: str, payload: InviteToProjectRequest)
     company, user, project = _resolve_project(request, project_id)
     try:
         return svc.invite_to_project(
-            company=company, inviter=user, email=payload.email, project=project,
+            company=company, inviter=user, project=project,
+            email=payload.email, persona_name=payload.persona_name,
             scope=payload.scope, topic_id=payload.topic_id, role=payload.role,
         )
     except ValueError as exc:

@@ -174,23 +174,36 @@ export function MessageInput({
   async function handleInviteCommand(trimmed: string) {
     if (!projectId) { toast.error("No active project — cannot send invite."); return; }
     const parts = trimmed.split(/\s+/);
-    const email = parts[1];
-    if (!email) { toast.error("Usage: /invite email@example.com [project]"); return; }
-    const scope = parts[2]?.toLowerCase() === "project" ? "project" : "topic";
+    const arg = parts[1];
+    if (!arg) { toast.error("Usage: /invite @PersonaName  or  /invite email@example.com"); return; }
+
+    // Detect persona: starts with @ OR has no @ in it at all (not an email)
+    const isPersona = arg.startsWith("@") || !arg.includes("@");
+
     setInviting(true);
     try {
-      const result = await inviteToProject(projectId, {
-        email, scope,
-        topic_id: scope === "topic" ? (topicId ?? undefined) : undefined,
-        role: "member",
-      });
-      if (result.is_new_user && result.server_url) {
-        toast.success(result.message, {
-          description: `Server address: ${result.server_url}`,
-          action: { label: "Copy address", onClick: () => { navigator.clipboard.writeText(result.server_url!); toast.success("Copied"); } },
-          duration: 20_000,
+      if (isPersona) {
+        const result = await inviteToProject(projectId, {
+          persona_name: arg.replace(/^@/, ""),
+          scope: "project",
+          role: "member",
         });
-      } else { toast.success(result.message); }
+        toast.success(result.message);
+      } else {
+        const scope = parts[2]?.toLowerCase() === "project" ? "project" : "topic";
+        const result = await inviteToProject(projectId, {
+          email: arg, scope,
+          topic_id: scope === "topic" ? (topicId ?? undefined) : undefined,
+          role: "member",
+        });
+        if (result.is_new_user && result.server_url) {
+          toast.success(result.message, {
+            description: `Server address: ${result.server_url}`,
+            action: { label: "Copy address", onClick: () => { navigator.clipboard.writeText(result.server_url!); toast.success("Copied"); } },
+            duration: 20_000,
+          });
+        } else { toast.success(result.message); }
+      }
       setText("");
     } catch (err) { toast.error(err instanceof Error ? err.message : "Invite failed"); }
     finally { setInviting(false); }
@@ -276,8 +289,9 @@ export function MessageInput({
           <div className="absolute bottom-full left-3 mb-2 w-72 rounded-md border border-border bg-popover px-3 py-2 shadow-md">
             <div className="flex items-center gap-2">
               <UserPlus className="h-4 w-4 shrink-0 text-primary" />
-              <div>
-                <div className="text-xs font-medium text-foreground">Invite someone</div>
+              <div className="space-y-0.5">
+                <div className="text-xs font-medium text-foreground">Invite to this project</div>
+                <div className="text-xs text-muted-foreground"><code>/invite @Ryan</code> — add a persona</div>
                 <div className="text-xs text-muted-foreground"><code>/invite email@example.com</code> — add to this topic</div>
                 <div className="text-xs text-muted-foreground"><code>/invite email@example.com project</code> — add to project</div>
               </div>
