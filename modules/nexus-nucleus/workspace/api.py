@@ -12,7 +12,7 @@ from ninja.errors import HttpError
 from authn.auth import SupabaseBearer
 from .schema import (
     ProjectCreateRequest, ProjectOut, ChannelOut, ChannelCreateRequest,
-    TopicCreateRequest, TopicOut,
+    TopicCreateRequest, TopicUpdateRequest, TopicOut,
     InviteRequest, InviteResponse, MemberOut, RemoveMemberResponse,
     TeamMemberOut, AddMemberRequest, InviteToProjectRequest, InviteToProjectOut,
     AvailableUserOut, AvailablePersonaOut,
@@ -146,6 +146,21 @@ def create_topic(request, project_id: str, channel_id: str, payload: TopicCreate
     }
 
 
+@router.patch("/{project_id}/channels/{channel_id}/topics/{topic_id}/", response=TopicOut)
+def update_topic(request, project_id: str, channel_id: str, topic_id: str, payload: TopicUpdateRequest):
+    company, user, project = _resolve_project(request, project_id)
+    channel = svc.get_channel(company, project, channel_id)
+    if not channel:
+        raise HttpError(404, "Channel not found.")
+    topic = svc.update_topic(company, project, channel, topic_id, payload.title)
+    if not topic:
+        raise HttpError(404, "Topic not found.")
+    return {
+        "id": str(topic.id), "title": topic.title, "slug": topic.slug,
+        "channel_id": str(topic.channel_id), "project_id": str(topic.project_id),
+    }
+
+
 @router.post("/{project_id}/channels/{channel_id}/topics/{topic_id}/read/", response={200: dict}, tags=["Chat"])
 def mark_topic_read(request, project_id: str, channel_id: str, topic_id: str):
     company, user, project = _resolve_project(request, project_id)
@@ -181,7 +196,8 @@ def invite_to_project(request, project_id: str, payload: InviteToProjectRequest)
     company, user, project = _resolve_project(request, project_id)
     try:
         return svc.invite_to_project(
-            company=company, inviter=user, email=payload.email, project=project,
+            company=company, inviter=user, project=project,
+            email=payload.email, persona_name=payload.persona_name,
             scope=payload.scope, topic_id=payload.topic_id, role=payload.role,
         )
     except ValueError as exc:

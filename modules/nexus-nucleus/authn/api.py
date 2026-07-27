@@ -1,5 +1,6 @@
 import hashlib
 import re
+from typing import Optional
 
 from django.conf import settings
 from django.utils import timezone
@@ -79,6 +80,51 @@ def verify(request):
         raise HttpError(401, str(exc))
     except PermissionError as exc:
         raise HttpError(403, str(exc))
+
+
+# ── Public invite preview (no auth — called by portal invite page) ──────────
+
+class InvitePreviewOut(Schema):
+    company_name: str
+    inviter_name: str
+    email: str
+    expires_at: Optional[str] = None
+
+
+
+@router.get("/invite-preview/", response=InvitePreviewOut, auth=None)
+def invite_preview(request, token: str):
+    """
+    Public endpoint — no auth required.
+    Called by the portal invite page to show invite details before the user logs in.
+    """
+    import hashlib
+    from nucleus.models import Invitation
+    from django.utils import timezone
+
+    token_hash = hashlib.sha256(token.encode()).hexdigest()
+    invitation = Invitation.objects.filter(
+        token_hash=token_hash,
+        status=Invitation.Status.PENDING,
+        is_active=True,
+    ).select_related("company", "invited_by").first()
+
+    if not invitation:
+        raise HttpError(404, "Invite link is invalid or has already been used.")
+
+    if invitation.expires_at and invitation.expires_at < timezone.now():
+        raise HttpError(410, "This invite link has expired.")
+
+    inviter_name = ""
+    if invitation.invited_by:
+        inviter_name = invitation.invited_by.get_display_name() or invitation.invited_by.email or ""
+
+    return {
+        "company_name": invitation.company.name if invitation.company else "NeuralOps Server",
+        "inviter_name": inviter_name,
+        "email": invitation.email,
+        "expires_at": invitation.expires_at.isoformat() if invitation.expires_at else None,
+    }
 
 
 # ── Change display name ───────────────────────────────────────────────────────

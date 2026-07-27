@@ -13,3 +13,7 @@ export async function createMCPServer(
     body: JSON.stringify(input),
   });
 }
+
+export async function deleteMCPServer(id: string): Promise<void> {
+  return apiJson<void>(`/api/v1/mcp-servers/${id}/`, { method: "DELETE" });
+}

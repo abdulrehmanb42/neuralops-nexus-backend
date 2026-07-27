@@ -30,5 +30,7 @@ export async function apiJson<T>(
   if (!res.ok) {
     throw new ApiError(res.status, await res.text().catch(() => res.statusText));
   }
+  // 204 No Content (e.g. DELETE) — no body to parse
+  if (res.status === 204) return undefined as T;
   return res.json() as Promise<T>;
 }

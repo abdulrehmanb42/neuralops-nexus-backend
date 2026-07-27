@@ -74,6 +74,12 @@ class CompanyAIConfig(BaseModel):
         help_text="Fallback LLM model when a persona has no model assigned.",
     )
 
+    # -- Session --------------------------------------------------------------
+    session_timeout_minutes = models.PositiveIntegerField(
+        default=30,
+        help_text="How long an @session stays active without explicit close (minutes).",
+    )
+
     # -- Audit ----------------------------------------------------------------
     updated_by = models.ForeignKey(
         settings.AUTH_USER_MODEL,
@@ -555,6 +561,19 @@ class MCPServer(TenantBaseModel):
     timeout_seconds = models.PositiveIntegerField(default=60)
 
     max_retries = models.PositiveIntegerField(default=3)
+
+    # -- M8: embedding control ------------------------------------------------
+    is_first_party = models.BooleanField(
+        default=False,
+        help_text="True = marketplace-published MCP (we own it). "
+                  "False = external/third-party (no embedding allowed).",
+    )
+
+    embed_output = models.BooleanField(
+        default=False,
+        help_text="Opt-in: embed MCP tool results to ChromaDB. "
+                  "Only meaningful when is_first_party=True.",
+    )
 
     class Meta:
         db_table = "intelligence_mcp_server"

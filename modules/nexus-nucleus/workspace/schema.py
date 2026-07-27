@@ -33,6 +33,10 @@ class TopicCreateRequest(Schema):
     title: str
 
 
+class TopicUpdateRequest(Schema):
+    title: str
+
+
 class TopicOut(Schema):
     id: str
     title: str
@@ -88,7 +92,8 @@ class AddMemberRequest(Schema):
 
 
 class InviteToProjectRequest(Schema):
-    email: str
+    email: Optional[str] = None        # human invite by email
+    persona_name: Optional[str] = None  # persona invite by name (e.g. "Ryan" or "@Ryan")
     scope: str = "topic"
     topic_id: Optional[str] = None
     role: str = "member"
@@ -101,6 +106,7 @@ class InviteToProjectOut(Schema):
     scope: str
     message: str
     server_url: Optional[str] = None
+    invite_url: Optional[str] = None   # full link to share with the invitee
 
 
 class AvailableUserOut(Schema):

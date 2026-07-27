@@ -11,10 +11,12 @@ from __future__ import annotations
 
 import logging
 import re
+from datetime import timedelta
 
 import httpx
 from django.conf import settings
 from django.db.models import Max
+from django.utils import timezone
 
 logger = logging.getLogger(__name__)
 
@@ -29,6 +31,115 @@ _OUTPUT_TYPE_RE = re.compile(
     r"@(" + "|".join(_OUTPUT_TYPE_KEYWORDS) + r")\b",
     re.IGNORECASE,
 )
+
+
+# ── M7.1: @session reserved keyword ──────────────────────────────────────────
+
+# Matches "@session", "@session close", or "@session end" (case-insensitive)
+_SESSION_RE = re.compile(r'@session(?:\s+(?:close|end))?\b', re.IGNORECASE)
+_SESSION_CLOSE_RE = re.compile(r'@session\s+(?:close|end)\b', re.IGNORECASE)
+
+
+def extract_session_directive(message: str) -> tuple[bool, bool, str]:
+    """
+    Detect @session / @session close / @session end in the user message.
+
+    Returns:
+        (has_session_open, is_close, clean_message)
+
+        has_session_open — True if "@session" present (but not a close variant)
+        is_close         — True if "@session close" or "@session end" present
+        clean_message    — message with the @session directive stripped
+
+    Examples:
+        "@NeuralOps explain this @session"
+            → (True, False, "@NeuralOps explain this")
+        "@session close" or "@session end"
+            → (False, True, "")
+        "what is the weather"
+            → (False, False, "what is the weather")
+    """
+    is_close = bool(_SESSION_CLOSE_RE.search(message))
+    has_session = bool(_SESSION_RE.search(message)) and not is_close
+
+    # Strip ALL @session / @session close occurrences from message
+    clean = _SESSION_RE.sub("", message).strip()
+    return has_session, is_close, clean
+
+
+# ── M7.1: session DB helpers ──────────────────────────────────────────────────
+
+def get_active_session(user_id, topic_id):
+    """
+    Return the active ChatSession for this user+topic, or None.
+    Returns None if no session exists or if it has expired.
+    """
+    from django.db.models import Prefetch
+    from nucleus.models import ChatSession, Persona
+
+    session = ChatSession.objects.filter(
+        user_id=user_id,
+        topic_id=topic_id,
+    ).prefetch_related(
+        Prefetch(
+            "personas",
+            queryset=Persona.objects.select_related(
+                "model", "prompt", "agent__model", "agent__mcp_server",
+            ),
+        )
+    ).first()
+
+    if session is None:
+        return None
+
+    # Check expiry — hard-delete expired session and return None
+    if session.expires_at <= timezone.now():
+        session.delete()
+        return None
+
+    return session
+
+
+def create_session(user, topic, personas: list, timeout_minutes: int = 30):
+    """
+    Create (or replace) a ChatSession for this user+topic.
+
+    If a session already exists it is closed first, then a new one is created.
+    personas is a list of Persona model instances.
+    Returns the new ChatSession.
+    """
+    from nucleus.models import ChatSession
+
+    # Close any existing session first
+    close_session(user.id, topic.id)
+
+    expires_at = timezone.now() + timedelta(minutes=timeout_minutes)
+    session = ChatSession.objects.create(
+        user=user,
+        topic=topic,
+        expires_at=expires_at,
+    )
+    if personas:
+        session.personas.set(personas)
+
+    return session
+
+
+def close_session(user_id, topic_id) -> bool:
+    """
+    Close the active session for this user+topic.
+    Sessions are ephemeral state — hard-deleted, not soft-deleted,
+    so the unique (user, topic) constraint stays clean for re-opens.
+    Returns True if a session was closed, False if none existed.
+    """
+    from nucleus.models import ChatSession
+
+    deleted_count, _ = ChatSession.objects.filter(
+        user_id=user_id,
+        topic_id=topic_id,
+    ).delete()
+
+    return deleted_count > 0
 
 
 def extract_output_type(message: str) -> tuple[str, str]:
@@ -302,8 +413,30 @@ async def trigger_ai_response_async(
         "created_at": now,
     })
 
-    # 3. Build TriggerJob payload
-    model = persona.model
+    # 3. Build TriggerJob payload — M8: handle agent personas
+    import asyncio
+    source_type = getattr(persona, "source_type", "model")
+    mcp_servers_payload: list[dict] = []
+
+    if source_type == "agent" and getattr(persona, "agent", None):
+        agent = persona.agent
+        model = agent.model  # agent personas: model lives on agent, not persona
+        if getattr(agent, "mcp_server", None):
+            s = agent.mcp_server
+            mcp_servers_payload.append({
+                "id": str(s.id),
+                "name": s.name,
+                "transport": s.transport,
+                "url": s.url,
+                "command": s.command,
+                "config": s.config or {},
+                "timeout_seconds": 60,
+                "is_first_party": getattr(s, "is_first_party", False),
+                "embed_output": getattr(s, "embed_output", False),
+            })
+    else:
+        model = persona.model
+
     api_key = model.get_api_key() if model else None
 
     system_prompt = ""
@@ -327,6 +460,7 @@ async def trigger_ai_response_async(
                 "max_tokens": model.max_tokens if model else 4096,
                 "temperature": model.temperature if model else 0.7,
             },
+            "mcp_servers": mcp_servers_payload,  # M8: empty = plain LLM, non-empty = agent
         },
         "message": user_message,
         "history": history,
@@ -339,6 +473,7 @@ async def trigger_ai_response_async(
     final_output_type = "text"
     final_render_as = "text"
     final_clean_content: str | None = None
+    embed_description: str | None = None
 
     try:
         async with httpx.AsyncClient(timeout=120) as client:
@@ -383,6 +518,8 @@ async def trigger_ai_response_async(
                             final_render_as = event.get("render_as") or "text"
                             # Use nexus-ai's clean content (markers stripped)
                             final_clean_content = event.get("content")
+                            # M8: plain-text description for html/form/terminal embedding
+                            embed_description = event.get("embed_description")
                             break
 
                     except (json.JSONDecodeError, KeyError):
@@ -416,6 +553,31 @@ async def trigger_ai_response_async(
         "output_type": final_output_type,   # M7: e.g. "chart"
         "render_as": final_render_as,        # M7: e.g. "html"
     })
+
+    # M8: Embed AI response — smart content selection
+    # text/code → embed full response; html/form/terminal → embed description only
+    _TEXT_EMBEDDABLE = {"text", "code", "auto"}
+    _DESC_EMBEDDABLE = {"html", "form", "terminal"}
+    embed_content: str | None = None
+    if final_output_type in _TEXT_EMBEDDABLE and save_content:
+        embed_content = save_content
+    elif final_output_type in _DESC_EMBEDDABLE and embed_description:
+        embed_content = embed_description
+
+    if embed_content:
+        asyncio.create_task(embed_message_async(
+            message_id=msg_id,
+            company_id=str(company.id),
+            sequence=ai_msg["sequence"],
+            topic_id=topic_id,
+            channel_id=str(topic.channel_id),
+            project_id=str(project.id),
+            sender_id=ai_msg["sender_id"] or "",
+            sender_name=ai_msg["sender_name"] or "",
+            sender_type="ai",
+            content=embed_content,
+            created_at=now,
+        ))
 
 
 # ── Read messages ──────────────────────────────────────────────────────────────

@@ -33,6 +33,8 @@ class MCPServerInternal(Schema):
     url: Optional[str] = None
     command: Optional[str] = None
     config: dict
+    is_first_party: bool = False
+    embed_output: bool = False
 
 
 class PromptInternal(Schema):
@@ -164,6 +166,8 @@ def get_persona_internal(request, persona_id: str):
                 url=s.url,
                 command=s.command,
                 config=s.config,
+                is_first_party=s.is_first_party,
+                embed_output=s.embed_output,
             ))
 
     return PersonaInternal(

@@ -94,6 +94,21 @@ export async function createChannel(
   return data;
 }
 
+export async function renameTopic(
+  projectId: string,
+  channelId: string,
+  topicId: string,
+  title: string,
+): Promise<Topic> {
+  const res = await apiRequest(
+    `/api/v1/projects/${projectId}/channels/${channelId}/topics/${topicId}/`,
+    { method: "PATCH", body: JSON.stringify({ title }) },
+  );
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(data.detail ?? "Failed to rename topic");
+  return data;
+}
+
 export async function markTopicRead(
   projectId: string,
   channelId: string,
@@ -152,8 +167,8 @@ export async function removeTeamMember(
 
 export async function inviteToProject(
   projectId: string,
-  payload: { email: string; scope?: string; topic_id?: string; role?: string },
-): Promise<{ ok: boolean; message: string; is_new_user: boolean; server_url?: string }> {
+  payload: { email?: string; persona_name?: string; scope?: string; topic_id?: string; role?: string },
+): Promise<{ ok: boolean; message: string; is_new_user: boolean; server_url?: string; invite_url?: string }> {
   const res = await apiRequest(`/api/v1/projects/${projectId}/team/invite/`, {
     method: "POST",
     body: JSON.stringify(payload),

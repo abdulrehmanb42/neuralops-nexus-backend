@@ -6,12 +6,14 @@ import {
   getTopics,
   createChannel,
   createTopic,
+  renameTopic,
   markTopicRead,
   getTeam,
   addTeamMember,
   removeTeamMember,
   getAvailableUsers,
   getAvailablePersonas,
+  type Topic,
 } from "@/services/workspace.service";
 
 export function useProjects() {
@@ -71,18 +73,29 @@ export function useCreateChannel(projectId: string, onSuccess?: () => void) {
 export function useCreateTopic(
   projectId: string,
   channelId: string,
-  onSuccess?: () => void,
+  onSuccess?: (topic: Topic) => void,
 ) {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (payload: { title: string }) =>
       createTopic(projectId, channelId, payload),
-    onSuccess: () => {
-      toast.success("Topic created");
+    onSuccess: (topic) => {
       qc.invalidateQueries({ queryKey: ["topics", projectId, channelId] });
-      onSuccess?.();
+      onSuccess?.(topic);
     },
     onError: (err: Error) => toast.error(err.message),
+  });
+}
+
+export function useRenameTopic(projectId: string, channelId: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ topicId, title }: { topicId: string; title: string }) =>
+      renameTopic(projectId, channelId, topicId, title),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["topics", projectId, channelId] });
+    },
+    onError: () => { /* silent — rename is best-effort */ },
   });
 }
 

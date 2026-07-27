@@ -63,6 +63,8 @@ class MCPServerIn(Schema):
     secret_ref: Optional[str] = None
     timeout_seconds: int = 60
     max_retries: int = 3
+    is_first_party: bool = False
+    embed_output: bool = False
 
 
 class MCPServerOut(Schema):
@@ -77,6 +79,36 @@ class MCPServerOut(Schema):
     config: dict
     timeout_seconds: int
     max_retries: int
+    is_first_party: bool
+    embed_output: bool
+    is_active: bool
+
+
+# ── AIAgent ───────────────────────────────────────────────────────────────────
+
+class AIAgentIn(Schema):
+    name: str
+    description: Optional[str] = None
+    model_id: str
+    mcp_server_id: Optional[str] = None
+    system_prompt: Optional[str] = None
+    agent_type: str = "internal"
+    safety_mode: bool = True
+    max_steps: int = 5
+
+
+class AIAgentOut(Schema):
+    id: str
+    name: str
+    description: Optional[str] = None
+    agent_type: str
+    model_id: Optional[str] = None
+    model_name: Optional[str] = None
+    mcp_server_id: Optional[str] = None
+    mcp_server_name: Optional[str] = None
+    system_prompt: Optional[str] = None
+    safety_mode: bool
+    max_steps: int
     is_active: bool
 
 
