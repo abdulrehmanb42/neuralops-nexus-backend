@@ -1,7 +1,7 @@
 import { createFileRoute, useSearch } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
-import { Plus, Trash2, Bot, Cpu, Plug, User } from "lucide-react";
+import { Plus, Trash2, Bot, Cpu, Plug, User, Pencil } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -25,7 +25,7 @@ import {
 import { listAIModels, createAIModel, deleteAIModel } from "@/services/ai-models.service";
 import { listMCPServers, createMCPServer, deleteMCPServer } from "@/services/mcp-servers.service";
 import { listAgents, createAgent, deleteAgent } from "@/services/agents.service";
-import { listPersonas, createPersona, deletePersona } from "@/services/personas.service";
+import { listPersonas, createPersona, patchPersona, deletePersona } from "@/services/personas.service";
 import type { AIModel, MCPServer, Agent, Persona } from "@/types";
 
 export const Route = createFileRoute("/app/agents")({
@@ -514,6 +514,40 @@ function PersonasTab() {
     output_type: "text",
   });
 
+  // Edit state
+  const [editTarget, setEditTarget] = useState<Persona | null>(null);
+  const [editForm, setEditForm] = useState({ name: "", description: "", system_prompt: "", output_type: "text" });
+  const [editSaving, setEditSaving] = useState(false);
+
+  function openEdit(p: Persona) {
+    setEditTarget(p);
+    setEditForm({
+      name: p.name,
+      description: p.description ?? "",
+      system_prompt: p.prompt?.system_prompt ?? "",
+      output_type: p.prompt?.output_type ?? "text",
+    });
+  }
+
+  async function handleEdit() {
+    if (!editTarget) return;
+    setEditSaving(true);
+    try {
+      const updated = await patchPersona(editTarget.id, {
+        name: editForm.name || undefined,
+        description: editForm.description || undefined,
+        prompt: { system_prompt: editForm.system_prompt, output_type: editForm.output_type } as Persona["prompt"],
+      });
+      setPersonas((prev) => prev.map((p) => p.id === updated.id ? updated : p));
+      setEditTarget(null);
+      toast.success(`Persona "@${updated.name}" updated.`);
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Failed to update persona.");
+    } finally {
+      setEditSaving(false);
+    }
+  }
+
   useEffect(() => {
     Promise.all([listPersonas(), listAIModels(), listAgents()])
       .then(([p, m, a]) => { setPersonas(p); setModels(m); setAgents(a); })
@@ -581,6 +615,14 @@ function PersonasTab() {
               </div>
               <div className="flex items-center gap-2 shrink-0">
                 <span className="rounded-full bg-accent px-2 py-0.5 text-[10px]">{p.source_type}</span>
+                <Button
+                  size="icon"
+                  variant="ghost"
+                  className="h-7 w-7 shrink-0 text-foreground-muted hover:text-foreground"
+                  onClick={() => openEdit(p)}
+                >
+                  <Pencil className="h-3.5 w-3.5" />
+                </Button>
                 <DeleteButton onDelete={() => handleDelete(p.id, p.name)} />
               </div>
             </Row>
@@ -588,6 +630,51 @@ function PersonasTab() {
         </div>
       )}
 
+      {/* ── Edit Persona Dialog ── */}
+      <Dialog open={!!editTarget} onOpenChange={(v) => !v && setEditTarget(null)}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Edit @{editTarget?.name}</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-3">
+            <div>
+              <Label>Name</Label>
+              <Input value={editForm.name} onChange={(e) => setEditForm({ ...editForm, name: e.target.value })} className="mt-1" />
+            </div>
+            <div>
+              <Label>Description <span className="text-foreground-muted">(optional)</span></Label>
+              <Input value={editForm.description} onChange={(e) => setEditForm({ ...editForm, description: e.target.value })} className="mt-1" />
+            </div>
+            <div>
+              <Label>Default Output Type</Label>
+              <Select value={editForm.output_type} onValueChange={(v) => setEditForm({ ...editForm, output_type: v })}>
+                <SelectTrigger className="mt-1"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="text">Text</SelectItem>
+                  <SelectItem value="html">HTML</SelectItem>
+                  <SelectItem value="terminal">Terminal</SelectItem>
+                  <SelectItem value="table">Table</SelectItem>
+                  <SelectItem value="code">Code</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div>
+              <Label>System Prompt</Label>
+              <Textarea
+                value={editForm.system_prompt}
+                onChange={(e) => setEditForm({ ...editForm, system_prompt: e.target.value })}
+                className="mt-1 min-h-[120px]"
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="ghost" onClick={() => setEditTarget(null)}>Cancel</Button>
+            <Button onClick={handleEdit} disabled={editSaving}>{editSaving ? "Saving..." : "Save Changes"}</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* ── Add Persona Dialog ── */}
       <Dialog open={open} onOpenChange={setOpen}>
         <DialogContent className="max-w-md">
           <DialogHeader>

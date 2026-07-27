@@ -85,6 +85,7 @@ _list_messages_sync = sync_to_async(chat_svc.list_messages)
 _get_active_session = sync_to_async(chat_svc.get_active_session)
 _create_session = sync_to_async(chat_svc.create_session)
 _close_session = sync_to_async(chat_svc.close_session)
+_save_system_message = sync_to_async(chat_svc.save_system_message)
 
 
 def _get_session_timeout_sync(company) -> int:
@@ -202,20 +203,37 @@ async def send_message(
 
     if is_session_close:
         # Rule 1: @session close — close session, no AI trigger
-        await _close_session(user.id, topic.id)
-        logger.info("[chat/api] session closed for user=%s topic=%s", user.id, topic_id)
+        closed = await _close_session(user.id, topic.id)
+        logger.warning("[chat/api] session closed user=%s topic=%s found=%s", user.id, topic_id, closed)
+        sys_msg = await _save_system_message(
+            company=company, project=project, topic=topic,
+            content="Session closed.",
+        )
+        asyncio.create_task(chat_svc.publish_async(
+            centrifugo_channel, {**sys_msg, "type": "message"}
+        ))
 
     elif mentioned_personas and has_session_open:
         # Rule 2: @mentions + @session — open new session with mentioned personas
         timeout = await _get_session_timeout(company)
         await _create_session(user, topic, mentioned_personas, timeout)
-        logger.info(
+        persona_names = ", ".join(f"@{p.name}" for p in mentioned_personas)
+        logger.warning(
             "[chat/api] session opened personas=%s timeout=%sm",
             [p.name for p in mentioned_personas], timeout,
         )
-        # Trigger mentioned personas for this message too
-        await _trigger_personas(mentioned_personas, company, project, topic,
-                                 topic_id, msg, clean_message, output_type)
+        sys_msg = await _save_system_message(
+            company=company, project=project, topic=topic,
+            content=f"Session with {persona_names} opened ({timeout} min). Plain messages will go to them automatically.",
+        )
+        asyncio.create_task(chat_svc.publish_async(
+            centrifugo_channel, {**sys_msg, "type": "message"}
+        ))
+        # Only trigger personas if there is actual content beyond the @mention
+        user_content = _MENTION_RE.sub("", clean_message).strip()
+        if user_content:
+            await _trigger_personas(mentioned_personas, company, project, topic,
+                                     topic_id, msg, clean_message, output_type)
 
     elif mentioned_personas:
         # Rule 3: @mentions (no @session) — trigger only mentioned, session unchanged
@@ -228,7 +246,7 @@ async def send_message(
         if active_session:
             # Rule 4: session active — trigger all session personas
             session_personas = list(active_session.personas.all())
-            logger.info(
+            logger.warning(
                 "[chat/api] session auto-trigger personas=%s",
                 [p.name for p in session_personas],
             )

@@ -4,9 +4,9 @@ pydantic-settings
 uvicorn[standard]
 
 # ── AI Agent Framework ────────────────────────────────────────────────────────
-# openai extra = pydantic-ai talks to LiteLLM via OpenAI-compatible API.
-# anthropic extra removed — LiteLLM handles Anthropic, no direct SDK needed.
-pydantic-ai-slim[openai,mcp,litellm]
+# openai extra = OpenAI / OpenAI-compatible providers
+# anthropic extra = Anthropic native provider (pydantic-ai 2.x; litellm extra dropped)
+pydantic-ai-slim[openai,mcp,anthropic]
 
 # ── LLM + Embedding Provider Routing ─────────────────────────────────────────
 # Single gateway for all LLM calls (Anthropic, OpenAI, Azure, Ollama, etc.).

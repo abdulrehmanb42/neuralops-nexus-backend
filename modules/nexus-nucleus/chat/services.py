@@ -35,26 +35,26 @@ _OUTPUT_TYPE_RE = re.compile(
 
 # ── M7.1: @session reserved keyword ──────────────────────────────────────────
 
-# Matches "@session" or "@session close" (case-insensitive)
-_SESSION_RE = re.compile(r'@session(?:\s+close)?\b', re.IGNORECASE)
-_SESSION_CLOSE_RE = re.compile(r'@session\s+close\b', re.IGNORECASE)
+# Matches "@session", "@session close", or "@session end" (case-insensitive)
+_SESSION_RE = re.compile(r'@session(?:\s+(?:close|end))?\b', re.IGNORECASE)
+_SESSION_CLOSE_RE = re.compile(r'@session\s+(?:close|end)\b', re.IGNORECASE)
 
 
 def extract_session_directive(message: str) -> tuple[bool, bool, str]:
     """
-    Detect @session / @session close in the user message.
+    Detect @session / @session close / @session end in the user message.
 
     Returns:
         (has_session_open, is_close, clean_message)
 
-        has_session_open — True if "@session" present (but not "@session close")
-        is_close         — True if "@session close" present
+        has_session_open — True if "@session" present (but not a close variant)
+        is_close         — True if "@session close" or "@session end" present
         clean_message    — message with the @session directive stripped
 
     Examples:
         "@NeuralOps explain this @session"
             → (True, False, "@NeuralOps explain this")
-        "@session close"
+        "@session close" or "@session end"
             → (False, True, "")
         "what is the weather"
             → (False, False, "what is the weather")

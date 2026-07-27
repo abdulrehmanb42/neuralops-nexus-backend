@@ -1,7 +1,7 @@
 export interface MessageSender {
   id: string;
   name: string;
-  type: "human" | "persona" | "agent";
+  type: "human" | "persona" | "agent" | "system";
   avatar: string | null;
 }
 

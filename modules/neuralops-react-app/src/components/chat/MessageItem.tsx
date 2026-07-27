@@ -48,6 +48,19 @@ function formatTime(ts: string): { short: string; full: string } {
 }
 
 export function MessageItem({ message }: { message: ChatMessage }) {
+  // System event messages — render as a centered status line, not a chat bubble
+  if (message.sender.type === "system") {
+    return (
+      <div className="flex items-center gap-3 px-4 py-1.5">
+        <div className="h-px flex-1 bg-border" />
+        <span className="shrink-0 rounded-full bg-muted px-3 py-0.5 text-xs text-muted-foreground">
+          {message.content}
+        </span>
+        <div className="h-px flex-1 bg-border" />
+      </div>
+    );
+  }
+
   const isHuman = message.sender.type === "human";
   const initial = message.sender.name.slice(0, 1).toUpperCase();
 

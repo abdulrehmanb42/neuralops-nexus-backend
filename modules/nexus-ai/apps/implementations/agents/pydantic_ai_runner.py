@@ -103,97 +103,122 @@ class PydanticAIRunner(AgentRunner):
         messages: list[dict],
     ) -> AsyncIterator[AgentEvent]:
         """
-        Run the persona via pydantic-ai Agent with MCP tool servers.
+        Run the persona via litellm + FastMCPClient tool loop.
 
-        History conversion (OpenAI → pydantic-ai):
-            system message  → agent system_prompt kwarg
-            user messages   → ModelRequest(UserPromptPart)
-            assistant msgs  → ModelResponse(TextPart)
-        The final user message becomes the prompt passed to agent.run_stream().
+        Bypasses pydantic-ai Agent entirely — uses litellm directly (same as
+        the fast path) so model routing works identically. FastMCPClient is
+        used only to connect to MCP servers and execute tool calls.
+
+        Loop: call LLM (non-stream) → if tool_calls → execute via MCP → repeat
+              → final answer → yield as message_delta.
         """
-        from pydantic_ai import Agent
-        from pydantic_ai.models.litellm import LiteLLMModel
-        from pydantic_ai.messages import (
-            ModelRequest, ModelResponse,
-            UserPromptPart, TextPart,
-        )
+        import contextlib
+        import json
+        from pydantic_ai.mcp import FastMCPClient
 
-        # Build MCP server clients
-        mcp_server_clients = []
-        for s in job.persona.mcp_servers:
-            if s.transport == "stdio":
-                from pydantic_ai.mcp import MCPServerStdio
-                cmd_parts = (s.command or "").split()
-                if cmd_parts:
-                    mcp_server_clients.append(
-                        MCPServerStdio(cmd_parts[0], args=cmd_parts[1:])
-                    )
-            else:  # http | sse | websocket
-                from pydantic_ai.mcp import MCPServerStreamableHTTP
-                if s.url:
-                    mcp_server_clients.append(MCPServerStreamableHTTP(s.url))
-
-        # Build LiteLLM model
         model_config = job.persona.model
-        model_kwargs: dict = {}
-        if model_config.provider == "local":
-            model_kwargs["base_url"] = f"{settings.OLLAMA_BASE_URL}/v1"
-            model_kwargs["api_key"] = "local"
-        elif model_config.api_key:
-            model_kwargs["api_key"] = model_config.api_key
-
-        pydantic_model = LiteLLMModel(
-            model_name=model_config.model_id, **model_kwargs
-        )
-
-        # Split system prompt out of the messages list
-        system_prompt = ""
-        remainder: list[dict] = []
-        for m in messages:
-            if m["role"] == "system" and not system_prompt:
-                system_prompt = m["content"]
-            else:
-                remainder.append(m)
-
-        # Convert history to pydantic-ai ModelMessage format
-        # All turns except the final user message become message_history
-        pydantic_history: list = []
-        for m in remainder[:-1]:
-            if m["role"] == "user":
-                pydantic_history.append(
-                    ModelRequest(parts=[UserPromptPart(content=m["content"])])
-                )
-            elif m["role"] == "assistant":
-                pydantic_history.append(
-                    ModelResponse(parts=[TextPart(content=m["content"])])
-                )
-
-        current_message = remainder[-1]["content"] if remainder else ""
-
-        agent: Agent = Agent(
-            model=pydantic_model,
-            system_prompt=system_prompt,
-            mcp_servers=mcp_server_clients,
-        )
-
+        current_messages = list(messages)
         full_response = ""
         t0 = time.monotonic()
         status = "success"
         error_msg = None
 
+        # Build MCP transport configs
+        client_configs = []
+        for s in job.persona.mcp_servers:
+            if s.transport == "stdio":
+                cmd_parts = (s.command or "").split()
+                if cmd_parts:
+                    client_configs.append({"command": cmd_parts[0], "args": cmd_parts[1:]})
+            else:  # http | sse | streamable-http
+                if s.url:
+                    client_configs.append(s.url)
+
         try:
-            async with agent.run_mcp_servers():
-                async with agent.run_stream(
-                    current_message,
-                    message_history=pydantic_history,
-                ) as result:
-                    async for delta in result.stream_text(delta=True):
-                        full_response += delta
-                        yield AgentEvent(
-                            type="message_delta",
-                            id=job.msg_id,
-                            delta=delta,
-                        )
+            async with contextlib.AsyncExitStack() as stack:
+                # Open MCP connections and collect available tools
+                all_tools: list[dict] = []
+                tool_client_map: dict = {}
+
+                for cfg in client_configs:
+                    client = await stack.enter_async_context(FastMCPClient(cfg))
+                    for t in await client.list_tools():
+                        all_tools.append({
+                            "type": "function",
+                            "function": {
+                                "name": t.name,
+                                "description": t.description or "",
+                                "parameters": t.inputSchema or {"type": "object", "properties": {}},
+                            },
+                        })
+                        tool_client_map[t.name] = client
+
+                # Agentic tool-calling loop (max 10 rounds)
+                for _ in range(10):
+                    kwargs = _build_litellm_kwargs(model_config, current_messages)
+                    kwargs["stream"] = False
+                    if all_tools:
+                        kwargs["tools"] = all_tools
+
+                    response = await litellm.acompletion(**kwargs)
+                    msg = response.choices[0].message
+                    tool_calls = getattr(msg, "tool_calls", None) or []
+
+                    if not tool_calls:
+                        # No more tool calls — stream the final answer
+                        final_kwargs = _build_litellm_kwargs(model_config, current_messages)
+                        final_response = await litellm.acompletion(**final_kwargs)
+                        async for chunk in final_response:
+                            delta = chunk.choices[0].delta.content or ""
+                            if delta:
+                                full_response += delta
+                                yield AgentEvent(
+                                    type="message_delta",
+                                    id=job.msg_id,
+                                    delta=delta,
+                                )
+                        break
+
+                    # Append assistant message with tool calls
+                    current_messages.append({
+                        "role": "assistant",
+                        "content": msg.content or "",
+                        "tool_calls": [
+                            {
+                                "id": tc.id,
+                                "type": "function",
+                                "function": {
+                                    "name": tc.function.name,
+                                    "arguments": tc.function.arguments,
+                                },
+                            }
+                            for tc in tool_calls
+                        ],
+                    })
+
+                    # Execute each tool via MCP
+                    for tc in tool_calls:
+                        client = tool_client_map.get(tc.function.name)
+                        if client is None:
+                            content = f"Tool '{tc.function.name}' not found."
+                        else:
+                            try:
+                                args = json.loads(tc.function.arguments or "{}")
+                                result = await client.call_tool(tc.function.name, args)
+                                items = result if isinstance(result, list) else getattr(result, "content", [result])
+                                content = "\n".join(
+                                    item.text if hasattr(item, "text") else str(item)
+                                    for item in items
+                                )
+                            except Exception as exc:
+                                content = f"Tool error: {exc}"
+
+                        current_messages.append({
+                            "role": "tool",
+                            "content": content,
+                            "tool_call_id": tc.id,
+                        })
+
         except Exception as exc:
             status = "error"
             error_msg = str(exc)
@@ -211,6 +236,52 @@ class PydanticAIRunner(AgentRunner):
                 status=status,
                 error=error_msg,
             )
+
+
+def _build_pydantic_model(model_config, settings):
+    """
+    Map a litellm-convention model_id to the correct pydantic-ai model.
+
+    LiteLLMProvider in pydantic-ai 2.x requires a running LiteLLM proxy server;
+    it does NOT do in-process routing. We detect the provider from the model_id
+    prefix (e.g. "anthropic/", "openai/") and use native pydantic-ai providers.
+    """
+    model_id: str = model_config.model_id
+    api_key: str | None = model_config.api_key or None
+
+    # Local runtime (Ollama / llama.cpp / LM Studio) — OpenAI-compatible API
+    if model_config.provider == "local":
+        from pydantic_ai.models.openai import OpenAIChatModel
+        from pydantic_ai.providers.openai import OpenAIProvider
+        return OpenAIChatModel(
+            model_id,
+            provider=OpenAIProvider(
+                base_url=f"{settings.OLLAMA_BASE_URL}/v1",
+                api_key="local",
+            ),
+        )
+
+    # Parse litellm prefix: "anthropic/claude-haiku" → ("anthropic", "claude-haiku")
+    if "/" in model_id:
+        prefix, bare_model = model_id.split("/", 1)
+    else:
+        prefix, bare_model = "openai", model_id
+
+    if prefix == "anthropic":
+        from pydantic_ai.models.anthropic import AnthropicModel
+        from pydantic_ai.providers.anthropic import AnthropicProvider
+        return AnthropicModel(
+            bare_model,
+            provider=AnthropicProvider(api_key=api_key) if api_key else AnthropicProvider(),
+        )
+
+    # openai / azure / any OpenAI-compatible provider
+    from pydantic_ai.models.openai import OpenAIChatModel
+    from pydantic_ai.providers.openai import OpenAIProvider
+    return OpenAIChatModel(
+        bare_model,
+        provider=OpenAIProvider(api_key=api_key) if api_key else OpenAIProvider(),
+    )
 
 
 async def _post_ai_request_log(

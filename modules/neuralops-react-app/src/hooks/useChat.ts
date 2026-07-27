@@ -93,7 +93,10 @@ function toUiMessage(m: ApiMessage): ChatMessage {
     sender: {
       id: m.sender_id ?? "",
       name: m.sender_name ?? "",
-      type: m.sender_type === "persona" ? "agent" : "human",
+      type:
+        m.sender_type === "persona" ? "agent"
+        : m.sender_type === "system" ? "system"
+        : "human",
       avatar: null,
     },
     timestamp: m.created_at,
@@ -141,10 +144,11 @@ export function useTopicMessages(
       if (!event?.type || !("id" in event)) return;
 
       if (event.type === "message") {
-        // Human message from another user
+        // Human or system message
         setMessages((prev) => {
           if (prev.some((m) => m.id === event.id)) return prev;
-          if (event.sender_id !== currentUserId) playBeep();
+          // Beep only for real human messages from other users (not system events)
+          if (event.sender_type !== "system" && event.sender_id !== currentUserId) playBeep();
           return [...prev, toUiMessage(event)];
         });
 

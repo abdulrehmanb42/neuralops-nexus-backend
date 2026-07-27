@@ -208,7 +208,36 @@ It adds the persona to the **current project** only (not global).
 
 ---
 
-## 15. App Version — Changelog
+## 15. Human Invite Flow — `/invite email@example.com`
+
+**Full flow:**
+1. Inviter types `/invite x@x.com` in chat
+2. Backend creates `Invitation` record (token_hash, 30-day expiry, project_id in access_payload)
+3. Backend returns `invite_url = {PORTAL_URL}/invite?server_url={SERVER_URL}&token={RAW_TOKEN}`
+4. Frontend shows toast with **"Copy invite link"** button (30s duration)
+5. Inviter copies link and sends it to invitee (email, WhatsApp, etc.)
+6. Invitee clicks link → portal page at `/invite?server_url=...&token=...`
+7. Portal calls `GET {SERVER_URL}/api/v1/auth/invite-preview/?token={TOKEN}` → gets company name, inviter name, email
+8. Portal shows: "You've been invited to join [company] by [inviter]. Sign in to accept."
+9. Invitee signs in/up on portal → portal connects to server URL
+10. Server calls `auth_verify()` → finds pending invitation by email → auto-accepts → creates CompanyAccess → adds to project
+
+**Key files:**
+- `workspace/services.py` → `invite_to_project()` — generates raw token, builds invite_url
+- `workspace/schema.py` → `InviteToProjectOut` — includes `invite_url` field
+- `authn/api.py` → `GET /auth/invite-preview/` — public, no auth, returns invite details for portal
+- `authn/services.py` → `auth_verify()` → `_add_user_to_invited_project()` — auto-accepts on connect
+- `MessageInput.tsx` → shows "Copy invite link" toast
+- `workspace.service.ts` → `inviteToProject()` return type includes `invite_url`
+
+**Portal contract:**
+- Page: `{PORTAL_URL}/invite?server_url={URL}&token={TOKEN}`
+- Calls: `GET {server_url}/api/v1/auth/invite-preview/?token={token}`
+- After auth: connects to `server_url` → triggers `auth_verify()`
+
+---
+
+## 16. App Version — Changelog
 
 **Single source of truth:** `modules/neuralops-react-app/src/lib/version.ts`
 
@@ -216,14 +245,104 @@ Increment `APP_VERSION` on every meaningful change. Update the log below.
 
 | Version | Date       | Changes                                      |
 |---------|------------|----------------------------------------------|
-| 0.1     | 2026-07-27 | Initial alpha — About dialog, version system |
+| 0.1     | 2026-07-20 | Initial alpha — About dialog, version system |
+| 0.1.1   | 2026-07-26 | Fix pydantic-ai 2.x MCP path — rewrite `_run_with_mcp` using `FastMCPClient` + `litellm.acompletion()` directly |
+| 0.1.2   | 2026-07-27 | Session UX (open/close system messages, `@session end`, WARNING logs, content guard); persona edit dialog (PATCH); system message rendering in frontend |
 
 **About dialog:** `src/components/layout/AboutDialog.tsx`
 Opened via the `ⓘ` button in the Sidebar footer.
 
 ---
 
-## 16. Before Starting Any Task
+## 17. Session UX — Confirmed Behaviour & Rules
+
+**Session open:** `@PersonaName @session` — creates a `ChatSession` in DB and shows a system message:
+> *Session with @PersonaName opened (30 min). Plain messages will go to them automatically.*
+
+**Session close:** `@session close` OR `@session end` — both accepted, shows:
+> *Session closed.*
+
+**Trigger guard:** When opening a session, personas are only triggered if the message contains
+content beyond the @mention(s). A bare `@Sara @session` opens the session without triggering Sara.
+Only `@Sara @session hello, how are you?` would trigger Sara.
+
+**Logging:** Session operations log at `WARNING` level so they appear in Docker logs even
+without a custom `LOGGING` config in `settings.py` (default Django level is WARNING).
+
+**System messages** are stored in the DB with `sender=None`, `message_type="system"`.
+They are published to Centrifugo as a `"message"` event with `sender_type="system"`.
+The frontend renders them as a centered separator line (not a chat bubble).
+
+**Files:**
+- `chat/services.py` → `_SESSION_RE`, `_SESSION_CLOSE_RE`, `extract_session_directive()`
+- `chat/api.py` → Rules 1–5 in `send_message()`, `_save_system_message`
+- `neuralops-react-app/src/hooks/useChat.ts` → `toUiMessage()` maps `sender_type="system"` → `type: "system"`
+- `neuralops-react-app/src/components/chat/MessageItem.tsx` → system branch renders separator
+- `neuralops-react-app/src/components/chat/types.ts` → `MessageSender.type` includes `"system"`
+
+---
+
+## 18. Persona Edit — PATCH Support
+
+**What can be patched:** `name`, `description`, `prompt.system_prompt`, `prompt.output_type`.
+The agent/model backing the persona cannot be changed after creation — delete and recreate if needed.
+
+**Backend:** `PATCH /api/v1/personas/{id}/` → `PersonaPatchIn` schema → `patch_persona()` in `intelligence/services.py`.
+
+**Frontend:** Pencil (✏️) button on each persona row in **AI Intelligence → Personas** tab.
+Opens a pre-filled edit dialog. Changes take effect immediately (no restart needed).
+
+**Files:**
+- `intelligence/api.py` → `patch_persona()` endpoint
+- `intelligence/schema.py` → `PersonaPatchIn`
+- `intelligence/services.py` → `patch_persona()`
+- `neuralops-react-app/src/services/personas.service.ts` → `patchPersona()`
+- `neuralops-react-app/src/routes/app.agents.tsx` → `PersonasTab` edit dialog
+
+---
+
+## 19. pydantic-ai 2.x — MCP Architecture
+
+**DO NOT use pydantic-ai Agent for LLM calls. Use `FastMCPClient` + `litellm` directly.**
+
+In pydantic-ai 2.x:
+- `LiteLLMModel` → removed entirely
+- `MCPServerStreamableHTTP` / `MCPServerStdio` → replaced by `MCPToolset(FastMCPClient(...))`
+- `LiteLLMProvider` → proxy-only (needs a running LiteLLM server; does NOT do in-process routing)
+- `AnthropicModel` → needs `pydantic-ai-slim[anthropic]` extra; NOT in our requirements
+- Available in `pydantic_ai.mcp`: `FastMCPClient`, `MCPToolset`, `MCPToolsetClient`, `FastMCP`
+
+**The working pattern (MCP path in `pydantic_ai_runner.py`):**
+
+```python
+import contextlib, json
+from pydantic_ai.mcp import FastMCPClient
+
+async with contextlib.AsyncExitStack() as stack:
+    client = await stack.enter_async_context(FastMCPClient(url_or_config))
+    tools = await client.list_tools()          # list of MCP tool objects
+    result = await client.call_tool(name, args) # call a tool
+
+# LLM calls: use litellm.acompletion() directly — same as fast path.
+# litellm handles anthropic/, openai/, local/ routing via model_id prefix.
+response = await litellm.acompletion(model="anthropic/claude-...", messages=..., tools=...)
+```
+
+**Why this works:** litellm already routes `anthropic/claude-haiku-4-5-20251001` correctly
+(the fast path proves it). pydantic-ai is used **only** as an MCP client library.
+
+**Why this broke:** `_run_with_mcp` only fires when a persona has `mcp_servers` configured.
+Sara/Marco worked before they were wired to nexus-serp-mcp (fast path only, no pydantic-ai).
+
+**Rule:** Verify any third-party class exists in the installed version before using it.
+Do NOT assume API compatibility across major versions without checking.
+
+**Files:** `modules/nexus-ai/apps/implementations/agents/pydantic_ai_runner.py`
+**requirements.txt:** `pydantic-ai-slim[openai,mcp,anthropic]` (anthropic extra for future use)
+
+---
+
+## 20. Before Starting Any Task
 
 1. Read this file (`DECISIONS.md`)
 2. Read the specific files you intend to edit — do not assume their contents
