@@ -1,4 +1,4 @@
-import { useRef, useState } from "react";
+import { useRef, useState, useEffect } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import rehypeHighlight from "rehype-highlight";
@@ -6,6 +6,111 @@ import { Check, Copy } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import "highlight.js/styles/github-dark.css";
 import React from "react";
+// ---------------------------------------------------------------------------
+// Mermaid diagram block — renders fenced ```mermaid blocks as real diagrams.
+// Mermaid is imported dynamically so it stays out of the initial bundle and
+// never runs during SSR (useEffect is client-only).
+// ---------------------------------------------------------------------------
+// Mermaid treats () {} <> as node-shape delimiters, so an unquoted label like
+// C[foo(Dog)] is a parse error. LLMs emit this constantly.
+//
+// Each shape is matched separately so the closing delimiter always pairs with
+// its own opening one — a single combined pattern will happily terminate an
+// "[" label on a ")" and corrupt otherwise-valid diagrams.
+const NEEDS_QUOTING = /[()<>|"]/;
+
+function quoteLabel(id: string, open: string, label: string, close: string) {
+  const text = label.trim();
+  if (!text || text.startsWith('"')) return `${id}${open}${label}${close}`;
+  if (!NEEDS_QUOTING.test(text)) return `${id}${open}${label}${close}`;
+  return `${id}${open}"${text.replace(/"/g, "'")}"${close}`;
+}
+
+function sanitizeMermaid(src: string): string {
+  return (
+    src
+      // Square nodes:  A[label]
+      .replace(/([A-Za-z0-9_-]+)\[([^\]\n]*)\]/g, (_m, id, label) =>
+        quoteLabel(id, "[", label, "]"),
+      )
+      // Rhombus nodes: A{label}
+      .replace(/([A-Za-z0-9_-]+)\{([^}\n]*)\}/g, (_m, id, label) =>
+        quoteLabel(id, "{", label, "}"),
+      )
+  );
+}
+
+function MermaidBlock({ code }: { code: string }) {
+  const ref = useRef<HTMLDivElement>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    const el = ref.current;
+    const source = code.trim();
+    if (!el || !source) return;
+
+    let cancelled = false;
+
+    import("mermaid")
+      .then(async (mod) => {
+        const mermaid = mod.default;
+        mermaid.initialize({
+          startOnLoad: false,
+          theme: "dark",
+          securityLevel: "strict",
+        });
+        // Only touch the source if mermaid itself rejects it. Valid diagrams
+        // are rendered verbatim, so the repair pass can never corrupt them.
+        const valid = await mermaid.parse(source, { suppressErrors: true });
+        const finalSource = valid ? source : sanitizeMermaid(source);
+
+        const id = "mermaid-" + Math.random().toString(36).slice(2);
+        const { svg } = await mermaid.render(id, finalSource);
+        if (!cancelled && ref.current) {
+          ref.current.innerHTML = svg;
+          setError(null);
+        }
+      })
+      .catch((err) => {
+        // Keep the detail in the console for debugging; the UI falls back to
+        // showing the diagram source rather than an error dump.
+        console.error("[MermaidBlock] render failed", err);
+        if (!cancelled) setError(String(err?.message ?? err));
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [code]);
+
+  // If the diagram can't be rendered, degrade to showing its source rather
+  // than surfacing parser internals to the user.
+  if (error) {
+    return (
+      <div
+        className="my-2 overflow-hidden rounded-md border"
+        style={{
+          backgroundColor: "var(--code-bg)",
+          borderColor: "var(--code-border)",
+        }}
+        title={error}
+      >
+        <div
+          className="border-b px-3 py-1.5 text-xs font-medium text-muted-foreground"
+          style={{
+            backgroundColor: "var(--code-header-bg)",
+            borderColor: "var(--code-border)",
+          }}
+        >
+          mermaid
+        </div>
+        <pre className="overflow-x-auto p-4 text-sm">{code}</pre>
+      </div>
+    );
+  }
+
+  return <div ref={ref} className="my-2 flex justify-center overflow-x-auto" />;
+}
 
 // ---------------------------------------------------------------------------
 // Inline code — small monospace chip
@@ -31,17 +136,37 @@ function BlockCode({
   const [copied, setCopied] = useState(false);
 
   // Extract language from the className of the child <code> element.
-  // rehype-highlight adds "language-<lang> hljs" so we strip both.
+  // NOTE: `code` is overridden in the components map, so the child element's
+  // `type` is that component function — not the string "code". Match on any
+  // element child instead, otherwise the language is never detected.
   const codeEl = React.Children.toArray(children).find(
-    (c): c is React.ReactElement =>
-      React.isValidElement(c) && (c as React.ReactElement).type === "code",
-  ) as React.ReactElement<{ className?: string }> | undefined;
+    (
+      c,
+    ): c is React.ReactElement<{
+      className?: string;
+      children?: React.ReactNode;
+    }> => React.isValidElement(c),
+  );
   const rawClass = codeEl?.props?.className ?? "";
   const language =
     rawClass
       .split(" ")
       .find((cls: string) => cls.startsWith("language-"))
       ?.replace("language-", "") ?? "code";
+
+  // Mermaid diagrams render as diagrams, not as a code block.
+  if (language === "mermaid") {
+    const extractText = (node: React.ReactNode): string => {
+      if (typeof node === "string") return node;
+      if (Array.isArray(node)) return node.map(extractText).join("");
+      if (React.isValidElement(node))
+        return extractText(
+          (node.props as { children?: React.ReactNode }).children,
+        );
+      return "";
+    };
+    return <MermaidBlock code={extractText(codeEl?.props?.children)} />;
+  }
 
   async function handleCopy() {
     const text = preRef.current?.innerText ?? "";
