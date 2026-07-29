@@ -1,0 +1,68 @@
+# NeuralOps MCP Services — standalone, no dependency on main project
+# Each service has its own code and Dockerfile inside this folder.
+#
+# Usage:
+#   cd /data/code/neuralops-staging/mcps
+#   docker compose up -d
+#
+# Add to NeuralOps via /add_mcp (transport: http):
+#   SerpAPI    → http://localhost:9043/mcp
+#   Odoo ERP   → http://localhost:9044/mcp
+#   Filesystem → http://localhost:9045/mcp
+#
+# Required env vars — create a .env file in this folder:
+#   SERPAPI_KEY
+#   ERP_URL, ERP_DB, ERP_USERNAME, ERP_PASSWORD
+#   FILESYSTEM_ROOT   (host path to expose via filesystem MCP, default: /data)
+
+services:
+
+  # ── SerpAPI / Shopping MCP ──────────────────────────────────────────────
+  nexus-serp-mcp:
+    build:
+      context: ./serp
+    container_name: nexus-serp-mcp
+    ports:
+      - "9043:8000"
+    environment:
+      - SERPAPI_KEY=${SERPAPI_KEY:-}
+    networks:
+      - mcp-network
+    restart: unless-stopped
+
+  # ── Odoo ERP MCP ────────────────────────────────────────────────────────
+  nexus-odoo-mcp:
+    build:
+      context: ./odoo
+    container_name: nexus-odoo-mcp
+    ports:
+      - "9044:8000"
+    environment:
+      - ERP_URL=${ERP_URL:-}
+      - ERP_DB=${ERP_DB:-odoo}
+      - ERP_USERNAME=${ERP_USERNAME:-admin}
+      - ERP_PASSWORD=${ERP_PASSWORD:-admin}
+    networks:
+      - mcp-network
+    restart: unless-stopped
+
+  # ── Filesystem MCP (official @modelcontextprotocol/server-filesystem) ──
+  # Exposes FILESYSTEM_ROOT as read-only /files inside the container.
+  # supergateway wraps the stdio MCP server as streamable-http.
+  nexus-filesystem-mcp:
+    image: node:22-slim
+    container_name: nexus-filesystem-mcp
+    command: >
+      sh -c "npx -y supergateway --port 8000 --outputTransport http
+             -- npx -y @modelcontextprotocol/server-filesystem /files"
+    ports:
+      - "9045:8000"
+    volumes:
+      - ${FILESYSTEM_ROOT:-/data}:/files:ro
+    networks:
+      - mcp-network
+    restart: unless-stopped
+
+networks:
+  mcp-network:
+    driver: bridge
