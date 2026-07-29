@@ -13,6 +13,7 @@ interface FormState {
   api_base: string;
   api_key: string;
   description: string;
+  licence_accepted: boolean;
 }
 
 const EMPTY: FormState = {
@@ -22,6 +23,7 @@ const EMPTY: FormState = {
   api_base: "",
   api_key: "",
   description: "",
+  licence_accepted: false,
 };
 
 export function AddModelForm({
@@ -101,13 +103,25 @@ export function AddModelForm({
           />
         </Field>
 
+        <div className="flex items-center gap-2">
+          <input
+            type="checkbox"
+            id="licence"
+            checked={form.licence_accepted}
+            onChange={(e) => setForm((f) => ({ ...f, licence_accepted: e.target.checked }))}
+          />
+          <label htmlFor="licence" className="text-xs text-muted-foreground">
+            I accept the provider's terms of service
+          </label>
+        </div>
+
         <div className="flex justify-end gap-2 pt-1">
           <Button type="button" variant="outline" onClick={onClose}>
             Cancel
           </Button>
           <Button
             type="submit"
-            disabled={saving || !form.name || !form.model_id}
+            disabled={saving || !form.name || !form.model_id || !form.licence_accepted}
           >
             {saving ? "Adding…" : "Add Model"}
           </Button>
