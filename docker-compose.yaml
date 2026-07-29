@@ -174,76 +174,76 @@ services:
       - nexus-network
 
   # NEXUS-ERP-MCP: Odoo ERP tools
-  nexus-erp-mcp:
-    build:
-      context: ./modules/nexus-mcp
-      dockerfile: Dockerfile
-    container_name: nexus-erp-mcp
-    ports:
-      - "8011:8000"
-    command: ["python", "server_erp.py"]
-    environment:
-      - ERP_TYPE=${ERP_TYPE:-odoo}
-      - ERP_URL=${ERP_URL:-}
-      - ERP_DB=${ERP_DB:-odoo}
-      - ERP_USERNAME=${ERP_USERNAME:-admin}
-      - ERP_PASSWORD=${ERP_PASSWORD:-admin}
-    networks:
-      - nexus-network
-    restart: unless-stopped
+  # nexus-erp-mcp:
+  #   build:
+  #     context: ./modules/nexus-mcp
+  #     dockerfile: Dockerfile
+  #   container_name: nexus-erp-mcp
+  #   ports:
+  #     - "8011:8000"
+  #   command: ["python", "server_erp.py"]
+  #   environment:
+  #     - ERP_TYPE=${ERP_TYPE:-odoo}
+  #     - ERP_URL=${ERP_URL:-}
+  #     - ERP_DB=${ERP_DB:-odoo}
+  #     - ERP_USERNAME=${ERP_USERNAME:-admin}
+  #     - ERP_PASSWORD=${ERP_PASSWORD:-admin}
+  #   networks:
+  #     - nexus-network
+  #   restart: unless-stopped
 
   # NEXUS-SSH-MCP: SSH / DevOps tools
-  nexus-ssh-mcp:
-    build:
-      context: ./modules/nexus-mcp
-      dockerfile: Dockerfile
-    container_name: nexus-ssh-mcp
-    ports:
-      - "8012:8000"
-    command: ["python", "server_ssh.py"]
-    environment:
-      - SSH_DEFAULT_HOST=${SSH_DEFAULT_HOST:-}
-      - SSH_DEFAULT_PORT=${SSH_DEFAULT_PORT:-22}
-      - SSH_DEFAULT_USER=${SSH_DEFAULT_USER:-}
-      - SSH_DEFAULT_PASSWORD=${SSH_DEFAULT_PASSWORD:-}
-      - SSH_DEFAULT_KEY_PATH=${SSH_DEFAULT_KEY_PATH:-}
-      - SSH_ALLOWED_PATHS=${SSH_ALLOWED_PATHS:-}
-      - SSH_ALLOWED_COMMANDS=${SSH_ALLOWED_COMMANDS:-}
-      - CODE_WORK_DIR=${CODE_WORK_DIR:-/home/ubuntu/code}
-    networks:
-      - nexus-network
-    restart: unless-stopped
+  # nexus-ssh-mcp:
+  #   build:
+  #     context: ./modules/nexus-mcp
+  #     dockerfile: Dockerfile
+  #   container_name: nexus-ssh-mcp
+  #   ports:
+  #     - "8012:8000"
+  #   command: ["python", "server_ssh.py"]
+  #   environment:
+  #     - SSH_DEFAULT_HOST=${SSH_DEFAULT_HOST:-}
+  #     - SSH_DEFAULT_PORT=${SSH_DEFAULT_PORT:-22}
+  #     - SSH_DEFAULT_USER=${SSH_DEFAULT_USER:-}
+  #     - SSH_DEFAULT_PASSWORD=${SSH_DEFAULT_PASSWORD:-}
+  #     - SSH_DEFAULT_KEY_PATH=${SSH_DEFAULT_KEY_PATH:-}
+  #     - SSH_ALLOWED_PATHS=${SSH_ALLOWED_PATHS:-}
+  #     - SSH_ALLOWED_COMMANDS=${SSH_ALLOWED_COMMANDS:-}
+  #     - CODE_WORK_DIR=${CODE_WORK_DIR:-/home/ubuntu/code}
+  #   networks:
+  #     - nexus-network
+  #   restart: unless-stopped
 
   # NEXUS-SERP-MCP: SerpAPI / Shopping tools
-  nexus-serp-mcp:
-    build:
-      context: ./modules/nexus-mcp
-      dockerfile: Dockerfile
-    container_name: nexus-serp-mcp
-    ports:
-      - "8013:8000"
-    command: ["python", "server_serp.py"]
-    environment:
-      - SERPAPI_KEY=${SERPAPI_KEY:-}
-    networks:
-      - nexus-network
-    restart: unless-stopped
+  # nexus-serp-mcp:
+  #   build:
+  #     context: ./modules/nexus-mcp
+  #     dockerfile: Dockerfile
+  #   container_name: nexus-serp-mcp
+  #   ports:
+  #     - "8013:8000"
+  #   command: ["python", "server_serp.py"]
+  #   environment:
+  #     - SERPAPI_KEY=${SERPAPI_KEY:-}
+  #   networks:
+  #     - nexus-network
+  #   restart: unless-stopped
 
   # NEURALOPS REACT APP: The UI
-  neuralops-react-app:
-    build:
-      context: ./modules/neuralops-react-app
-      dockerfile: Dockerfile
-    container_name: neuralops-react-app
-    ports:
-      - "3000:3000"
-    volumes:
-      - ./modules/neuralops-react-app:/app
-    networks:
-      - nexus-network
-    depends_on:
-      - nucleus
-    restart: unless-stopped
+  # neuralops-react-app:
+  #   build:
+  #     context: ./modules/neuralops-react-app
+  #     dockerfile: Dockerfile
+  #   container_name: neuralops-react-app
+  #   ports:
+  #     - "3000:3000"
+  #   volumes:
+  #     - ./modules/neuralops-react-app:/app
+  #   networks:
+  #     - nexus-network
+  #   depends_on:
+  #     - nucleus
+  #   restart: unless-stopped
 
 networks:
   nexus-network:
