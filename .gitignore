@@ -273,3 +273,5 @@ modules/nexus-nucleus.backup
 modules/nexus-nucleus.django_backup
 
 modules/nexus-nucleus/media/
+node-3.tail9ed39a.ts.net.crt
+node-3.tail9ed39a.ts.net.key
