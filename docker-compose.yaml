@@ -2,7 +2,7 @@ services:
   # NUCLEUS: The Orchestrator
   nucleus:
     image: nexus-backend:5.0
-    container_name: nexus-nucleus
+    container_name: staging-nucleus
     # build:
     #   context: ./modules/nexus-nucleus
     #   dockerfile: ./docker/dev/Dockerfile.nexus-nucleus
@@ -32,7 +32,7 @@ services:
       - NEURALOPS_SERVER_URL=${NEURALOPS_SERVER_URL}
       - PYTHONPATH=/nexus-nucleus
     networks:
-      - nexus-network
+      - staging-network
     depends_on:
       - postgres
       - redis
@@ -47,7 +47,7 @@ services:
   # CELERY WORKER: Background Tasks
   nucleus-celery:
     image: nexus-backend:5.0
-    container_name: nexus-celery
+    container_name: staging-celery
     volumes:
       - ./modules/nexus-nucleus:/nexus-nucleus
     environment:
@@ -61,7 +61,7 @@ services:
       - NEURALOPS_INSTALL_TOKEN=${NEURALOPS_INSTALL_TOKEN}
       - PYTHONPATH=/nexus-nucleus
     networks:
-      - nexus-network
+      - staging-network
     depends_on:
       - postgres
       - redis
@@ -72,29 +72,29 @@ services:
   # REDIS: Celery Broker & Result Backend + Centrifugo engine
   redis:
     image: redis:7-alpine
-    container_name: nexus-redis
+    container_name: staging-redis
     ports:
-      - "6379:6379"
+      - "6380:6379"
     volumes:
       - ./data/redis_data:/data
     networks:
-      - nexus-network
+      - staging-network
     restart: unless-stopped
 
   # NEXUS-AI: The AI Worker
   nexus-ai:
     image: nexus-ai:2.0
-    container_name: nexus-ai
+    container_name: staging-ai
     build:
       context: ./modules/nexus-ai
       dockerfile: ./docker/dev/Dockerfile.nexus-ai
     ports:
-      - "8000:8000"
+      - "8002:8000"
     volumes:
       - ./modules/nexus-ai:/nexus-ai
       - ./data/fastembed_cache:/root/.cache/fastembed
     environment:
-      - CHROMA_HOST=${CHROMA_HOST:-nexus-chroma}
+      - CHROMA_HOST=${CHROMA_HOST:-chromadb}
       - CHROMA_PORT=${CHROMA_PORT:-8000}
       - OPENAI_API_KEY=${OPENAI_API_KEY}
       - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
@@ -106,7 +106,7 @@ services:
       - INTERNAL_API_KEY=${INTERNAL_API_KEY}
       - PYTHONPATH=/nexus-ai
     networks:
-      - nexus-network
+      - staging-network
     depends_on:
       - chromadb
     working_dir: /nexus-ai
@@ -117,7 +117,7 @@ services:
   # REALTIME: Centrifugo transport with Redis engine
   realtime:
     image: noamanfaisal/nexus-transport:6.0
-    container_name: nexus-transport
+    container_name: staging-transport
     environment:
       - CENTRIFUGO_HTTP_API_KEY=${CENTRIFUGO_API_KEY}
       - CENTRIFUGO_ALLOWED_ORIGINS=http://192.168.1.90:3000
@@ -128,20 +128,20 @@ services:
       --client.insecure
       --http_api.insecure
     networks:
-      - nexus-network
+      - staging-network
     depends_on:
       - redis
 
   # NGINX: Reverse proxy — single entry point for all clients
   nginx:
     image: nginx:alpine
-    container_name: nexus-nginx
+    container_name: staging-nginx
     ports:
-      - "80:80"
+      - "8081:80"
     volumes:
       - ./nginx.conf:/etc/nginx/nginx.conf:ro
     networks:
-      - nexus-network
+      - staging-network
     depends_on:
       - nucleus
       - realtime
@@ -150,35 +150,35 @@ services:
   # CHROMADB & POSTGRES
   chromadb:
     image: chromadb/chroma:latest
-    container_name: nexus-chroma
+    container_name: staging-chroma
     volumes:
       - ./data/chroma_data:/chroma/chroma
     environment:
       - IS_PERSISTENT=TRUE
     networks:
-      - nexus-network
+      - staging-network
 
   postgres:
     image: postgres:17-alpine
-    container_name: nexus-postgres
+    container_name: staging-postgres
     restart: always
     environment:
       - POSTGRES_DB=${POSTGRES_DB}
       - POSTGRES_USER=${POSTGRES_USER}
       - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
     ports:
-      - "5433:5432"
+      - "5434:5432"
     volumes:
       - ./data/postgres_data:/var/lib/postgresql/data
     networks:
-      - nexus-network
+      - staging-network
 
   # NEXUS-ERP-MCP: Odoo ERP tools
   # nexus-erp-mcp:
   #   build:
   #     context: ./modules/nexus-mcp
   #     dockerfile: Dockerfile
-  #   container_name: nexus-erp-mcp
+  #   container_name: staging-erp-mcp
   #   ports:
   #     - "8011:8000"
   #   command: ["python", "server_erp.py"]
@@ -189,7 +189,7 @@ services:
   #     - ERP_USERNAME=${ERP_USERNAME:-admin}
   #     - ERP_PASSWORD=${ERP_PASSWORD:-admin}
   #   networks:
-  #     - nexus-network
+  #     - staging-network
   #   restart: unless-stopped
 
   # NEXUS-SSH-MCP: SSH / DevOps tools
@@ -197,7 +197,7 @@ services:
   #   build:
   #     context: ./modules/nexus-mcp
   #     dockerfile: Dockerfile
-  #   container_name: nexus-ssh-mcp
+  #   container_name: staging-ssh-mcp
   #   ports:
   #     - "8012:8000"
   #   command: ["python", "server_ssh.py"]
@@ -211,7 +211,7 @@ services:
   #     - SSH_ALLOWED_COMMANDS=${SSH_ALLOWED_COMMANDS:-}
   #     - CODE_WORK_DIR=${CODE_WORK_DIR:-/home/ubuntu/code}
   #   networks:
-  #     - nexus-network
+  #     - staging-network
   #   restart: unless-stopped
 
   # NEXUS-SERP-MCP: SerpAPI / Shopping tools
@@ -219,32 +219,36 @@ services:
   #   build:
   #     context: ./modules/nexus-mcp
   #     dockerfile: Dockerfile
-  #   container_name: nexus-serp-mcp
+  #   container_name: staging-serp-mcp
   #   ports:
   #     - "8013:8000"
   #   command: ["python", "server_serp.py"]
   #   environment:
   #     - SERPAPI_KEY=${SERPAPI_KEY:-}
   #   networks:
-  #     - nexus-network
+  #     - staging-network
   #   restart: unless-stopped
 
   # NEURALOPS REACT APP: The UI
-  # neuralops-react-app:
-  #   build:
-  #     context: ./modules/neuralops-react-app
-  #     dockerfile: Dockerfile
-  #   container_name: neuralops-react-app
-  #   ports:
-  #     - "3000:3000"
-  #   volumes:
-  #     - ./modules/neuralops-react-app:/app
-  #   networks:
-  #     - nexus-network
-  #   depends_on:
-  #     - nucleus
-  #   restart: unless-stopped
+  neuralops-react-app:
+    build:
+      context: ./modules/neuralops-react-app
+      dockerfile: Dockerfile
+    container_name: staging-react-app
+    ports:
+      - "3003:3000"
+    volumes:
+      - ./modules/neuralops-react-app:/app
+      - staging_react_node_modules:/app/node_modules
+    networks:
+      - staging-network
+    depends_on:
+      - nucleus
+    restart: unless-stopped
 
 networks:
-  nexus-network:
+  staging-network:
     driver: bridge
+
+volumes:
+  staging_react_node_modules:
