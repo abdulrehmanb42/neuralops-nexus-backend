@@ -52,9 +52,12 @@ services:
   filesystem-mcp:
     image: node:22-slim
     container_name: filesystem-mcp
-    command: >
-      sh -c "npx -y supergateway --port 8000 --outputTransport http
-             -- npx -y @modelcontextprotocol/server-filesystem /files"
+    command:
+      [
+        "sh",
+        "-c",
+        "npx -y supergateway --port 8000 --outputTransport streamableHttp --stdio 'npx -y @modelcontextprotocol/server-filesystem /files'",
+      ]
     ports:
       - "9045:8000"
     volumes:
