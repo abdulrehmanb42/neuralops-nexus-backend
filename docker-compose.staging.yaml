@@ -1,0 +1,87 @@
+# Staging override — layer on top of docker-compose.yaml, never edit that file
+# for staging-only tweaks again. Run staging with:
+#
+#   docker compose -f docker-compose.yaml -f docker-compose.staging.yaml up -d --build
+#
+# This keeps docker-compose.yaml byte-identical to what's on `main`, so
+# `git merge staging` / cherry-picks can never re-drag staging container
+# names or ports into production again.
+
+services:
+  nucleus:
+    container_name: staging-nucleus
+    networks:
+      - staging-network
+
+  nucleus-celery:
+    container_name: staging-celery
+    networks:
+      - staging-network
+
+  redis:
+    container_name: staging-redis
+    ports:
+      - "6380:6379"
+    networks:
+      - staging-network
+
+  nexus-ai:
+    container_name: staging-ai
+    ports:
+      - "8002:8000"
+    environment:
+      # Service name, not container_name — resolves regardless of which
+      # network alias chromadb's container ends up with (staging-chroma here).
+      - CHROMA_HOST=chromadb
+    networks:
+      - staging-network
+
+  realtime:
+    container_name: staging-transport
+    networks:
+      - staging-network
+
+  nginx:
+    container_name: staging-nginx
+    ports:
+      - "8081:80"
+    networks:
+      - staging-network
+
+  chromadb:
+    container_name: staging-chroma
+    networks:
+      - staging-network
+
+  postgres:
+    container_name: staging-postgres
+    ports:
+      - "5434:5432"
+    networks:
+      - staging-network
+
+  # Commented out in the base docker-compose.yaml (frontend is Vercel-hosted
+  # in production), so this override must define the full service, not just
+  # override fields on top of it.
+  neuralops-react-app:
+    build:
+      context: ./modules/neuralops-react-app
+      dockerfile: Dockerfile
+    container_name: staging-react-app
+    ports:
+      - "3003:3000"
+    volumes:
+      - ./modules/neuralops-react-app:/app
+      - staging_react_node_modules:/app/node_modules
+    networks:
+      - staging-network
+    depends_on:
+      - nucleus
+    restart: unless-stopped
+
+networks:
+  staging-network:
+    driver: bridge
+
+volumes:
+  staging_react_node_modules:
