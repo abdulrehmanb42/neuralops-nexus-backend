@@ -1,0 +1,71 @@
+# Staging override — layer on top of docker-compose.yaml. Run staging with:
+#
+#   docker compose -f docker-compose.yaml -f docker-compose.staging.yaml up -d --build
+#
+# Host ports come from env vars in .env (REDIS_HOST_PORT, NEXUS_AI_HOST_PORT,
+# NGINX_HOST_PORT, POSTGRES_HOST_PORT) — NOT overridden here. Compose merges
+# list-type fields like `ports:` and `networks:` by CONCATENATING them across
+# files, not replacing them, so overriding ports here would bind BOTH the
+# base file's port and this file's port simultaneously (this is what broke
+# on the first attempt — staging-postgres tried to bind both 5433 and 5434,
+# and 5433 collided with the real nexus-postgres container on this host).
+# Only override scalar fields here (container_name, environment values —
+# environment merges by key correctly, unlike ports).
+#
+# Network name is intentionally NOT overridden either — Compose namespaces
+# networks per project directory automatically (this project's network is
+# "neuralops-staging_nexus-network" on the host, distinct from whatever the
+# production checkout's project name produces), so two checkouts sharing the
+# same `nexus-network` key in their compose files never actually collide.
+
+services:
+  nucleus:
+    container_name: staging-nucleus
+
+  nucleus-celery:
+    container_name: staging-celery
+
+  redis:
+    container_name: staging-redis
+
+  nexus-ai:
+    container_name: staging-ai
+    environment:
+      # Service name, not container_name — resolves regardless of which
+      # network alias chromadb's container ends up with (staging-chroma here).
+      - CHROMA_HOST=chromadb
+
+  realtime:
+    container_name: staging-transport
+
+  nginx:
+    container_name: staging-nginx
+
+  chromadb:
+    container_name: staging-chroma
+
+  postgres:
+    container_name: staging-postgres
+
+  # Commented out in the base docker-compose.yaml (frontend is Vercel-hosted
+  # in production), so this override must define the full service, not just
+  # override fields on top of it — there's nothing in the base file to merge
+  # with, so no ports/networks duplication risk here.
+  neuralops-react-app:
+    build:
+      context: ./modules/neuralops-react-app
+      dockerfile: Dockerfile
+    container_name: staging-react-app
+    ports:
+      - "${REACT_HOST_PORT:-3003}:3000"
+    volumes:
+      - ./modules/neuralops-react-app:/app
+      - staging_react_node_modules:/app/node_modules
+    networks:
+      - nexus-network
+    depends_on:
+      - nucleus
+    restart: unless-stopped
+
+volumes:
+  staging_react_node_modules:

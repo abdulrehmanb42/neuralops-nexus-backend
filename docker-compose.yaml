@@ -74,7 +74,7 @@ services:
     image: redis:7-alpine
     container_name: nexus-redis
     ports:
-      - "6379:6379"
+      - "${REDIS_HOST_PORT:-6379}:6379"
     volumes:
       - ./data/redis_data:/data
     networks:
@@ -89,7 +89,7 @@ services:
       context: ./modules/nexus-ai
       dockerfile: ./docker/dev/Dockerfile.nexus-ai
     ports:
-      - "8000:8000"
+      - "${NEXUS_AI_HOST_PORT:-8000}:8000"
     volumes:
       - ./modules/nexus-ai:/nexus-ai
       - ./data/fastembed_cache:/root/.cache/fastembed
@@ -137,7 +137,7 @@ services:
     image: nginx:alpine
     container_name: nexus-nginx
     ports:
-      - "80:80"
+      - "${NGINX_HOST_PORT:-80}:80"
     volumes:
       - ./nginx.conf:/etc/nginx/nginx.conf:ro
     networks:
@@ -167,7 +167,7 @@ services:
       - POSTGRES_USER=${POSTGRES_USER}
       - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
     ports:
-      - "5433:5432"
+      - "${POSTGRES_HOST_PORT:-5433}:5432"
     volumes:
       - ./data/postgres_data:/var/lib/postgresql/data
     networks:

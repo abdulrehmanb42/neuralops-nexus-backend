@@ -18,10 +18,10 @@
 services:
 
   # ── SerpAPI / Shopping MCP ──────────────────────────────────────────────
-  nexus-serp-mcp:
+  serp-mcp:
     build:
       context: ./serp
-    container_name: nexus-serp-mcp
+    container_name: serp-mcp
     ports:
       - "9043:8000"
     environment:
@@ -31,10 +31,10 @@ services:
     restart: unless-stopped
 
   # ── Odoo ERP MCP ────────────────────────────────────────────────────────
-  nexus-odoo-mcp:
+  odoo-mcp:
     build:
       context: ./odoo
-    container_name: nexus-odoo-mcp
+    container_name: odoo-mcp
     ports:
       - "9044:8000"
     environment:
@@ -49,12 +49,15 @@ services:
   # ── Filesystem MCP (official @modelcontextprotocol/server-filesystem) ──
   # Exposes FILESYSTEM_ROOT as read-only /files inside the container.
   # supergateway wraps the stdio MCP server as streamable-http.
-  nexus-filesystem-mcp:
+  filesystem-mcp:
     image: node:22-slim
-    container_name: nexus-filesystem-mcp
-    command: >
-      sh -c "npx -y supergateway --port 8000 --outputTransport http
-             -- npx -y @modelcontextprotocol/server-filesystem /files"
+    container_name: filesystem-mcp
+    command:
+      [
+        "sh",
+        "-c",
+        "npx -y supergateway --port 8000 --outputTransport streamableHttp --stdio 'npx -y @modelcontextprotocol/server-filesystem /files'",
+      ]
     ports:
       - "9045:8000"
     volumes:

@@ -100,7 +100,7 @@ async def list_orders(state: str = "all", limit: int = 20) -> str:
     """
     if not ERP_URL:
         return "❌ ERP_URL is not configured."
-    domain = [] if state == "all" else [[["state", "=", state]]]
+    domain = [] if state == "all" else [["state", "=", state]]
     try:
         orders = await _call(
             "sale.order", "search_read", [domain],
@@ -155,7 +155,7 @@ async def get_order_detail(order_name: str) -> str:
     try:
         orders = await _call(
             "sale.order", "search_read",
-            [[[["name", "=", order_name]]]],
+            [[["name", "=", order_name]]],
             {"fields": ["name", "partner_id", "date_order", "amount_untaxed", "amount_tax",
                         "amount_total", "state", "order_line", "currency_id"], "limit": 1},
         )
@@ -225,13 +225,13 @@ async def create_sale_order(customer_name: str, product_name: str,
         return "❌ ERP_URL is not configured."
     try:
         partners = await _call("res.partner", "search_read",
-                               [[[["name", "ilike", customer_name]]]], {"fields": ["id", "name"], "limit": 1})
+                               [[["name", "ilike", customer_name]]], {"fields": ["id", "name"], "limit": 1})
         if not partners:
             return f"❌ Customer '{customer_name}' not found."
         partner = partners[0]
 
         products = await _call("product.product", "search_read",
-                               [[[["name", "ilike", product_name], ["active", "=", True]]]],
+                               [[["name", "ilike", product_name], ["active", "=", True]]],
                                {"fields": ["id", "name", "list_price"], "limit": 1})
         if not products:
             return f"❌ Product '{product_name}' not found."
@@ -285,7 +285,7 @@ async def list_customers(limit: int = 20, search: str = "") -> str:
     if search:
         domain.append(["name", "ilike", search])
     try:
-        customers = await _call("res.partner", "search_read", [[domain]],
+        customers = await _call("res.partner", "search_read", [domain],
                                 {"fields": ["name", "email", "phone", "city", "country_id"], "limit": limit})
     except Exception as e:
         return f"❌ ERP error: {e}"
@@ -339,7 +339,7 @@ async def create_customer(name: str, email: str = "", phone: str = "",
     if country_code:
         try:
             countries = await _call("res.country", "search_read",
-                                    [[[["code", "=", country_code.upper()]]]], {"fields": ["id"], "limit": 1})
+                                    [[["code", "=", country_code.upper()]]], {"fields": ["id"], "limit": 1})
             if countries:
                 vals["country_id"] = countries[0]["id"]
         except Exception:
@@ -375,7 +375,7 @@ async def inventory_report(limit: int = 30) -> str:
     try:
         products = await _call(
             "product.product", "search_read",
-            [[[["active", "=", True], ["is_storable", "=", True]]]],
+            [[["active", "=", True], ["is_storable", "=", True]]],
             {"fields": ["name", "default_code", "qty_available", "virtual_available"], "limit": limit},
         )
     except Exception as e:
