@@ -8,39 +8,35 @@ from datetime import timedelta
 
 from django.conf import settings
 from django.contrib.auth import get_user_model
+from django.db.models import Q
 from django.utils import timezone
 from django.utils.text import slugify
+
+from authn.permissions.checker import PermissionChecker
+from authn.permissions.models import Role
+from authn.permissions.row_rules import visible_channels, visible_projects, visible_topics
+from nucleus.models import (
+    ChatMessage, ChatReadMarker, ChatTopic, Channel, Company, CompanyAccess,
+    Invitation, Persona, Project, ProjectMember, TopicParticipant,
+)
 
 User = get_user_model()
 
 
 def get_company():
-    from nucleus.models import Company
+    # Company — imported at top of file.
     return Company.objects.filter(is_active=True).first()
 
 
 # ── Projects ──────────────────────────────────────────────────────────────────
 
 def list_projects(company, user):
-    from nucleus.models import Project, CompanyAccess
-
-    access = CompanyAccess.objects.filter(
-        company=company, user=user, is_active=True
-    ).first()
-
-    if access and access.role in ("owner", "admin"):
-        return Project.objects.filter(company=company, is_active=True).order_by("name")
-
-    return Project.objects.filter(
-        company=company,
-        is_active=True,
-        projectmember_items__user=user,
-        projectmember_items__is_active=True,
-    ).distinct().order_by("name")
+    # visible_projects — imported at top of file.
+    return visible_projects(user, company)
 
 
 def create_project(company, user, name: str, description: str = None):
-    from nucleus.models import Project, Channel, ProjectMember
+    # Project, Channel, ProjectMember, Role, PermissionChecker — imported at top of file.
 
     slug = _unique_project_slug(company, name)
 
@@ -51,44 +47,57 @@ def create_project(company, user, name: str, description: str = None):
         company=company, project=project, name="general",
         slug="general", description="General discussion",
     )
+
+    # Legacy membership record -- kept alongside the new RoleAssignment below
+    # so untouched code that still reads ProjectMember directly (list_team,
+    # add_member, invite_to_project, etc.) keeps working during migration.
     ProjectMember.objects.create(
         company=company, project=project, user=user, role=ProjectMember.Role.ADMIN,
     )
+
+    # New permission system: creator becomes project-scoped Admin.
+    # NOTE: fetched by name regardless of this Role row's own `scope` field --
+    # seed_permissions currently seeds all four default roles at scope="company",
+    # which is the still-open inconsistency flagged earlier (Role.scope forcing
+    # one assignment level vs. the same Role being assignable at any scope).
+    # Revisit once that's decided.
+    admin_role = Role.objects.filter(company=company, name="Admin").first()
+    if admin_role:
+        PermissionChecker.assign_role(user, admin_role, project, granted_by=user)
+
     return project
 
 
 def get_project(company, user, project_id: str):
-    from nucleus.models import Project, CompanyAccess
+    # PermissionChecker — imported at top of file.
 
-    project = Project.objects.filter(
-        company=company, id=project_id, is_active=True
-    ).first()
+    project = get_project_object(company, project_id)
     if not project:
         return None
-
-    access = CompanyAccess.objects.filter(
-        company=company, user=user, is_active=True
-    ).first()
-    if access and access.role in ("owner", "admin"):
-        return project
-    if project.projectmember_items.filter(user=user, is_active=True).exists():
+    if PermissionChecker.can(user, "project.view", obj=project):
         return project
     return None
 
 
-def delete_project(company, project_id: str):
-    from nucleus.models import Project
+def get_project_object(company, project_id: str):
+    """
+    Plain fetch, no permission filtering. Used when a caller needs the
+    object itself before deciding which specific right to check against
+    it (e.g. delete_project needs to check 'project.delete', not 'project.view',
+    so it can't reuse get_project()'s built-in view-right check).
+    """
+    # Project — imported at top of file.
+    return Project.objects.filter(company=company, id=project_id, is_active=True).first()
 
-    project = Project.objects.filter(
-        company=company, id=project_id, is_active=True
-    ).first()
-    if project:
-        project.soft_delete()
+
+def delete_project(project):
+    """Caller (workspace/api.py) has already fetched + permission-checked the object."""
+    project.soft_delete()
     return project
 
 
 def remove_user_from_server(company, user_id: str, requesting_user) -> dict:
-    from nucleus.models import CompanyAccess, ProjectMember
+    # CompanyAccess, ProjectMember — imported at top of file.
 
     if str(requesting_user.id) == user_id:
         raise ValueError("You cannot remove yourself from the server.")
@@ -112,12 +121,13 @@ def remove_user_from_server(company, user_id: str, requesting_user) -> dict:
 
 # ── Channels ──────────────────────────────────────────────────────────────────
 
-def list_channels(company, project):
-    return project.channel_items.filter(company=company, is_active=True).order_by("name")
+def list_channels(user, project):
+    # visible_channels — imported at top of file.
+    return visible_channels(user, project)
 
 
 def create_channel(company, project, name: str, description: str = None):
-    from nucleus.models import Channel
+    # Channel — imported at top of file.
 
     slug = _unique_channel_slug(project, name)
     return Channel.objects.create(
@@ -127,7 +137,7 @@ def create_channel(company, project, name: str, description: str = None):
 
 
 def get_channel(company, project, channel_id: str):
-    from nucleus.models import Channel
+    # Channel — imported at top of file.
     return Channel.objects.filter(
         company=company, project=project, id=channel_id, is_active=True
     ).first()
@@ -135,14 +145,13 @@ def get_channel(company, project, channel_id: str):
 
 # ── Topics ────────────────────────────────────────────────────────────────────
 
-def list_topics(company, project, channel):
-    return channel.topics.filter(
-        company=company, project=project, is_active=True
-    ).order_by("created_at")
+def list_topics(user, channel):
+    # visible_topics — imported at top of file.
+    return visible_topics(user, channel)
 
 
 def create_topic(company, project, channel, title: str, creator=None):
-    from nucleus.models import ChatTopic
+    # ChatTopic — imported at top of file.
 
     slug = _unique_topic_slug(channel, title)
     return ChatTopic.objects.create(
@@ -150,16 +159,8 @@ def create_topic(company, project, channel, title: str, creator=None):
     )
 
 
-def update_topic(company, project, channel, topic_id: str, title: str):
-    from nucleus.models import ChatTopic
-    from django.utils.text import slugify
-
-    topic = ChatTopic.objects.filter(
-        company=company, project=project, channel=channel,
-        id=topic_id, is_active=True
-    ).first()
-    if not topic:
-        return None
+def update_topic(project, channel, topic, title: str):
+    """Caller (workspace/api.py) has already fetched + permission-checked `topic`."""
     topic.title = title
     topic.slug = _unique_topic_slug(channel, title)
     topic.save(update_fields=["title", "slug", "updated_at"])
@@ -167,7 +168,7 @@ def update_topic(company, project, channel, topic_id: str, title: str):
 
 
 def get_topic(company, project, channel, topic_id: str):
-    from nucleus.models import ChatTopic
+    # ChatTopic — imported at top of file.
     return ChatTopic.objects.filter(
         company=company, project=project, channel=channel,
         id=topic_id, is_active=True
@@ -175,7 +176,7 @@ def get_topic(company, project, channel, topic_id: str):
 
 
 def mark_topic_read(user, topic) -> None:
-    from nucleus.models import ChatReadMarker, ChatMessage
+    # ChatReadMarker, ChatMessage — imported at top of file.
 
     latest = (
         ChatMessage.objects.filter(topic=topic, is_active=True)
@@ -189,7 +190,7 @@ def mark_topic_read(user, topic) -> None:
 
 
 def get_topic_unread_map(user, topics) -> dict:
-    from nucleus.models import ChatReadMarker, ChatMessage
+    # ChatReadMarker, ChatMessage — imported at top of file.
 
     topic_ids = [t.id for t in topics]
     markers = {
@@ -215,14 +216,14 @@ def get_topic_unread_map(user, topics) -> dict:
 # ── Members ───────────────────────────────────────────────────────────────────
 
 def get_member_access(company, user):
-    from nucleus.models import CompanyAccess
+    # CompanyAccess — imported at top of file.
     return CompanyAccess.objects.filter(
         company=company, user=user, is_active=True,
     ).first()
 
 
 def send_invite(company, inviter, email: str, role: str) -> dict:
-    from nucleus.models import CompanyAccess, Invitation
+    # CompanyAccess, Invitation — imported at top of file.
 
     valid_roles = [r.value for r in CompanyAccess.Role]
     if role not in valid_roles:
@@ -250,7 +251,7 @@ def send_invite(company, inviter, email: str, role: str) -> dict:
 
 
 def list_members(company) -> list:
-    from nucleus.models import CompanyAccess
+    # CompanyAccess — imported at top of file.
 
     members = CompanyAccess.objects.filter(
         company=company, is_active=True,
@@ -268,7 +269,7 @@ def list_members(company) -> list:
 
 
 def remove_member(company, caller, target_user_id: str) -> dict:
-    from nucleus.models import CompanyAccess
+    # CompanyAccess — imported at top of file.
 
     try:
         target_access = CompanyAccess.objects.get(
@@ -321,7 +322,7 @@ def _format_member(member) -> dict:
 
 
 def list_team(company, project) -> list:
-    from nucleus.models import ProjectMember
+    # ProjectMember — imported at top of file.
 
     members = (
         ProjectMember.objects.filter(company=company, project=project, is_active=True)
@@ -333,7 +334,7 @@ def list_team(company, project) -> list:
 
 
 def add_member(company, project, user_id: str, role: str = "member") -> dict:
-    from nucleus.models import ProjectMember
+    # ProjectMember — imported at top of file.
 
     user = User.objects.filter(id=user_id, is_active=True).first()
     if not user:
@@ -356,7 +357,7 @@ def add_member(company, project, user_id: str, role: str = "member") -> dict:
 
 
 def remove_team_member(company, project, user_id: str, requesting_user) -> dict:
-    from nucleus.models import ProjectMember
+    # ProjectMember — imported at top of file.
 
     member = ProjectMember.objects.filter(
         company=company, project=project, user_id=user_id, is_active=True
@@ -377,11 +378,10 @@ def invite_to_project(
     email: str = None, persona_name: str = None,
     scope: str = "topic", topic_id: str = None, role: str = "member",
 ) -> dict:
-    from nucleus.models import CompanyAccess, Invitation, ProjectMember
+    # CompanyAccess, Invitation, ProjectMember, Persona — imported at top of file.
 
     # ── Persona invite ────────────────────────────────────────────────────────
     if persona_name:
-        from nucleus.models import Persona
         name = persona_name.lstrip("@").strip()
         persona = Persona.objects.filter(
             company=company, name__iexact=name, is_active=True
@@ -458,7 +458,7 @@ def invite_to_project(
 
 
 def _add_to_topic(company, project, topic_id: str, user, role: str = "participant"):
-    from nucleus.models import ChatTopic, TopicParticipant
+    # ChatTopic, TopicParticipant — imported at top of file.
 
     topic = ChatTopic.objects.filter(
         company=company, project=project, id=topic_id, is_active=True
@@ -472,8 +472,7 @@ def _add_to_topic(company, project, topic_id: str, user, role: str = "participan
 
 
 def list_available_users(company, project, search: str = "") -> list:
-    from nucleus.models import CompanyAccess, ProjectMember
-    from django.db.models import Q
+    # CompanyAccess, ProjectMember, Q — imported at top of file.
 
     in_project = ProjectMember.objects.filter(
         company=company, project=project, is_active=True
@@ -503,7 +502,7 @@ def list_available_users(company, project, search: str = "") -> list:
 
 
 def list_available_personas(company, project) -> list:
-    from nucleus.models import Persona, ProjectMember
+    # Persona, ProjectMember — imported at top of file.
 
     in_project = ProjectMember.objects.filter(
         company=company, project=project, is_active=True, user__user_type="persona",
@@ -524,7 +523,7 @@ def list_available_personas(company, project) -> list:
 # ── Slug helpers ──────────────────────────────────────────────────────────────
 
 def _unique_project_slug(company, name: str) -> str:
-    from nucleus.models import Project
+    # Project — imported at top of file.
     base = slugify(name) or "project"
     slug, n = base, 1
     while Project.objects.filter(company=company, slug=slug).exists():
@@ -534,7 +533,7 @@ def _unique_project_slug(company, name: str) -> str:
 
 
 def _unique_channel_slug(project, name: str) -> str:
-    from nucleus.models import Channel
+    # Channel — imported at top of file.
     base = slugify(name) or "channel"
     slug, n = base, 1
     while Channel.objects.filter(project=project, slug=slug).exists():
@@ -544,7 +543,7 @@ def _unique_channel_slug(project, name: str) -> str:
 
 
 def _unique_topic_slug(channel, title: str) -> str:
-    from nucleus.models import ChatTopic
+    # ChatTopic — imported at top of file.
     base = slugify(title) or "topic"
     slug, n = base, 1
     while ChatTopic.objects.filter(channel=channel, slug=slug).exists():

@@ -14,9 +14,9 @@ def get_company():
 
 # ── AIModel ───────────────────────────────────────────────────────────────────
 
-def list_ai_models(company):
-    from nucleus.models import AIModel
-    return AIModel.objects.filter(company=company, is_active=True).order_by("name")
+def list_ai_models(company, user):
+    from authn.permissions.row_rules import visible_ai_models
+    return visible_ai_models(user, company)
 
 
 def get_ai_model(company, model_id: str):
@@ -34,6 +34,25 @@ def create_ai_model(company, user, data: dict) -> "AIModel":
     return model
 
 
+def attach_ai_model_to_project(company, model_id: str, project_id: str) -> bool:
+    from nucleus.models import AIModel, Project
+    model = AIModel.objects.filter(company=company, id=model_id, is_active=True).first()
+    project = Project.objects.filter(company=company, id=project_id, is_active=True).first()
+    if not model or not project:
+        return False
+    model.projects.add(project)
+    return True
+
+
+def detach_ai_model_from_project(company, model_id: str, project_id: str) -> bool:
+    from nucleus.models import AIModel
+    model = AIModel.objects.filter(company=company, id=model_id, is_active=True).first()
+    if not model:
+        return False
+    model.projects.remove(project_id)
+    return True
+
+
 def delete_ai_model(company, model_id: str) -> bool:
     from nucleus.models import AIModel
     model = AIModel.objects.filter(company=company, id=model_id, is_active=True).first()
@@ -45,10 +64,10 @@ def delete_ai_model(company, model_id: str) -> bool:
 
 # ── MCPServer ─────────────────────────────────────────────────────────────────
 
-def list_mcp_servers_all(company):
-    """List all MCP servers for the company (flat, not filtered by model)."""
-    from nucleus.models import MCPServer
-    return MCPServer.objects.filter(company=company, is_active=True).order_by("name")
+def list_mcp_servers_all(company, user):
+    """List all MCP servers visible to this user (flat, not filtered by model)."""
+    from authn.permissions.row_rules import visible_mcp_servers
+    return visible_mcp_servers(user, company)
 
 
 def create_mcp_server_standalone(company, data: dict):
@@ -66,13 +85,9 @@ def delete_mcp_server_standalone(company, server_id: str) -> bool:
     return True
 
 
-def list_agents(company):
-    from nucleus.models import AIAgent
-    return (
-        AIAgent.objects.filter(company=company, is_active=True)
-        .select_related("model", "mcp_server")
-        .order_by("name")
-    )
+def list_agents(company, user):
+    from authn.permissions.row_rules import visible_agents
+    return visible_agents(user, company).select_related("model", "mcp_server")
 
 
 def create_agent(company, data: dict):
@@ -84,6 +99,25 @@ def create_agent(company, data: dict):
     if not model:
         raise ValueError("AIModel not found")
     return AIAgent.objects.create(company=company, model=model, mcp_server=mcp_server, **data)
+
+
+def attach_agent_to_project(company, agent_id: str, project_id: str) -> bool:
+    from nucleus.models import AIAgent, Project
+    agent = AIAgent.objects.filter(company=company, id=agent_id, is_active=True).first()
+    project = Project.objects.filter(company=company, id=project_id, is_active=True).first()
+    if not agent or not project:
+        return False
+    agent.projects.add(project)
+    return True
+
+
+def detach_agent_from_project(company, agent_id: str, project_id: str) -> bool:
+    from nucleus.models import AIAgent
+    agent = AIAgent.objects.filter(company=company, id=agent_id, is_active=True).first()
+    if not agent:
+        return False
+    agent.projects.remove(project_id)
+    return True
 
 
 def delete_agent(company, agent_id: str) -> bool:

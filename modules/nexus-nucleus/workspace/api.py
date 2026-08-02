@@ -10,6 +10,7 @@ from ninja import Router, Query
 from ninja.errors import HttpError
 
 from authn.auth import SupabaseBearer
+from authn.permissions.checker import PermissionChecker
 from .schema import (
     ProjectCreateRequest, ProjectOut, ChannelOut, ChannelCreateRequest,
     TopicCreateRequest, TopicUpdateRequest, TopicOut,
@@ -66,7 +67,7 @@ def list_projects(request):
 @router.post("/", response=ProjectOut)
 def create_project(request, payload: ProjectCreateRequest):
     company, user = _resolve(request)
-    if not user.has_perm("nucleus.add_project"):
+    if not PermissionChecker.can(user, "project.create", company=company):
         raise HttpError(403, "You don't have permission to create projects.")
     try:
         project = svc.create_project(company=company, user=user, name=payload.name, description=payload.description)
@@ -87,11 +88,14 @@ def get_project(request, project_id: str):
 @router.delete("/{project_id}/")
 def delete_project(request, project_id: str):
     company, user = _resolve(request)
-    if not user.has_perm("nucleus.delete_project"):
-        raise HttpError(403, "You don't have permission to delete projects.")
-    project = svc.delete_project(company, project_id)
+    # Fetch first (no permission filtering) so a 404 vs 403 distinction is
+    # possible: object doesn't exist at all, vs. exists but you can't delete it.
+    project = svc.get_project_object(company, project_id)
     if not project:
         raise HttpError(404, "Project not found.")
+    if not PermissionChecker.can(user, "project.delete", obj=project):
+        raise HttpError(403, "You don't have permission to delete this project.")
+    svc.delete_project(project)
     return {"ok": True, "message": f"Project '{project.name}' deleted."}
 
 
@@ -100,14 +104,14 @@ def delete_project(request, project_id: str):
 @router.get("/{project_id}/channels/", response=List[ChannelOut])
 def list_channels(request, project_id: str):
     company, user, project = _resolve_project(request, project_id)
-    channels = svc.list_channels(company, project)
+    channels = svc.list_channels(user, project)
     return [{"id": str(c.id), "name": c.name, "slug": c.slug, "description": c.description} for c in channels]
 
 
 @router.post("/{project_id}/channels/", response=ChannelOut)
 def create_channel(request, project_id: str, payload: ChannelCreateRequest):
     company, user, project = _resolve_project(request, project_id)
-    if not user.has_perm("nucleus.add_channel"):
+    if not PermissionChecker.can(user, "channel.create", obj=project):
         raise HttpError(403, "You don't have permission to create channels.")
     channel = svc.create_channel(company=company, project=project, name=payload.name, description=payload.description)
     return {"id": str(channel.id), "name": channel.name, "slug": channel.slug, "description": channel.description}
@@ -121,7 +125,7 @@ def list_topics(request, project_id: str, channel_id: str):
     channel = svc.get_channel(company, project, channel_id)
     if not channel:
         raise HttpError(404, "Channel not found.")
-    topics = list(svc.list_topics(company, project, channel))
+    topics = list(svc.list_topics(user, channel))
     unread_map = svc.get_topic_unread_map(user, topics)
     return [
         {
@@ -139,6 +143,8 @@ def create_topic(request, project_id: str, channel_id: str, payload: TopicCreate
     channel = svc.get_channel(company, project, channel_id)
     if not channel:
         raise HttpError(404, "Channel not found.")
+    if not PermissionChecker.can(user, "topic.create", obj=channel):
+        raise HttpError(403, "You don't have permission to create topics in this channel.")
     topic = svc.create_topic(company=company, project=project, channel=channel, title=payload.title, creator=user)
     return {
         "id": str(topic.id), "title": topic.title, "slug": topic.slug,
@@ -152,9 +158,12 @@ def update_topic(request, project_id: str, channel_id: str, topic_id: str, paylo
     channel = svc.get_channel(company, project, channel_id)
     if not channel:
         raise HttpError(404, "Channel not found.")
-    topic = svc.update_topic(company, project, channel, topic_id, payload.title)
+    topic = svc.get_topic(company, project, channel, topic_id)
     if not topic:
         raise HttpError(404, "Topic not found.")
+    if not PermissionChecker.can(user, "topic.update", obj=topic):
+        raise HttpError(403, "You don't have permission to rename this topic.")
+    topic = svc.update_topic(project, channel, topic, payload.title)
     return {
         "id": str(topic.id), "title": topic.title, "slug": topic.slug,
         "channel_id": str(topic.channel_id), "project_id": str(topic.project_id),
@@ -170,6 +179,8 @@ def mark_topic_read(request, project_id: str, channel_id: str, topic_id: str):
     topic = svc.get_topic(company, project, channel, topic_id)
     if not topic:
         raise HttpError(404, "Topic not found.")
+    if not PermissionChecker.can(user, "topic.mark_read", obj=topic):
+        raise HttpError(403, "You don't have permission to do that here.")
     svc.mark_topic_read(user, topic)
     return {"ok": True}
 

@@ -198,6 +198,19 @@ class AIModel(TenantBaseModel):
         help_text="Additional provider-specific runtime configuration.",
     )
 
+    # -- Project attachment (visibility) ---------------------------------------
+    # Unattached by default -- a newly-created model is invisible to every
+    # project until a company admin explicitly attaches it. Company-wide
+    # visibility (ai_model.list right) still sees everything regardless of
+    # this field; this only governs the narrow/project-scoped fallback in
+    # authn/permissions/row_rules.py:visible_ai_models().
+    projects = models.ManyToManyField(
+        "nucleus.Project",
+        blank=True,
+        related_name="ai_models",
+        help_text="Projects this model is attached to / visible from.",
+    )
+
     class Meta:
         db_table = "intelligence_ai_model"
 
@@ -280,6 +293,14 @@ class AIAgent(TenantBaseModel):
     safety_mode = models.BooleanField(default=True)
     max_steps = models.PositiveIntegerField(default=5)
     allow_parallel_tools = models.BooleanField(default=False)
+
+    # -- Project attachment (visibility) -- see AIModel.projects for rationale.
+    projects = models.ManyToManyField(
+        "nucleus.Project",
+        blank=True,
+        related_name="agents",
+        help_text="Projects this agent is attached to / visible from.",
+    )
 
     class Meta:
         db_table = "intelligence_ai_agent"
@@ -574,6 +595,11 @@ class MCPServer(TenantBaseModel):
         help_text="Opt-in: embed MCP tool results to ChromaDB. "
                   "Only meaningful when is_first_party=True.",
     )
+
+    # NOTE: unlike AIModel/AIAgent, MCPServer deliberately has no `projects`
+    # M2M -- MCP servers are project-wide available to any project member by
+    # design (see authn/permissions/row_rules.py:visible_mcp_servers), not
+    # curated per project the way models/agents are.
 
     class Meta:
         db_table = "intelligence_mcp_server"

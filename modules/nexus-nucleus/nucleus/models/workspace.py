@@ -4,6 +4,110 @@ from django.db import models
 
 from .base import TenantBaseModel, ProjectBaseModel, BaseModel, TenantOperationModel, ProjectOperationModel
 
+class Project(TenantOperationModel):
+    """
+    Top-level container within a company (tenant).
+
+    A Project is the root of the workspace hierarchy: Company -> Project ->
+    Channel -> ChatTopic. Everything a team works on -- channels, topics,
+    AI agents/personas, context sources -- is scoped under a Project.
+
+    Membership is managed through ProjectMember (see below), which also
+    carries each member's role (owner/admin/member/viewer).
+    """
+    name = models.CharField(max_length=255)
+    slug = models.SlugField(
+        max_length=120,
+        help_text="URL-safe identifier, unique per company. Auto-generated from name.",
+    )
+    description = models.TextField(blank=True, null=True)
+
+    members = models.ManyToManyField(
+        settings.AUTH_USER_MODEL,
+        through="ProjectMember",
+        through_fields=("project", "user"),
+        related_name="member_projects",
+        blank=True,
+        help_text="Users with access to this project. Role/status tracked on ProjectMember.",
+    )
+
+    class Meta(TenantOperationModel.Meta):
+        db_table = "workspace_project"
+        constraints = [
+            models.UniqueConstraint(
+                fields=["company", "slug"],
+                name="uniq_project_slug_per_company",
+            )
+        ]
+
+    def __str__(self):
+        return f"{self.company.name} / {self.name}"
+
+class Channel(ProjectOperationModel):
+    """
+    A named subdivision of a Project used to organize related discussion.
+
+    Channels group ChatTopics by subject area (e.g. "Backend", "Design").
+    Every message ultimately lives under Company -> Project -> Channel ->
+    ChatTopic -> ChatMessage.
+    """
+    name = models.CharField(max_length=255)
+    slug = models.SlugField(
+        max_length=120,
+        help_text="URL-safe identifier, unique per project. Auto-generated from name.",
+    )
+    description = models.TextField(blank=True, null=True)
+
+    class Meta(ProjectOperationModel.Meta):
+        db_table = "workspace_channel"
+        constraints = [
+            models.UniqueConstraint(
+                fields=["project", "slug"],
+                name="uniq_channel_slug_per_project",
+            )
+        ]
+        indexes = [
+            models.Index(fields=["company", "project"]),
+        ]
+
+    def __str__(self):
+        return f"{self.project.name} / {self.name}"
+
+class ChatTopic(ProjectOperationModel):
+    """
+    A single conversation thread within a Channel.
+
+    This is the unit chat actually happens in -- ChatMessage, ChatSession,
+    ChatReadMarker, and context sources (ContextSource/KnowledgeBase) all
+    attach to a ChatTopic, not to the Channel or Project directly.
+    """
+    channel = models.ForeignKey(
+        "nucleus.Channel",
+        on_delete=models.CASCADE,
+        related_name="topics",
+    )
+
+    title = models.CharField(max_length=255)
+    slug = models.SlugField(
+        max_length=120,
+        help_text="URL-safe identifier, unique per channel. Auto-generated from title.",
+    )
+
+    class Meta(ProjectOperationModel.Meta):
+        db_table = "workspace_chat_topic"
+        constraints = [
+            models.UniqueConstraint(
+                fields=["channel", "slug"],
+                name="uniq_topic_slug_per_channel",
+            )
+        ]
+        indexes = [
+            models.Index(fields=["company", "project", "channel"]),
+        ]
+
+    def __str__(self):
+        return f"{self.channel.name} / {self.title}"
+
 class KnowledgeBase(TenantBaseModel):
     """
     Company-owned knowledge base.
@@ -65,83 +169,6 @@ class KnowledgeFile(BaseModel):
 
     class Meta:
         db_table = "intelligence_knowledge_file"
-
-
-
-
-
-class Project(TenantOperationModel):
-    name = models.CharField(max_length=255)
-    slug = models.SlugField(max_length=120)
-    description = models.TextField(blank=True, null=True)
-
-    members = models.ManyToManyField(
-        settings.AUTH_USER_MODEL,
-        through="ProjectMember",
-        through_fields=("project", "user"),
-        related_name="member_projects",
-        blank=True,
-    )
-
-    class Meta(TenantOperationModel.Meta):
-        db_table = "workspace_project"
-        constraints = [
-            models.UniqueConstraint(
-                fields=["company", "slug"],
-                name="uniq_project_slug_per_company",
-            )
-        ]
-
-    def __str__(self):
-        return f"{self.company.name} / {self.name}"
-
-
-class Channel(ProjectOperationModel):
-    name = models.CharField(max_length=255)
-    slug = models.SlugField(max_length=120)
-    description = models.TextField(blank=True, null=True)
-
-    class Meta(ProjectOperationModel.Meta):
-        db_table = "workspace_channel"
-        constraints = [
-            models.UniqueConstraint(
-                fields=["project", "slug"],
-                name="uniq_channel_slug_per_project",
-            )
-        ]
-        indexes = [
-            models.Index(fields=["company", "project"]),
-        ]
-
-    def __str__(self):
-        return f"{self.project.name} / {self.name}"
-
-
-class ChatTopic(ProjectOperationModel):
-    channel = models.ForeignKey(
-        "nucleus.Channel",
-        on_delete=models.CASCADE,
-        related_name="topics",
-    )
-
-    title = models.CharField(max_length=255)
-    slug = models.SlugField(max_length=120)
-
-    class Meta(ProjectOperationModel.Meta):
-        db_table = "workspace_chat_topic"
-        constraints = [
-            models.UniqueConstraint(
-                fields=["channel", "slug"],
-                name="uniq_topic_slug_per_channel",
-            )
-        ]
-        indexes = [
-            models.Index(fields=["company", "project", "channel"]),
-        ]
-
-    def __str__(self):
-        return f"{self.channel.name} / {self.title}"
-
 
 class ChatMessage(ProjectBaseModel):
     class Status(models.TextChoices):
@@ -246,7 +273,6 @@ class ChatMessage(ProjectBaseModel):
     def __str__(self):
         return f"{self.sender}: {self.content[:50]}"
 
-
 class ChatReadMarker(BaseModel):
     user = models.ForeignKey(
         settings.AUTH_USER_MODEL,
@@ -280,7 +306,6 @@ class ChatReadMarker(BaseModel):
             models.Index(fields=["user", "topic"]),
         ]
 
-
 class ChatReaction(BaseModel):
     message = models.ForeignKey(
         "nucleus.ChatMessage",
@@ -308,7 +333,6 @@ class ChatReaction(BaseModel):
             models.Index(fields=["message", "emoji"]),
             models.Index(fields=["user"]),
         ]
-
 
 class ChatSession(BaseModel):
     """
@@ -357,7 +381,6 @@ class ChatSession(BaseModel):
 
     def __str__(self):
         return f"Session({self.user}, {self.topic})"
-
 
 class ChatAttachment(BaseModel):
     class AttachmentType(models.TextChoices):
