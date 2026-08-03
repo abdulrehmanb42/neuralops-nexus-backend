@@ -138,6 +138,8 @@ class Command(BaseCommand):
                 user.current_company = company
                 user.save(update_fields=["current_company"])
 
+                self._grant_owner_role(company, user)
+
                 # ── Create default permission groups ────────────────────────
                 self._create_default_groups(user)
 
@@ -160,6 +162,31 @@ class Command(BaseCommand):
             f"    3. Add an AI model and create a Persona to start chatting\n"
         )
         print_divider()
+
+    def _grant_owner_role(self, company, user):
+        """
+        Grant the real RBAC Owner role -- this is what
+        authn/permissions/checker.py::PermissionChecker.can() actually reads
+        (RoleAssignment), unlike CompanyAccess.role or the Django auth.Group
+        rows set up in _create_default_groups below. Without this, the
+        server's own owner would fail every PermissionChecker.can() check
+        (this was a real bug -- company.owner had no RoleAssignment at all).
+
+        Creates an empty Role row now if `seed_permissions` hasn't run yet
+        for this company -- when it does run (it's meant to run right after
+        this command, per the documented setup order), it finds this same
+        row via get_or_create and populates its RoleRights, so it doesn't
+        matter which of the two commands creates the Role row first.
+        """
+        from authn.permissions.models import Role
+        from authn.permissions.checker import PermissionChecker
+
+        owner_role, _ = Role.objects.get_or_create(
+            company=company, name="Owner", scope="company",
+            defaults={"description": "Default Owner role."},
+        )
+        PermissionChecker.assign_role(user, owner_role, company, granted_by=None)
+        self.stdout.write(self.style.SUCCESS("  ✓ RBAC Owner role granted"))
 
     def _create_default_groups(self, owner_user):
         """

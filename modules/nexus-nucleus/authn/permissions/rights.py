@@ -42,8 +42,14 @@ REGISTRY = [
     # Owner/Admin of just one project) as well as inherited from COMPANY.
     ("project.view", ObjectType.PROJECT, ScopeType.PROJECT,
      "View a specific project's details."),
-    ("project.delete", ObjectType.PROJECT, ScopeType.PROJECT,
-     "Delete (soft-delete) a project. Irreversible in practice — Owner-tier action."),
+    ("ai_model.attach", ObjectType.PROJECT, ScopeType.PROJECT,
+     "Attach an already-existing AI model to a project (does not create the "
+     "model or touch its API key -- that's ai_model.create, COMPANY-only). "
+     "Reachable by a Project-scoped Admin, unlike ai_model.create/delete."),
+    ("project.archive", ObjectType.PROJECT, ScopeType.PROJECT,
+     "Archive (soft-delete) a project, or view it once archived. Reversible in "
+     "principle via Project.restore() -- there's just no endpoint for that yet. "
+     "Same right gates both archiving and the include_archived view."),
 
     # ── Channel ─────────────────────────────────────────────────────────────
     # Channels are not their own assignable scope — they're always reached
@@ -54,6 +60,17 @@ REGISTRY = [
      "List the channels inside a project."),
     ("channel.update", ObjectType.CHANNEL, ScopeType.PROJECT,
      "Rename / edit a channel's description. (No update endpoint exists yet as of this writing.)"),
+    ("channel.archive", ObjectType.CHANNEL, ScopeType.PROJECT,
+     "Archive (soft-delete) a channel, or view it once archived. Same right "
+     "gates both archiving and the include_archived view."),
+
+    # ── AI Agent / MCP Server -- project-owned, so PROJECT scope (reachable
+    # by both a company-wide Admin and that project's own Project Admin).
+    # Distinct from ai_model.* below, which stays COMPANY-only. ───────────────
+    ("agent.update", ObjectType.AGENT, ScopeType.PROJECT,
+     "Edit an AI agent belonging to a project."),
+    ("mcp_server.update", ObjectType.MCP_SERVER, ScopeType.PROJECT,
+     "Edit an MCP server belonging to a project."),
 
     # ── Chat Topic ──────────────────────────────────────────────────────────
     ("topic.create", ObjectType.TOPIC, ScopeType.PROJECT,
@@ -64,6 +81,9 @@ REGISTRY = [
      "Rename a topic. Grantable narrowly (this topic only) or from a broader scope."),
     ("topic.mark_read", ObjectType.TOPIC, ScopeType.TOPIC,
      "Mark a topic as read for yourself."),
+    ("topic.archive", ObjectType.TOPIC, ScopeType.TOPIC,
+     "Archive (soft-delete) a topic, or view it once archived. Same right "
+     "gates both archiving and the include_archived view."),
 
     # ── Chat Session (the @session mechanism) ──────────────────────────────
     ("session.create", ObjectType.SESSION, ScopeType.TOPIC,
@@ -87,13 +107,20 @@ REGISTRY = [
     ("persona.update", ObjectType.PERSONA, ScopeType.COMPANY, "Edit a persona."),
     ("persona.delete", ObjectType.PERSONA, ScopeType.COMPANY, "Delete a persona."),
 
+    # agent.list stays COMPANY -- reachability for ordinary project members
+    # comes through the row-visibility fallback (visible_agents), same as
+    # mcp_server.list below, not through this right being held directly.
     ("agent.list", ObjectType.AGENT, ScopeType.COMPANY, "List AI agents."),
-    ("agent.create", ObjectType.AGENT, ScopeType.COMPANY, "Create an AI agent."),
-    ("agent.delete", ObjectType.AGENT, ScopeType.COMPANY, "Delete an AI agent."),
+    # create/delete are PROJECT scope -- an agent belongs to exactly one
+    # project (see AIAgent.projects in nucleus/models/intelligence.py), and
+    # that project's own Admin should be able to manage it without needing
+    # company-wide access. Still reachable by a COMPANY-scope Admin/Owner too.
+    ("agent.create", ObjectType.AGENT, ScopeType.PROJECT, "Create an AI agent in a project."),
+    ("agent.delete", ObjectType.AGENT, ScopeType.PROJECT, "Delete an AI agent."),
 
     ("mcp_server.list", ObjectType.MCP_SERVER, ScopeType.COMPANY, "List MCP servers."),
-    ("mcp_server.create", ObjectType.MCP_SERVER, ScopeType.COMPANY, "Register a new MCP server."),
-    ("mcp_server.delete", ObjectType.MCP_SERVER, ScopeType.COMPANY, "Delete an MCP server."),
+    ("mcp_server.create", ObjectType.MCP_SERVER, ScopeType.PROJECT, "Register a new MCP server in a project."),
+    ("mcp_server.delete", ObjectType.MCP_SERVER, ScopeType.PROJECT, "Delete an MCP server."),
 
     ("ai_model.list", ObjectType.AI_MODEL, ScopeType.COMPANY, "List AI models."),
     ("ai_model.create", ObjectType.AI_MODEL, ScopeType.COMPANY, "Register a new AI model."),
@@ -108,25 +135,38 @@ REGISTRY = [
 # same as any other Role.
 #
 # Deliberately excluded from MEMBER and VIEWER: persona/agent/mcp_server/
-# ai_model create+delete rights, and project.delete — matches everything
-# decided in design discussion (Member never gets company-wide infra
-# rights regardless of scope; only Owner/Admin do).
+# ai_model create+delete rights, and project.archive/channel.archive/
+# topic.archive — matches everything decided in design discussion (Member
+# never gets company-wide infra rights regardless of scope; only Owner/Admin
+# do; archiving is an Admin-tier action, unlike the old Owner-only
+# project.delete it replaces).
 DEFAULT_ROLE_RIGHTS = {
     "Owner": [code for code, *_ in REGISTRY],  # everything, no exceptions
 
     "Admin": [
         "company.invite_member", "company.remove_member",
-        "project.create", "project.list", "project.view",
-        "channel.create", "channel.list", "channel.update",
-        "topic.create", "topic.list", "topic.update", "topic.mark_read",
+        "project.create", "project.list", "project.view", "project.archive",
+        "channel.create", "channel.list", "channel.update", "channel.archive",
+        "topic.create", "topic.list", "topic.update", "topic.mark_read", "topic.archive",
         "session.create", "session.close",
         "persona.mention",
         "persona.list", "persona.create", "persona.update", "persona.delete",
-        "agent.list", "agent.create", "agent.delete",
-        "mcp_server.list", "mcp_server.create", "mcp_server.delete",
-        "ai_model.list", "ai_model.create", "ai_model.delete",
-        # Note: project.delete intentionally NOT included — Owner-only,
-        # irreversible action. Revisit if that's too strict.
+        "agent.list", "agent.create", "agent.update", "agent.delete",
+        "mcp_server.list", "mcp_server.create", "mcp_server.update", "mcp_server.delete",
+        "ai_model.list", "ai_model.create", "ai_model.delete", "ai_model.attach",
+        # project.archive/channel.archive/topic.archive are now included --
+        # this reverses the old project.delete-was-Owner-only policy. Archiving
+        # is reversible (soft-delete + unused Model.restore()) so it's no
+        # longer treated as irreversible/Owner-tier. Each right also gates
+        # the include_archived view for that resource (same right, two jobs).
+        #
+        # ai_model.attach is also granted at PROJECT scope to a Project Admin
+        # (see PermissionChecker._scope_chain -- Project.company_id reaches
+        # this from the project object). Company Admin has it too via this
+        # COMPANY-scope assignment. Same for agent.create/delete/update and
+        # mcp_server.create/delete/update, which are PROJECT-scope rights
+        # reachable here from COMPANY, and also directly grantable to a
+        # Project-scoped Admin RoleAssignment.
     ],
 
     "Member": [

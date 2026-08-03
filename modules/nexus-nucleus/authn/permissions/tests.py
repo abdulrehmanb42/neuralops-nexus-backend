@@ -14,11 +14,12 @@ see authn/tests.py — no pytest dependency here).
 from django.contrib.auth import get_user_model
 from django.test import TestCase
 
-from nucleus.models import Company, Project, Channel, ChatTopic
+from nucleus.models import Company, Project, Channel, ChatTopic, AIModel, AIAgent, MCPServer, Persona
 
 from .checker import PermissionChecker
 from .models import Right, Role, RoleAssignment, RoleRight
 from .rights import DEFAULT_ROLE_RIGHTS, REGISTRY
+from .row_rules import visible_ai_models, visible_agents, visible_mcp_servers, visible_personas
 
 User = get_user_model()
 
@@ -360,60 +361,325 @@ class UC9_SessionCreateCloseTests(PermissionCheckerTestCase):
         self.assertTrue(PermissionChecker.can(self.sara, "session.create", obj=self.topic_b))
 
 
-class UC11_ProjectDeleteTests(PermissionCheckerTestCase):
+class UC11_ProjectArchiveTests(PermissionCheckerTestCase):
     """
-    UC11 -- deleting a project is Owner-tier. Written against the
-    CURRENT code, not the still-open question from ROLE_STORIES.md
-    review: since "no Project Owner" was decided in the docs but not
-    yet enforced anywhere in code, a Role named "Owner" assigned at
-    PROJECT scope would still work today (project.delete's scope tag in
-    rights.py is ScopeType.PROJECT, which permits a project-scoped
-    assignment to hold it) -- see the last test below, which documents
-    that gap on purpose rather than hiding it.
+    UC11 -- archiving a project (the reversible soft-delete that replaced
+    the old, since-removed project.delete). Unlike the old policy this
+    right IS included in DEFAULT_ROLE_RIGHTS["Admin"] (see rights.py),
+    reachable by both a Company-scoped Admin and a Project-scoped Admin
+    on their own project -- archiving isn't Owner-tier the way deletion
+    used to be.
     """
 
     def setUp(self):
         super().setUp()
-        self.r_project_delete = Right.objects.create(code="project.delete", object_type="project", scope="project")
-        RoleRight.objects.create(role=self.role_company_admin, right=self.r_project_delete)
-        # Mirrors rights.py: Admin's DEFAULT_ROLE_RIGHTS deliberately excludes project.delete.
-        # role_company_admin here stands in for "Owner" for this test's purposes since the
-        # shared fixture doesn't define a separate Owner Role -- see note below.
+        self.r_project_archive = Right.objects.create(code="project.archive", object_type="project", scope="project")
+        RoleRight.objects.create(role=self.role_company_admin, right=self.r_project_archive)
+        RoleRight.objects.create(role=self.role_project_admin, right=self.r_project_archive)
+        # Mirrors rights.py: DEFAULT_ROLE_RIGHTS["Admin"] now includes project.archive,
+        # granted identically at both assignment scopes -- see AIResourceTestCase's
+        # docstring for why that's the right way to fixture this (reachability is
+        # decided by _scope_chain/_SCOPE_ORDER, not by which rights got curated per role).
 
-    def test_company_scoped_role_with_the_right_can_delete(self):
+    def test_company_scoped_admin_can_archive(self):
         PermissionChecker.assign_role(self.sara, self.role_company_admin, self.company)
-        self.assertTrue(PermissionChecker.can(self.sara, "project.delete", obj=self.project))
+        self.assertTrue(PermissionChecker.can(self.sara, "project.archive", obj=self.project))
 
-    def test_project_admin_cannot_delete_by_default(self):
+    def test_project_admin_can_archive_their_own_project(self):
+        """
+        The actual behaviour change vs. the old project.delete policy:
+        a Project Admin with no company-wide assignment at all can now
+        archive the one project they administer.
+        """
+        PermissionChecker.assign_role(self.ali, self.role_project_admin, self.project)
+        self.assertTrue(PermissionChecker.can(self.ali, "project.archive", obj=self.project))
+
+    def test_project_admin_cannot_archive_a_different_project(self):
+        other_project = Project.objects.create(company=self.company, name="Other", slug="other-uc11")
+        PermissionChecker.assign_role(self.ali, self.role_project_admin, self.project)
+        self.assertFalse(PermissionChecker.can(self.ali, "project.archive", obj=other_project))
+
+    def test_member_cannot_archive(self):
+        """role_topic_member never holds project.archive -- Member/Viewer tier never gets it."""
+        PermissionChecker.assign_role(self.ali, self.role_topic_member, self.topic_a)
+        self.assertFalse(PermissionChecker.can(self.ali, "project.archive", obj=self.project))
+
+
+class UC18_ChannelTopicArchiveAndIncludeArchivedTests(PermissionCheckerTestCase):
+    """
+    UC18 -- channel.archive/topic.archive follow the exact same pattern
+    as project.archive (UC11), one level down each. Also covers the
+    "same right gates the view-archived capability too" design: these
+    tests exercise row_rules._with_archived() indirectly via
+    visible_projects(..., include_archived=True), which is what actually
+    decides who sees an archived object after the fact.
+    """
+
+    def setUp(self):
+        super().setUp()
+        self.r_channel_archive = Right.objects.create(code="channel.archive", object_type="channel", scope="project")
+        self.r_topic_archive = Right.objects.create(code="topic.archive", object_type="topic", scope="topic")
+        self.r_project_archive = Right.objects.create(code="project.archive", object_type="project", scope="project")
+        self.r_project_list = Right.objects.create(code="project.list", object_type="project", scope="company")
+        for right in (self.r_channel_archive, self.r_topic_archive, self.r_project_archive, self.r_project_list):
+            RoleRight.objects.create(role=self.role_company_admin, right=right)
+        RoleRight.objects.create(role=self.role_project_admin, right=self.r_channel_archive)
+        RoleRight.objects.create(role=self.role_project_admin, right=self.r_project_archive)
+
+    def test_project_admin_can_archive_own_channel(self):
+        PermissionChecker.assign_role(self.ali, self.role_project_admin, self.project)
+        self.assertTrue(PermissionChecker.can(self.ali, "channel.archive", obj=self.channel))
+
+    def test_company_admin_can_archive_topic(self):
+        PermissionChecker.assign_role(self.sara, self.role_company_admin, self.company)
+        self.assertTrue(PermissionChecker.can(self.sara, "topic.archive", obj=self.topic_a))
+
+    def test_project_admin_sees_own_archived_project_with_include_archived(self):
+        from .row_rules import visible_projects
+
+        PermissionChecker.assign_role(self.ali, self.role_project_admin, self.project)
+        self.project.soft_delete()
+
+        self.assertNotIn(
+            self.project, visible_projects(self.ali, self.company),
+            "Without include_archived, the archived project stays hidden even from its own admin.",
+        )
+        self.assertIn(
+            self.project, visible_projects(self.ali, self.company, include_archived=True),
+            "With include_archived, Ali (Project Admin on this exact project, holding "
+            "project.archive on it) sees it again.",
+        )
+
+    def test_member_never_sees_archived_project_even_with_include_archived(self):
+        from .row_rules import visible_projects
+
+        PermissionChecker.assign_role(self.ali, self.role_topic_member, self.topic_a)
+        self.project.soft_delete()
+
+        self.assertNotIn(
+            self.project, visible_projects(self.ali, self.company, include_archived=True),
+            "Ali holds no project.archive anywhere -- include_archived is a no-op for him, "
+            "not a backdoor.",
+        )
+
+    def test_project_admin_on_other_project_does_not_see_this_ones_archived_project(self):
+        from .row_rules import visible_projects
+
+        other_project = Project.objects.create(company=self.company, name="Other", slug="other-uc18")
+        PermissionChecker.assign_role(self.ali, self.role_project_admin, other_project)
+        self.project.soft_delete()
+
+        self.assertNotIn(
+            self.project, visible_projects(self.ali, self.company, include_archived=True),
+            "Ali's project.archive reaches other_project, not self.project -- "
+            "per-object check in _with_archived correctly excludes it.",
+        )
+
+
+class AIResourceTestCase(PermissionCheckerTestCase):
+    """
+    Shared fixture for UC13-17 (AI Model / Agent / MCP Server / Persona
+    permissions -- see USE_CASES.md). Extends the base fixture with a
+    second project (so project-to-project isolation can be tested, same
+    idea as UC3/UC17), the Rights these use, and one instance of each
+    AI resource type, attached to self.project.
+
+    Rights are granted to role_company_admin AND role_project_admin
+    identically, mirroring DEFAULT_ROLE_RIGHTS["Admin"] in rights.py --
+    it's the same Role philosophy at two different assignment scopes.
+    Whether a right actually becomes reachable is entirely down to
+    _scope_chain() + _SCOPE_ORDER, not which rights were curated per
+    role here -- e.g. role_project_admin holds the RoleRight for
+    ai_model.create (COMPANY scope) same as role_company_admin does, but
+    a PROJECT-scoped assignment can never reach a COMPANY-scope right
+    (see UC6/UC7), so the create test for Project Admin below still
+    correctly denies.
+    """
+
+    def setUp(self):
+        super().setUp()
+
+        self.other_project = Project.objects.create(
+            company=self.company, name="Other Project", slug="other-project-ai",
+        )
+
+        self.r_ai_model_list = Right.objects.create(code="ai_model.list", object_type="ai_model", scope="company")
+        self.r_ai_model_create = Right.objects.create(code="ai_model.create", object_type="ai_model", scope="company")
+        self.r_ai_model_attach = Right.objects.create(code="ai_model.attach", object_type="project", scope="project")
+        self.r_agent_list = Right.objects.create(code="agent.list", object_type="agent", scope="company")
+        self.r_agent_create = Right.objects.create(code="agent.create", object_type="agent", scope="project")
+        self.r_agent_update = Right.objects.create(code="agent.update", object_type="agent", scope="project")
+        self.r_agent_delete = Right.objects.create(code="agent.delete", object_type="agent", scope="project")
+        self.r_mcp_list = Right.objects.create(code="mcp_server.list", object_type="mcp_server", scope="company")
+        self.r_mcp_create = Right.objects.create(code="mcp_server.create", object_type="mcp_server", scope="project")
+        self.r_mcp_update = Right.objects.create(code="mcp_server.update", object_type="mcp_server", scope="project")
+        self.r_mcp_delete = Right.objects.create(code="mcp_server.delete", object_type="mcp_server", scope="project")
+        self.r_persona_list = Right.objects.create(code="persona.list", object_type="persona", scope="company")
+
+        admin_rights = (
+            self.r_ai_model_list, self.r_ai_model_create, self.r_ai_model_attach,
+            self.r_agent_list, self.r_agent_create, self.r_agent_update, self.r_agent_delete,
+            self.r_mcp_list, self.r_mcp_create, self.r_mcp_update, self.r_mcp_delete,
+            self.r_persona_list,
+        )
+        for right in admin_rights:
+            RoleRight.objects.create(role=self.role_company_admin, right=right)
+            RoleRight.objects.create(role=self.role_project_admin, right=right)
+
+        self.ai_model = AIModel.objects.create(
+            company=self.company, name="GPT Test", provider="litellm", model_id="openai/gpt-test",
+        )
+        self.ai_model.projects.add(self.project)
+
+        self.agent = AIAgent.objects.create(
+            company=self.company, name="Scout", agent_type="internal", model=self.ai_model,
+        )
+        self.agent.projects.add(self.project)
+
+        self.mcp_server = MCPServer.objects.create(
+            company=self.company, name="Search MCP", server_type="remote", transport="http",
+            url="https://example.test/mcp",
+        )
+        self.mcp_server.projects.add(self.project)
+
+        shadow = User.objects.create(username="persona_nova_test", user_type="persona", is_active=True)
+        self.persona = Persona.objects.create(
+            company=self.company, project=self.project, identity_user=shadow,
+            name="Nova", source_type="model", model=self.ai_model,
+        )
+
+
+class UC13_AIResourceVisibilityTests(AIResourceTestCase):
+    """
+    UC13 -- listing AI resources is never a can() 403; it's always a
+    filtered queryset from the matching visible_*() row-rule function.
+    """
+
+    def test_company_admin_sees_every_resource_broad(self):
+        PermissionChecker.assign_role(self.sara, self.role_company_admin, self.company)
+        self.assertIn(self.ai_model, visible_ai_models(self.sara, self.company))
+        self.assertIn(self.agent, visible_agents(self.sara, self.company))
+        self.assertIn(self.mcp_server, visible_mcp_servers(self.sara, self.company))
+        self.assertIn(self.persona, visible_personas(self.sara, self.project))
+
+    def test_project_member_sees_own_projects_resources_narrow(self):
+        # Ali holds only a Topic-scoped Member assignment on topic_a, which is
+        # inside self.project -- no company-wide right, no direct project
+        # assignment either. _reachable_project_ids still resolves self.project
+        # via the topic -> project traversal, which is all the narrow path
+        # of each visible_*() function needs.
+        PermissionChecker.assign_role(self.ali, self.role_topic_member, self.topic_a)
+        self.assertIn(self.ai_model, visible_ai_models(self.ali, self.company))
+        self.assertIn(self.agent, visible_agents(self.ali, self.company))
+        self.assertIn(self.mcp_server, visible_mcp_servers(self.ali, self.company))
+        self.assertIn(self.persona, visible_personas(self.ali, self.project))
+
+    def test_outsider_sees_nothing_not_even_a_403(self):
+        # Ali holds no assignment anywhere -- these return empty querysets,
+        # never raise, matching "list always 200s" from UC13.
+        self.assertNotIn(self.ai_model, visible_ai_models(self.ali, self.company))
+        self.assertEqual(visible_agents(self.ali, self.company).count(), 0)
+        self.assertEqual(visible_mcp_servers(self.ali, self.company).count(), 0)
+        self.assertEqual(visible_personas(self.ali, self.project).count(), 0)
+
+    def test_project_admin_on_other_project_does_not_see_this_projects_resources(self):
+        PermissionChecker.assign_role(self.sara, self.role_project_admin, self.other_project)
+        self.assertNotIn(self.ai_model, visible_ai_models(self.sara, self.company))
+        self.assertNotIn(self.agent, visible_agents(self.sara, self.company))
+        self.assertNotIn(self.mcp_server, visible_mcp_servers(self.sara, self.company))
+        self.assertEqual(visible_personas(self.sara, self.project).count(), 0)
+
+
+class UC14_UC15_AIModelCreateVsAttachTests(AIResourceTestCase):
+    """
+    UC14/15 -- ai_model.create (COMPANY scope, touches the API key) is
+    Owner/Admin-only regardless of assignment scope; ai_model.attach
+    (PROJECT scope, never touches the key) is the separate, lighter
+    right a Project Admin can also reach.
+    """
+
+    def test_company_admin_can_create_ai_model(self):
+        PermissionChecker.assign_role(self.sara, self.role_company_admin, self.company)
+        self.assertTrue(PermissionChecker.can(self.sara, "ai_model.create", company=self.company))
+
+    def test_project_admin_cannot_create_ai_model(self):
         PermissionChecker.assign_role(self.ali, self.role_project_admin, self.project)
         self.assertFalse(
-            PermissionChecker.can(self.ali, "project.delete", obj=self.project),
-            "role_project_admin was never granted project.delete in the base fixture, matching "
-            "DEFAULT_ROLE_RIGHTS['Admin'] in rights.py, which excludes it on purpose.",
+            PermissionChecker.can(self.ali, "ai_model.create", company=self.company),
+            "ai_model.create is COMPANY scope -- a PROJECT-scoped assignment can never reach it, "
+            "even though role_project_admin holds the RoleRight (see class docstring).",
         )
 
-    def test_KNOWN_GAP_a_project_scoped_assignment_can_still_be_granted_delete(self):
+    def test_project_admin_can_attach_existing_model_to_own_project(self):
+        PermissionChecker.assign_role(self.ali, self.role_project_admin, self.project)
+        self.assertTrue(PermissionChecker.can(self.ali, "ai_model.attach", obj=self.project))
+
+    def test_project_admin_cannot_attach_to_a_project_they_do_not_admin(self):
+        PermissionChecker.assign_role(self.ali, self.role_project_admin, self.project)
+        self.assertFalse(PermissionChecker.can(self.ali, "ai_model.attach", obj=self.other_project))
+
+    def test_company_admin_can_attach_too(self):
+        # PROJECT reach flows down from COMPANY -- see _SCOPE_ORDER in checker.py.
+        PermissionChecker.assign_role(self.sara, self.role_company_admin, self.company)
+        self.assertTrue(PermissionChecker.can(self.sara, "ai_model.attach", obj=self.project))
+
+
+class UC16_UC17_AgentMcpServerProjectScopeTests(AIResourceTestCase):
+    """
+    UC16/17 -- agent.*/mcp_server.* create+update+delete are PROJECT
+    scope: a Project Admin reaches them on their own project (and the
+    Agent/MCPServer objects within it, via _scope_chain walking the
+    projects M2M), but not on a project they don't administer.
+    """
+
+    def test_project_admin_can_create_agent_in_own_project(self):
+        PermissionChecker.assign_role(self.ali, self.role_project_admin, self.project)
+        self.assertTrue(PermissionChecker.can(self.ali, "agent.create", obj=self.project))
+
+    def test_project_admin_can_update_and_delete_own_projects_agent(self):
+        PermissionChecker.assign_role(self.ali, self.role_project_admin, self.project)
+        self.assertTrue(PermissionChecker.can(self.ali, "agent.update", obj=self.agent))
+        self.assertTrue(PermissionChecker.can(self.ali, "agent.delete", obj=self.agent))
+
+    def test_project_admin_cannot_touch_another_projects_agent(self):
+        other_agent = AIAgent.objects.create(
+            company=self.company, name="Scout Two", agent_type="internal", model=self.ai_model,
+        )
+        other_agent.projects.add(self.other_project)
+        PermissionChecker.assign_role(self.ali, self.role_project_admin, self.project)
+        self.assertFalse(PermissionChecker.can(self.ali, "agent.update", obj=other_agent))
+        self.assertFalse(PermissionChecker.can(self.ali, "agent.delete", obj=other_agent))
+
+    def test_company_admin_can_manage_agent_in_any_project(self):
+        PermissionChecker.assign_role(self.sara, self.role_company_admin, self.company)
+        self.assertTrue(PermissionChecker.can(self.sara, "agent.delete", obj=self.agent))
+
+    def test_same_pattern_holds_for_mcp_server(self):
+        PermissionChecker.assign_role(self.ali, self.role_project_admin, self.project)
+        self.assertTrue(PermissionChecker.can(self.ali, "mcp_server.create", obj=self.project))
+        self.assertTrue(PermissionChecker.can(self.ali, "mcp_server.update", obj=self.mcp_server))
+        self.assertTrue(PermissionChecker.can(self.ali, "mcp_server.delete", obj=self.mcp_server))
+
+        other_mcp = MCPServer.objects.create(
+            company=self.company, name="Other MCP", server_type="remote", transport="http",
+            url="https://example.test/other",
+        )
+        other_mcp.projects.add(self.other_project)
+        self.assertFalse(PermissionChecker.can(self.ali, "mcp_server.delete", obj=other_mcp))
+
+    def test_unattached_agent_falls_back_to_company_only_scope(self):
         """
-        Documents a real gap, doesn't assert it's correct behaviour.
-
-        ROLE_STORIES.md review concluded "no Project Owner should exist" --
-        but nothing in the schema or PermissionChecker stops a company from
-        creating a Role called anything (including "Owner") at PROJECT
-        scope and granting it project.delete, because project.delete's
-        scope tag is ScopeType.PROJECT (same-or-broader reaches it), not
-        ScopeType.COMPANY. If "no Project Owner" needs to be a hard rule
-        rather than a naming convention, project.delete's scope tag should
-        move to ScopeType.COMPANY in rights.py, which would make this test
-        fail (correctly) until fixed.
+        An AIAgent/MCPServer with no project attached yet (e.g. mid-creation,
+        or the .add(project) call somehow never happened) can't be reached
+        via PROJECT scope at all -- _scope_chain's isinstance branch finds no
+        project, so it falls through to the plain company_id fallback,
+        meaning only a COMPANY-scoped assignment reaches it.
         """
-        rogue_role = Role.objects.create(
-            company=self.company, name="Owner", scope="project",
-            description="Should not be possible to create per ROLE_STORIES.md, but nothing stops it today.",
+        unattached = AIAgent.objects.create(
+            company=self.company, name="Orphan", agent_type="internal", model=self.ai_model,
         )
-        RoleRight.objects.create(role=rogue_role, right=self.r_project_delete)
-        PermissionChecker.assign_role(self.ali, rogue_role, self.project)
+        PermissionChecker.assign_role(self.ali, self.role_project_admin, self.project)
+        self.assertFalse(PermissionChecker.can(self.ali, "agent.delete", obj=unattached))
 
-        self.assertTrue(
-            PermissionChecker.can(self.ali, "project.delete", obj=self.project),
-            "This currently succeeds -- flagging for a decision, not asserting it's desired.",
-        )
+        PermissionChecker.assign_role(self.sara, self.role_company_admin, self.company)
+        self.assertTrue(PermissionChecker.can(self.sara, "agent.delete", obj=unattached))

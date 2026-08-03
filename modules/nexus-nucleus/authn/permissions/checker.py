@@ -50,7 +50,7 @@ def _scope_chain(obj):
     startup (same lazy-import pattern already used throughout
     workspace/services.py, chat/services.py, etc. in this codebase).
     """
-    from nucleus.models import Company, Project, Channel, ChatTopic
+    from nucleus.models import Company, Project, Channel, ChatTopic, AIAgent, MCPServer
 
     if isinstance(obj, Company):
         return [(ScopeType.COMPANY, obj.id)]
@@ -76,11 +76,30 @@ def _scope_chain(obj):
             (ScopeType.COMPANY, obj.company_id),
         ]
 
-    # Company-wide resources (Persona, AIModel, AIAgent, MCPServer,
-    # KnowledgeBase, ...) — anything with a plain `company` FK and no
-    # project boundary. These only reach through COMPANY scope, on
-    # purpose — see the big comment block in rights.py about why a
-    # Project-scoped Admin must NOT inherit these.
+    if isinstance(obj, (AIAgent, MCPServer)):
+        # Project-owned in practice, even though the underlying field is a
+        # `projects` M2M (kept structurally in case that ever changes, but
+        # app logic restricts it to exactly one project -- see create_agent()
+        # / create_mcp_server_standalone() in intelligence/services.py).
+        # .first() is safe for the same reason. Falls through to the
+        # COMPANY-only case below if somehow unattached (e.g. mid-creation).
+        project = obj.projects.first()
+        if project:
+            return [
+                (ScopeType.PROJECT, project.id),
+                (ScopeType.COMPANY, project.company_id),
+            ]
+
+    # Company-wide resources (Persona is now project-owned via a real FK,
+    # so it no longer needs to hit this path — see the isinstance check
+    # nucleus.models.Persona would need if that ever changes. AIModel stays
+    # here on purpose: it's genuinely company-shared, see rights.py.)
+    # anything with a plain `company` FK and no project boundary. These
+    # only reach through COMPANY scope, on purpose — see the big comment
+    # block in rights.py about why a Project-scoped Admin must NOT inherit
+    # ai_model.create/delete this way (ai_model.attach is the one exception,
+    # and that's checked with obj=project, not obj=model, so it never hits
+    # this fallback either).
     company_id = getattr(obj, "company_id", None)
     if company_id:
         return [(ScopeType.COMPANY, company_id)]

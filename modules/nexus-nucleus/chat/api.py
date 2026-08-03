@@ -194,7 +194,9 @@ async def send_message(
     # Resolve mentions to Persona objects (parallel)
     mentioned_personas = []
     for name in mention_names:
-        p = await _get_persona_by_mention(company, name)
+        # Personas are project-owned -- scoped to this topic's project, not
+        # the whole company (see intelligence/services.py:get_persona_by_mention).
+        p = await _get_persona_by_mention(project, name)
         if p:
             mentioned_personas.append(p)
             logger.info("[chat/api] mention=%s resolved persona=%s", name, p)

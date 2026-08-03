@@ -30,9 +30,9 @@ def get_company():
 
 # ── Projects ──────────────────────────────────────────────────────────────────
 
-def list_projects(company, user):
+def list_projects(company, user, include_archived=False):
     # visible_projects — imported at top of file.
-    return visible_projects(user, company)
+    return visible_projects(user, company, include_archived=include_archived)
 
 
 def create_project(company, user, name: str, description: str = None):
@@ -90,7 +90,7 @@ def get_project_object(company, project_id: str):
     return Project.objects.filter(company=company, id=project_id, is_active=True).first()
 
 
-def delete_project(project):
+def archive_project(project):
     """Caller (workspace/api.py) has already fetched + permission-checked the object."""
     project.soft_delete()
     return project
@@ -121,9 +121,9 @@ def remove_user_from_server(company, user_id: str, requesting_user) -> dict:
 
 # ── Channels ──────────────────────────────────────────────────────────────────
 
-def list_channels(user, project):
+def list_channels(user, project, include_archived=False):
     # visible_channels — imported at top of file.
-    return visible_channels(user, project)
+    return visible_channels(user, project, include_archived=include_archived)
 
 
 def create_channel(company, project, name: str, description: str = None):
@@ -143,11 +143,17 @@ def get_channel(company, project, channel_id: str):
     ).first()
 
 
+def archive_channel(channel):
+    """Caller (workspace/api.py) has already fetched + permission-checked the object."""
+    channel.soft_delete()
+    return channel
+
+
 # ── Topics ────────────────────────────────────────────────────────────────────
 
-def list_topics(user, channel):
+def list_topics(user, channel, include_archived=False):
     # visible_topics — imported at top of file.
-    return visible_topics(user, channel)
+    return visible_topics(user, channel, include_archived=include_archived)
 
 
 def create_topic(company, project, channel, title: str, creator=None):
@@ -173,6 +179,12 @@ def get_topic(company, project, channel, topic_id: str):
         company=company, project=project, channel=channel,
         id=topic_id, is_active=True
     ).first()
+
+
+def archive_topic(topic):
+    """Caller (workspace/api.py) has already fetched + permission-checked the object."""
+    topic.soft_delete()
+    return topic
 
 
 def mark_topic_read(user, topic) -> None:

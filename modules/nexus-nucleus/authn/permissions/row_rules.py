@@ -49,7 +49,34 @@ def _reachable_project_ids(user) -> set:
     return project_ids
 
 
-def visible_projects(user, company):
+def _with_archived(user, qs, model, right_code):
+    """
+    Shared tail end for the three include_archived list functions below.
+    `qs` is already scoped to the right company/project/channel and to
+    the set of objects this user can see at all (broad: everything in
+    scope; narrow: only the reachable ones) -- this just decides which
+    of THOSE objects' archived rows also get included.
+
+    Every active row in `qs` is included unconditionally (unrelated to
+    archiving). Every archived row in `qs` is included only if the user
+    holds `right_code` (project.archive / channel.archive / topic.archive)
+    directly against that specific object -- same right that gates the
+    archive action itself, checked per-object via PermissionChecker.can()
+    so it correctly resolves for both a company-wide Owner/Admin (reaches
+    every archived object in scope) and a Project Admin (reaches only the
+    archived objects inside their own project), with no separate logic
+    needed for the two cases.
+    """
+    active_ids = qs.filter(is_active=True).values_list("id", flat=True)
+    archived_candidates = qs.filter(is_active=False)
+    archived_ids = [
+        obj.id for obj in archived_candidates
+        if PermissionChecker.can(user, right_code, obj=obj)
+    ]
+    return model.objects.filter(id__in=list(active_ids) + archived_ids)
+
+
+def visible_projects(user, company, include_archived=False):
     """
     Every Project this user can see.
 
@@ -58,19 +85,26 @@ def visible_projects(user, company):
 
     Narrow case: no broad right -> only the projects reachable from the
     user's own RoleAssignments (see _reachable_project_ids).
+
+    include_archived=True additionally includes archived (is_active=False)
+    projects the user specifically holds 'project.archive' against -- see
+    _with_archived. Ordinary members/viewers never pass that check, so
+    for them this parameter is a no-op.
     """
     from nucleus.models import Project
 
     if PermissionChecker.can(user, "project.list", company=company):
-        return Project.objects.filter(company=company, is_active=True).order_by("name")
+        qs = Project.objects.filter(company=company)
+    else:
+        project_ids = _reachable_project_ids(user)
+        qs = Project.objects.filter(company=company, id__in=project_ids)
 
-    project_ids = _reachable_project_ids(user)
-    return Project.objects.filter(
-        company=company, is_active=True, id__in=project_ids,
-    ).order_by("name")
+    if not include_archived:
+        return qs.filter(is_active=True).order_by("name")
+    return _with_archived(user, qs, Project, "project.archive").order_by("name")
 
 
-def visible_channels(user, project):
+def visible_channels(user, project, include_archived=False):
     """
     Every Channel in `project` this user can see.
 
@@ -83,29 +117,33 @@ def visible_channels(user, project):
     rule as visible_projects, one level down: the channel surfaces so
     they can navigate to their topic, but sibling topics/channels stay
     hidden -- enforced by visible_topics below, not here.
+
+    include_archived=True additionally includes archived channels the user
+    specifically holds 'channel.archive' against -- see _with_archived.
     """
     from nucleus.models import Channel, ChatTopic
 
     if PermissionChecker.can(user, "channel.list", obj=project):
-        return Channel.objects.filter(project=project, is_active=True).order_by("name")
-
-    topic_ids = set(
-        RoleAssignment.objects.filter(
-            user=user, scope_object_type="topic",
-        ).values_list("scope_object_id", flat=True)
-    )
-    channel_ids = set()
-    if topic_ids:
-        channel_ids = set(
-            ChatTopic.objects.filter(id__in=topic_ids, project=project).values_list("channel_id", flat=True)
+        qs = Channel.objects.filter(project=project)
+    else:
+        topic_ids = set(
+            RoleAssignment.objects.filter(
+                user=user, scope_object_type="topic",
+            ).values_list("scope_object_id", flat=True)
         )
+        channel_ids = set()
+        if topic_ids:
+            channel_ids = set(
+                ChatTopic.objects.filter(id__in=topic_ids, project=project).values_list("channel_id", flat=True)
+            )
+        qs = Channel.objects.filter(project=project, id__in=channel_ids)
 
-    return Channel.objects.filter(
-        project=project, is_active=True, id__in=channel_ids,
-    ).order_by("name")
+    if not include_archived:
+        return qs.filter(is_active=True).order_by("name")
+    return _with_archived(user, qs, Channel, "channel.archive").order_by("name")
 
 
-def visible_topics(user, channel):
+def visible_topics(user, channel, include_archived=False):
     """
     Every ChatTopic in `channel` this user can see.
 
@@ -115,20 +153,25 @@ def visible_topics(user, channel):
     Narrow case: only the specific topic(s) the user holds a direct
     Topic-scoped RoleAssignment on -- this is the actual enforcement
     point for "invited to one topic, can't see sibling topics."
+
+    include_archived=True additionally includes archived topics the user
+    specifically holds 'topic.archive' against -- see _with_archived.
     """
     from nucleus.models import ChatTopic
 
     if PermissionChecker.can(user, "topic.list", obj=channel):
-        return ChatTopic.objects.filter(channel=channel, is_active=True).order_by("created_at")
+        qs = ChatTopic.objects.filter(channel=channel)
+    else:
+        topic_ids = set(
+            RoleAssignment.objects.filter(
+                user=user, scope_object_type="topic",
+            ).values_list("scope_object_id", flat=True)
+        )
+        qs = ChatTopic.objects.filter(channel=channel, id__in=topic_ids)
 
-    topic_ids = set(
-        RoleAssignment.objects.filter(
-            user=user, scope_object_type="topic",
-        ).values_list("scope_object_id", flat=True)
-    )
-    return ChatTopic.objects.filter(
-        channel=channel, is_active=True, id__in=topic_ids,
-    ).order_by("created_at")
+    if not include_archived:
+        return qs.filter(is_active=True).order_by("created_at")
+    return _with_archived(user, qs, ChatTopic, "topic.archive").order_by("created_at")
 
 
 # ── AI resources (Model / Agent / MCP Server) ──────────────────────────────────
@@ -171,27 +214,46 @@ def visible_agents(user, company):
 
 def visible_mcp_servers(user, company):
     """
-    MCP servers are project-wide available by design (see the NOTE on
-    MCPServer in nucleus/models/intelligence.py) -- unlike AIModel/AIAgent,
-    there's no per-resource attachment to curate. Anyone who belongs to at
-    least one project sees every active MCP server in the company; anyone
-    with no project footprint at all (and no broad company-wide right)
-    sees none.
-
-    This also sidesteps a real gap in the rights design: 'mcp_server.list'
-    is a COMPANY-scope right, but per the locked role design a Member's
-    RoleAssignment is only ever PROJECT-scoped ("no company member") --
-    they could never hold a COMPANY-scope right no matter what's in their
-    role's default rights. Gating on "has any project footprint" instead
-    of the unreachable company-scope right is what actually makes this
-    usable for ordinary project members.
+    Same broad/narrow shape as visible_ai_models/visible_agents. MCP servers
+    are project-owned (one project, via the `projects` M2M -- see the NOTE
+    on MCPServer in nucleus/models/intelligence.py), so the narrow path
+    filters to servers whose one project is one this user can reach.
     """
     from nucleus.models import MCPServer
 
     if PermissionChecker.can(user, "mcp_server.list", company=company):
         return MCPServer.objects.filter(company=company, is_active=True).order_by("name")
 
-    if _reachable_project_ids(user):
-        return MCPServer.objects.filter(company=company, is_active=True).order_by("name")
+    project_ids = _reachable_project_ids(user)
+    return MCPServer.objects.filter(
+        company=company, is_active=True, projects__id__in=project_ids,
+    ).distinct().order_by("name")
 
-    return MCPServer.objects.none()
+
+def visible_personas(user, project):
+    """
+    Every Persona in `project` this user can see.
+
+    Unlike the three functions above, Persona is exclusively single-project
+    (a real FK, not an M2M -- see nucleus/models/intelligence.py), and the
+    API always resolves one specific project before calling this (list
+    endpoint takes project_id as a required param) -- so the shape here is
+    (user, project), not (user, company).
+
+    Broad case: user holds the company-wide 'persona.list' right -> sees
+    personas in any project, including this one.
+    Narrow case: no broad right -> only if this project is one the user can
+    reach via their own RoleAssignments (i.e. they're actually a member of
+    it) -- otherwise nothing, not even a peek. This is what was missing
+    before: previously the API 403'd anyone without the company-wide right,
+    even a plain member of this exact project.
+    """
+    from nucleus.models import Persona
+
+    if PermissionChecker.can(user, "persona.list", company=project.company):
+        return Persona.objects.filter(project=project, is_active=True).order_by("name")
+
+    if project.id in _reachable_project_ids(user):
+        return Persona.objects.filter(project=project, is_active=True).order_by("name")
+
+    return Persona.objects.none()

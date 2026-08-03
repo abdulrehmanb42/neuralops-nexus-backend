@@ -10,8 +10,8 @@ from authn.auth import SupabaseBearer
 from authn.permissions.checker import PermissionChecker
 from .schema import (
     AIModelIn, AIModelOut,
-    MCPServerIn, MCPServerOut,
-    AIAgentIn, AIAgentOut,
+    MCPServerIn, MCPServerPatchIn, MCPServerOut,
+    AIAgentIn, AIAgentPatchIn, AIAgentOut,
     PersonaIn, PersonaPatchIn, PersonaOut,
     PromptTemplateOut,
     CompanyAIConfigIn, CompanyAIConfigOut,
@@ -53,10 +53,15 @@ def _model_out(model) -> AIModelOut:
 
 
 def _mcp_out(server) -> MCPServerOut:
+    # Server belongs to exactly one project in practice (see
+    # create_mcp_server_standalone()) -- .first() is safe even though the
+    # underlying field is an M2M.
+    project = server.projects.first()
     return MCPServerOut(
         id=str(server.id),
         name=server.name,
         description=server.description,
+        project_id=str(project.id) if project else None,
         server_type=server.server_type,
         transport=server.transport,
         url=server.url,
@@ -72,10 +77,14 @@ def _mcp_out(server) -> MCPServerOut:
 
 
 def _agent_out(agent) -> AIAgentOut:
+    # Agent belongs to exactly one project in practice (see create_agent()) --
+    # .first() is safe even though the underlying field is an M2M.
+    project = agent.projects.first()
     return AIAgentOut(
         id=str(agent.id),
         name=agent.name,
         description=agent.description,
+        project_id=str(project.id) if project else None,
         agent_type=agent.agent_type,
         model_id=str(agent.model_id) if agent.model_id else None,
         model_name=agent.model.name if agent.model else None,
@@ -104,6 +113,7 @@ def _persona_out(persona) -> PersonaOut:
         id=str(persona.id),
         name=persona.name,
         description=persona.description,
+        project_id=str(persona.project_id),
         source_type=persona.source_type,
         model_id=str(persona.model_id) if persona.model_id else None,
         agent_id=str(persona.agent_id) if persona.agent_id else None,
@@ -145,32 +155,46 @@ def delete_ai_model(request, model_id: str):
 
 
 # ── AIModel <-> Project attachment (visibility gate) ──────────────────────────
-# Same right as create/delete: only a company-scope admin decides which
-# projects can see a given model. Project-scoped Admins/Members cannot attach
-# resources themselves, only use what's already attached to their project.
+# Distinct right from ai_model.create/delete on purpose: attaching an
+# already-existing model to a project never touches the model's API key, so
+# it's a lighter action -- reachable by that project's own Project Admin,
+# not just a COMPANY-scope Owner/Admin. See ai_model.attach in rights.py.
 
 @router.post("/projects/{project_id}/ai-models/{model_id}/attach/", response={200: dict})
 def attach_ai_model(request, project_id: str, model_id: str):
     company = _company(request)
-    if not PermissionChecker.can(request.auth, "ai_model.create", company=company):
-        raise HttpError(403, "You don't have permission to attach AI models to projects.")
+    from nucleus.models import Project
+    project = Project.objects.filter(company=company, id=project_id, is_active=True).first()
+    if not project:
+        raise HttpError(404, "Project not found.")
+    if not PermissionChecker.can(request.auth, "ai_model.attach", obj=project):
+        raise HttpError(403, "You don't have permission to attach AI models to this project.")
     if not svc.attach_ai_model_to_project(company, model_id, project_id):
-        raise HttpError(404, "AI model or project not found.")
+        raise HttpError(404, "AI model not found.")
     return {"ok": True}
 
 
 @router.delete("/projects/{project_id}/ai-models/{model_id}/attach/", response={200: dict})
 def detach_ai_model(request, project_id: str, model_id: str):
     company = _company(request)
-    if not PermissionChecker.can(request.auth, "ai_model.create", company=company):
-        raise HttpError(403, "You don't have permission to detach AI models from projects.")
+    from nucleus.models import Project
+    project = Project.objects.filter(company=company, id=project_id, is_active=True).first()
+    if not project:
+        raise HttpError(404, "Project not found.")
+    if not PermissionChecker.can(request.auth, "ai_model.attach", obj=project):
+        raise HttpError(403, "You don't have permission to detach AI models from this project.")
     if not svc.detach_ai_model_from_project(company, model_id, project_id):
         raise HttpError(404, "AI model not found.")
     return {"ok": True}
 
 
 # ── MCPServer endpoints (flat) ────────────────────────────────────────────────
-# Rights: mcp_server.list / mcp_server.create / mcp_server.delete — COMPANY scope.
+# mcp_server.list is COMPANY scope (ordinary project members reach the list
+# through the visible_mcp_servers() row-visibility fallback, not by holding
+# this right directly). create/update/delete are PROJECT scope — a server
+# belongs to exactly one project, and that project's own Admin can manage it
+# without needing company-wide access (still reachable by a COMPANY-scope
+# Owner/Admin too, since PROJECT reach flows down from COMPANY).
 
 @router.get("/mcp-servers/", response=List[MCPServerOut])
 def list_mcp_servers_all(request):
@@ -181,26 +205,49 @@ def list_mcp_servers_all(request):
 
 @router.post("/mcp-servers/", response=MCPServerOut)
 def create_mcp_server_standalone(request, payload: MCPServerIn):
-    """Create a standalone MCP server."""
+    """Create a standalone MCP server, owned by payload.project_id."""
     company = _company(request)
-    if not PermissionChecker.can(request.auth, "mcp_server.create", company=company):
-        raise HttpError(403, "You don't have permission to create MCP servers.")
-    server = svc.create_mcp_server_standalone(company, payload.dict())
+    from nucleus.models import Project
+    project = Project.objects.filter(company=company, id=payload.project_id, is_active=True).first()
+    if not project:
+        raise HttpError(404, "Project not found.")
+    if not PermissionChecker.can(request.auth, "mcp_server.create", obj=project):
+        raise HttpError(403, "You don't have permission to create MCP servers in this project.")
+    try:
+        server = svc.create_mcp_server_standalone(company, payload.dict())
+    except ValueError as e:
+        raise HttpError(400, str(e))
+    return _mcp_out(server)
+
+
+@router.patch("/mcp-servers/{server_id}/", response=MCPServerOut)
+def patch_mcp_server_standalone(request, server_id: str, payload: MCPServerPatchIn):
+    company = _company(request)
+    server = svc.get_mcp_server_standalone(company, server_id)
+    if not server:
+        raise HttpError(404, "MCP server not found.")
+    if not PermissionChecker.can(request.auth, "mcp_server.update", obj=server):
+        raise HttpError(403, "You don't have permission to edit this MCP server.")
+    server = svc.update_mcp_server_standalone(company, server_id, payload.dict(exclude_none=True))
     return _mcp_out(server)
 
 
 @router.delete("/mcp-servers/{server_id}/", response={204: None})
 def delete_mcp_server_standalone(request, server_id: str):
     company = _company(request)
-    if not PermissionChecker.can(request.auth, "mcp_server.delete", company=company):
-        raise HttpError(403, "You don't have permission to delete MCP servers.")
-    if not svc.delete_mcp_server_standalone(company, server_id):
+    server = svc.get_mcp_server_standalone(company, server_id)
+    if not server:
         raise HttpError(404, "MCP server not found.")
+    if not PermissionChecker.can(request.auth, "mcp_server.delete", obj=server):
+        raise HttpError(403, "You don't have permission to delete this MCP server.")
+    svc.delete_mcp_server_standalone(company, server_id)
     return 204, None
 
 
-# MCPServer has no attach/detach endpoints -- project-wide available to any
-# project member by design, see visible_mcp_servers() in row_rules.py.
+# MCPServer has no attach/detach endpoints -- it's single-project-owned (see
+# create_mcp_server_standalone(), same pattern as AIAgent), assigned once at
+# creation via payload.project_id. Unlike AIModel, which is genuinely shared
+# across projects, there's nothing to attach/detach after the fact.
 
 
 # ── MCPServer endpoints (nested under model — legacy) ─────────────────────────
@@ -238,7 +285,12 @@ def delete_mcp_server(request, model_id: str, server_id: str):
 
 
 # ── AIAgent endpoints ─────────────────────────────────────────────────────────
-# Rights: agent.list / agent.create / agent.delete — COMPANY scope.
+# agent.list is COMPANY scope (ordinary project members reach the list
+# through the visible_agents() row-visibility fallback, not by holding this
+# right directly). create/update/delete are PROJECT scope — an agent belongs
+# to exactly one project, and that project's own Admin can manage it without
+# needing company-wide access (still reachable by a COMPANY-scope Owner/Admin
+# too, since PROJECT reach flows down from COMPANY).
 
 @router.get("/agents/", response=List[AIAgentOut])
 def list_agents(request):
@@ -249,8 +301,12 @@ def list_agents(request):
 @router.post("/agents/", response=AIAgentOut)
 def create_agent(request, payload: AIAgentIn):
     company = _company(request)
-    if not PermissionChecker.can(request.auth, "agent.create", company=company):
-        raise HttpError(403, "You don't have permission to create AI agents.")
+    from nucleus.models import Project
+    project = Project.objects.filter(company=company, id=payload.project_id, is_active=True).first()
+    if not project:
+        raise HttpError(404, "Project not found.")
+    if not PermissionChecker.can(request.auth, "agent.create", obj=project):
+        raise HttpError(403, "You don't have permission to create AI agents in this project.")
     try:
         agent = svc.create_agent(company, payload.dict())
     except ValueError as e:
@@ -258,36 +314,33 @@ def create_agent(request, payload: AIAgentIn):
     return _agent_out(agent)
 
 
+@router.patch("/agents/{agent_id}/", response=AIAgentOut)
+def patch_agent(request, agent_id: str, payload: AIAgentPatchIn):
+    company = _company(request)
+    agent = svc.get_agent(company, agent_id)
+    if not agent:
+        raise HttpError(404, "Agent not found.")
+    if not PermissionChecker.can(request.auth, "agent.update", obj=agent):
+        raise HttpError(403, "You don't have permission to edit this AI agent.")
+    agent = svc.update_agent(company, agent_id, payload.dict(exclude_none=True))
+    return _agent_out(agent)
+
+
 @router.delete("/agents/{agent_id}/", response={204: None})
 def delete_agent(request, agent_id: str):
     company = _company(request)
-    if not PermissionChecker.can(request.auth, "agent.delete", company=company):
-        raise HttpError(403, "You don't have permission to delete AI agents.")
-    if not svc.delete_agent(company, agent_id):
+    agent = svc.get_agent(company, agent_id)
+    if not agent:
         raise HttpError(404, "Agent not found.")
+    if not PermissionChecker.can(request.auth, "agent.delete", obj=agent):
+        raise HttpError(403, "You don't have permission to delete this AI agent.")
+    svc.delete_agent(company, agent_id)
     return 204, None
 
 
-# ── AIAgent <-> Project attachment (visibility gate) ──────────────────────────
-
-@router.post("/projects/{project_id}/agents/{agent_id}/attach/", response={200: dict})
-def attach_agent(request, project_id: str, agent_id: str):
-    company = _company(request)
-    if not PermissionChecker.can(request.auth, "agent.create", company=company):
-        raise HttpError(403, "You don't have permission to attach AI agents to projects.")
-    if not svc.attach_agent_to_project(company, agent_id, project_id):
-        raise HttpError(404, "Agent or project not found.")
-    return {"ok": True}
-
-
-@router.delete("/projects/{project_id}/agents/{agent_id}/attach/", response={200: dict})
-def detach_agent(request, project_id: str, agent_id: str):
-    company = _company(request)
-    if not PermissionChecker.can(request.auth, "agent.create", company=company):
-        raise HttpError(403, "You don't have permission to detach AI agents from projects.")
-    if not svc.detach_agent_from_project(company, agent_id, project_id):
-        raise HttpError(404, "Agent not found.")
-    return {"ok": True}
+# Agents are project-owned at creation (payload.project_id) -- no separate
+# attach/detach endpoints, since an agent never belongs to more than one
+# project. See create_agent() in intelligence/services.py.
 
 
 # ── Persona endpoints ─────────────────────────────────────────────────────────
@@ -297,11 +350,19 @@ def detach_agent(request, project_id: str, agent_id: str):
 # migrated).
 
 @router.get("/personas/", response=List[PersonaOut])
-def list_personas(request):
+def list_personas(request, project_id: str):
+    """
+    Personas are project-owned -- always listed for one project, never
+    company-wide. Visibility is via visible_personas() (project member,
+    or company-wide persona.list right) -- same pattern as ai-models/
+    agents/mcp-servers, not a blanket permission check.
+    """
     company = _company(request)
-    if not PermissionChecker.can(request.auth, "persona.list", company=company):
-        raise HttpError(403, "You don't have permission to view personas.")
-    return [_persona_out(p) for p in svc.list_personas(company)]
+    from nucleus.models import Project
+    project = Project.objects.filter(company=company, id=project_id, is_active=True).first()
+    if not project:
+        raise HttpError(404, "Project not found.")
+    return [_persona_out(p) for p in svc.list_personas(project, request.auth)]
 
 
 @router.post("/personas/", response=PersonaOut)

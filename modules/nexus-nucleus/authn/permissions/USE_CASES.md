@@ -144,7 +144,7 @@ Company-scoped `RoleAssignment`, and `RoleRight` confirms Admin includes
 
 Noaman wants Ali to be able to create Personas for the company, but
 doesn't want to make him a full Company Admin (which would also give
-him `company.remove_member`, `project.delete`, etc. — too much).
+him `company.remove_member`, `project.archive`, etc. — too much).
 
 ```python
 builder_role, _ = Role.objects.get_or_create(
@@ -206,19 +206,30 @@ ignored (or shown as text-only) instead of triggering a real AI call.
 
 ---
 
-## UC11 — Owner deletes a project (irreversible action)
+## UC11 — Project Admin archives a project (reversible action)
 
-Noaman, Owner of "Q3 Launch", deletes it.
+Sara, Project Admin on "Q3 Launch" (Project-scoped only, no company
+assignment), decides the project has wrapped up and archives it.
 
 ```python
-# workspace/api.py -> delete_project view
-if not PermissionChecker.can(request.auth, "project.delete", obj=project):
-    raise HttpError(403, "You don't have permission to delete this project.")
+# workspace/api.py -> archive_project view
+if not PermissionChecker.can(request.auth, "project.archive", obj=project):
+    raise HttpError(403, "You don't have permission to archive this project.")
+svc.archive_project(project)  # soft_delete() -- is_active=False, deleted_at=now
 ```
 
-`project.delete` is intentionally left out of `DEFAULT_ROLE_RIGHTS["Admin"]`
-— only Owner (and whatever custom role a company chooses to grant it
-to) can do this. An Admin, even a Company-scoped one, gets a 403.
+Unlike the old `project.delete` (removed -- there is no destructive,
+irreversible project action anymore), `project.archive` is `scope=PROJECT`
+and IS included in `DEFAULT_ROLE_RIGHTS["Admin"]`, so both a Company Admin
+and Sara, this project's own Project Admin, can reach it -- archiving
+isn't Owner-tier the way deletion used to be, since `SoftDeleteModel`
+already provides an (until now unused) `restore()` method making it
+reversible in principle. Member/Viewer never get it.
+
+Once archived, every existing mutation path already filters
+`is_active=True` (see `get_project_object`, `get_channel`, `get_topic`),
+so the project becomes read-only for free -- no separate enforcement
+needed. See UC18 for who can still *see* it.
 
 ---
 
@@ -237,3 +248,161 @@ return {"rights": sorted(rights)}
 
 One query pattern, the frontend just checks `"channel.create" in rights`
 before rendering the button.
+
+---
+
+## UC13 — Listing AI Models / Agents / MCP Servers / Personas you can see
+
+Ali is Project Member on "Q3 Launch" only, holds no company-wide
+assignment. He opens the project's AI panel.
+
+```python
+# intelligence/api.py -> list_ai_models / list_agents / list_mcp_servers_all
+return [_model_out(m) for m in svc.list_ai_models(company, request.auth)]
+```
+
+`svc.list_ai_models` calls `row_rules.visible_ai_models(user, company)`,
+same shape as `visible_projects`: broad case checks the company-wide
+`ai_model.list` right (Owner/Admin see everything), narrow case falls
+back to `_reachable_project_ids(user)` and filters models by their
+`projects` M2M. `visible_agents`/`visible_mcp_servers` are identical.
+`visible_personas(user, project)` is the one variant shaped differently
+-- Persona is single-project via a real FK, and the API always resolves
+one specific project first, so the function takes `(user, project)`
+rather than `(user, company)`.
+
+This is deliberately never a `can()` 403 at the API layer -- these four
+list endpoints always return `200` with a (possibly empty) list, never
+a `403`, because "can you see the list" and "what's actually on it" are
+answered by the same row-visibility function. (`list_personas` used to
+be the exception, gating on a blanket company-wide `persona.list` check
+before even calling the service -- fixed to match the other three.)
+
+---
+
+## UC14 — Company Admin creates an AI Model with an API key (Project Admin denied)
+
+Noaman (Company Admin) registers a new OpenAI model, providing a raw API key.
+
+```python
+# intelligence/api.py -> create_ai_model view
+if not PermissionChecker.can(request.auth, "ai_model.create", company=company):
+    raise HttpError(403, "You don't have permission to create AI models.")
+```
+
+`ai_model.create` stays `scope=COMPANY` on purpose -- creating a model
+means handling (and Fernet-encrypting) a real provider API key, so this
+never reaches down to a Project-scoped assignment, even a Project Admin.
+Sara, Project Admin on "Q3 Launch" only, gets a 403 on this exact call
+-- she can attach an existing model (UC15) but never create or delete
+one, and never touches a key.
+
+---
+
+## UC15 — Project Admin attaches an existing AI Model to their project
+
+Noaman already created the OpenAI model company-wide (UC14) but it's
+unattached -- invisible to every project until explicitly attached.
+Sara, Project Admin on "Q3 Launch" (Project-scoped only, no company
+assignment), wants her project to be able to use it.
+
+```python
+# intelligence/api.py -> attach_ai_model view
+if not PermissionChecker.can(request.auth, "ai_model.attach", obj=project):
+    raise HttpError(403, "You don't have permission to attach AI models to this project.")
+```
+
+`ai_model.attach` is a separate right from `ai_model.create`/`delete`,
+scoped to `PROJECT` -- it never touches the model's key, only the
+`projects` M2M visibility gate, so a Project Admin can reach it even
+though they can't reach `ai_model.create`. This is the split the design
+discussion landed on: "but not the keys, until you are project admin."
+
+---
+
+## UC16 — Project Admin creates/updates/deletes an Agent or MCP Server in their own project
+
+Sara (Project Admin on "Q3 Launch" only, no company-wide assignment)
+creates a new internal agent for her project.
+
+```python
+# intelligence/api.py -> create_agent view
+project = Project.objects.filter(company=company, id=payload.project_id, is_active=True).first()
+if not PermissionChecker.can(request.auth, "agent.create", obj=project):
+    raise HttpError(403, "You don't have permission to create AI agents in this project.")
+```
+
+Unlike `ai_model.create`, `agent.create`/`agent.delete`/`agent.update`
+and their `mcp_server.*` twins are `scope=PROJECT` -- an Agent/MCPServer
+belongs to exactly one project (see `AIAgent.projects`/`MCPServer.projects`,
+kept as an M2M structurally but restricted to one entry by app code), so
+that project's own Admin can manage it without needing a company-wide
+assignment. `_scope_chain()` in `checker.py` walks the object's
+`projects.first()` to produce a `[(PROJECT, project.id), (COMPANY,
+company.id)]` chain, which is what lets `obj=agent` reach Sara's
+Project-scoped `RoleAssignment` on `delete_agent`/`patch_agent` too --
+not just `create_agent`, which checks against the project directly
+since the agent doesn't exist yet.
+
+---
+
+## UC17 — Project Admin on one project cannot touch another project's Agent
+
+Sara is Project Admin on "Q3 Launch" only. Ali creates "Other Project"
+with its own agent, "Scout". Sara tries to delete it.
+
+```python
+# intelligence/api.py -> delete_agent view
+agent = svc.get_agent(company, agent_id)  # fetches "Scout"
+if not PermissionChecker.can(request.auth, "agent.delete", obj=agent):
+    raise HttpError(403, "You don't have permission to delete this AI agent.")
+```
+
+`_scope_chain(scout)` resolves to `[(PROJECT, other_project.id), (COMPANY,
+company.id)]` -- Sara's only `RoleAssignment` is anchored at
+"Q3 Launch", which never appears in that chain, so `_matching_assignments`
+finds nothing and `can()` returns `False`. Same isolation as UC3's
+project-to-project channel test, just reached through the M2M instead of
+a direct FK.
+
+---
+
+## UC18 -- Archiving a Channel/Topic, and viewing archived items
+
+Extends UC11 down two more levels. `channel.archive` (`scope=PROJECT`)
+and `topic.archive` (`scope=TOPIC`) work exactly like `project.archive`
+-- same reversible soft-delete mechanism, same Admin-reachable-including-
+Project-Admin default, same "read-only for free" enforcement:
+
+```python
+# workspace/api.py -> archive_channel view
+if not PermissionChecker.can(request.auth, "channel.archive", obj=channel):
+    raise HttpError(403, "You don't have permission to archive this channel.")
+svc.archive_channel(channel)
+```
+
+**The same right also gates seeing archived items**, instead of a
+separate `.view_archived` right for each resource -- one right, two
+jobs. `visible_projects`/`visible_channels`/`visible_topics` all take an
+`include_archived=False` kwarg; when `True`, each archived row in scope
+is included only if the caller passes `PermissionChecker.can(user,
+"<resource>.archive", obj=<that specific row>)` -- checked per-object via
+the shared `_with_archived()` helper in `row_rules.py`, not per-list.
+This is what makes "Company Owner/Admin sees every archived project,
+Sara (Project Admin) only sees archived items inside her own project,
+Member/Viewer never see archived items at all" fall out of the existing
+`can()` machinery with no new branching:
+
+```python
+# workspace/api.py -> list_projects view
+@router.get("/", response=List[ProjectOut])
+def list_projects(request, include_archived: bool = Query(default=False)):
+    company, user = _resolve(request)
+    return [_project_out(p) for p in svc.list_projects(company, user, include_archived=include_archived)]
+```
+
+Sara calling `GET /projects/?include_archived=true` sees "Q3 Launch"
+even after archiving it (she holds `project.archive` directly on it);
+Ali, a plain Member with no archive right anywhere, passes the same
+query param and gets back exactly what he'd have gotten without it --
+the param is a no-op for him, not a 403.

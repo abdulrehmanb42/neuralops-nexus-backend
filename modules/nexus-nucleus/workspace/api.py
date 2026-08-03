@@ -59,9 +59,9 @@ def _project_out(project) -> dict:
 # ── Projects ──────────────────────────────────────────────────────────────────
 
 @router.get("/", response=List[ProjectOut])
-def list_projects(request):
+def list_projects(request, include_archived: bool = Query(default=False)):
     company, user = _resolve(request)
-    return [_project_out(p) for p in svc.list_projects(company, user)]
+    return [_project_out(p) for p in svc.list_projects(company, user, include_archived=include_archived)]
 
 
 @router.post("/", response=ProjectOut)
@@ -86,25 +86,25 @@ def get_project(request, project_id: str):
 
 
 @router.delete("/{project_id}/")
-def delete_project(request, project_id: str):
+def archive_project(request, project_id: str):
     company, user = _resolve(request)
     # Fetch first (no permission filtering) so a 404 vs 403 distinction is
-    # possible: object doesn't exist at all, vs. exists but you can't delete it.
+    # possible: object doesn't exist at all, vs. exists but you can't archive it.
     project = svc.get_project_object(company, project_id)
     if not project:
         raise HttpError(404, "Project not found.")
-    if not PermissionChecker.can(user, "project.delete", obj=project):
-        raise HttpError(403, "You don't have permission to delete this project.")
-    svc.delete_project(project)
-    return {"ok": True, "message": f"Project '{project.name}' deleted."}
+    if not PermissionChecker.can(user, "project.archive", obj=project):
+        raise HttpError(403, "You don't have permission to archive this project.")
+    svc.archive_project(project)
+    return {"ok": True, "message": f"Project '{project.name}' archived."}
 
 
 # ── Channels ──────────────────────────────────────────────────────────────────
 
 @router.get("/{project_id}/channels/", response=List[ChannelOut])
-def list_channels(request, project_id: str):
+def list_channels(request, project_id: str, include_archived: bool = Query(default=False)):
     company, user, project = _resolve_project(request, project_id)
-    channels = svc.list_channels(user, project)
+    channels = svc.list_channels(user, project, include_archived=include_archived)
     return [{"id": str(c.id), "name": c.name, "slug": c.slug, "description": c.description} for c in channels]
 
 
@@ -117,15 +117,27 @@ def create_channel(request, project_id: str, payload: ChannelCreateRequest):
     return {"id": str(channel.id), "name": channel.name, "slug": channel.slug, "description": channel.description}
 
 
-# ── Topics ────────────────────────────────────────────────────────────────────
-
-@router.get("/{project_id}/channels/{channel_id}/topics/", response=List[TopicOut])
-def list_topics(request, project_id: str, channel_id: str):
+@router.post("/{project_id}/channels/{channel_id}/archive/", response={200: dict})
+def archive_channel(request, project_id: str, channel_id: str):
     company, user, project = _resolve_project(request, project_id)
     channel = svc.get_channel(company, project, channel_id)
     if not channel:
         raise HttpError(404, "Channel not found.")
-    topics = list(svc.list_topics(user, channel))
+    if not PermissionChecker.can(user, "channel.archive", obj=channel):
+        raise HttpError(403, "You don't have permission to archive this channel.")
+    svc.archive_channel(channel)
+    return {"ok": True, "message": f"Channel '{channel.name}' archived."}
+
+
+# ── Topics ────────────────────────────────────────────────────────────────────
+
+@router.get("/{project_id}/channels/{channel_id}/topics/", response=List[TopicOut])
+def list_topics(request, project_id: str, channel_id: str, include_archived: bool = Query(default=False)):
+    company, user, project = _resolve_project(request, project_id)
+    channel = svc.get_channel(company, project, channel_id)
+    if not channel:
+        raise HttpError(404, "Channel not found.")
+    topics = list(svc.list_topics(user, channel, include_archived=include_archived))
     unread_map = svc.get_topic_unread_map(user, topics)
     return [
         {
@@ -168,6 +180,21 @@ def update_topic(request, project_id: str, channel_id: str, topic_id: str, paylo
         "id": str(topic.id), "title": topic.title, "slug": topic.slug,
         "channel_id": str(topic.channel_id), "project_id": str(topic.project_id),
     }
+
+
+@router.post("/{project_id}/channels/{channel_id}/topics/{topic_id}/archive/", response={200: dict})
+def archive_topic(request, project_id: str, channel_id: str, topic_id: str):
+    company, user, project = _resolve_project(request, project_id)
+    channel = svc.get_channel(company, project, channel_id)
+    if not channel:
+        raise HttpError(404, "Channel not found.")
+    topic = svc.get_topic(company, project, channel, topic_id)
+    if not topic:
+        raise HttpError(404, "Topic not found.")
+    if not PermissionChecker.can(user, "topic.archive", obj=topic):
+        raise HttpError(403, "You don't have permission to archive this topic.")
+    svc.archive_topic(topic)
+    return {"ok": True, "message": f"Topic '{topic.title}' archived."}
 
 
 @router.post("/{project_id}/channels/{channel_id}/topics/{topic_id}/read/", response={200: dict}, tags=["Chat"])
