@@ -2,7 +2,9 @@
 Internal API — called by nexus-ai only, not exposed to users.
 Authenticated via X-Internal-API-Key header (set in INTERNAL_API_KEY env var).
 """
+
 import os
+from pydantic import Field
 from ninja import Router, Schema
 from ninja.errors import HttpError
 from ninja.security import APIKeyHeader
@@ -24,6 +26,7 @@ router = Router(tags=["Internal"], auth=internal_auth)
 
 
 # ── Response schemas ──────────────────────────────────────────────────────────
+
 
 class MCPServerInternal(Schema):
     id: str
@@ -47,7 +50,7 @@ class ModelInternal(Schema):
     provider: str
     model_id: str
     api_base: Optional[str] = None
-    api_key: Optional[str] = None        # decrypted — only sent over internal network
+    api_key: Optional[str] = None  # decrypted — only sent over internal network
     temperature: float
     max_tokens: int
     context_window: int
@@ -58,15 +61,15 @@ class ModelInternal(Schema):
 class PersonaInternal(Schema):
     id: str
     name: str
-    source_type: str                     # "model" or "agent"
+    source_type: str  # "model" or "agent"
     prompt: PromptInternal
     model: Optional[ModelInternal] = None
-    mcp_servers: list[MCPServerInternal] = []
+    mcp_servers: list[MCPServerInternal] = Field(default_factory=list)
 
 
 class ContextSourceInternal(Schema):
     id: str
-    type: str                            # "doc" or "code"
+    type: str  # "doc" or "code"
     label: str
     collection_id: str
 
@@ -80,6 +83,7 @@ class AIConfigInternal(Schema):
 
 # ── Endpoints ─────────────────────────────────────────────────────────────────
 
+
 @router.get("/personas/{persona_id}/", response=PersonaInternal)
 def get_persona_internal(request, persona_id: str):
     """
@@ -88,11 +92,11 @@ def get_persona_internal(request, persona_id: str):
     """
     from nucleus.models import Persona, MCPServer
 
-    persona = Persona.objects.filter(
-        id=persona_id, is_active=True
-    ).select_related(
-        "prompt", "model", "agent__mcp_server"
-    ).first()
+    persona = (
+        Persona.objects.filter(id=persona_id, is_active=True)
+        .select_related("prompt", "model", "agent__mcp_server")
+        .first()
+    )
 
     if not persona:
         raise HttpError(404, "Persona not found.")
@@ -141,15 +145,17 @@ def get_persona_internal(request, persona_id: str):
         # Collect all MCP servers linked to this agent's model
         if agent.mcp_server:
             s = agent.mcp_server
-            mcp_servers.append(MCPServerInternal(
-                id=str(s.id),
-                name=s.name,
-                server_type=s.server_type,
-                transport=s.transport,
-                url=s.url,
-                command=s.command,
-                config=s.config,
-            ))
+            mcp_servers.append(
+                MCPServerInternal(
+                    id=str(s.id),
+                    name=s.name,
+                    server_type=s.server_type,
+                    transport=s.transport,
+                    url=s.url,
+                    command=s.command,
+                    config=s.config,
+                )
+            )
 
     return PersonaInternal(
         id=str(persona.id),
@@ -198,9 +204,7 @@ def get_ai_config_internal(request, company_id: str):
     """
     from nucleus.models import CompanyAIConfig
 
-    config = CompanyAIConfig.objects.filter(
-        company__id=company_id
-    ).first()
+    config = CompanyAIConfig.objects.filter(company__id=company_id).first()
 
     if not config:
         raise HttpError(404, "AI config not found for this company.")
