@@ -701,6 +701,11 @@ def _serialise(msg) -> dict:
         "sender_name": sender_name,
         "sender_id": str(msg.sender_id) if msg.sender_id else None,
         "sender_type": getattr(msg.sender, "user_type", "human") if msg.sender else "system",
+        # Frozen at send-time (see create_ai_message) -- None for human/system
+        # messages. Lets two personas that have shared the same display name
+        # over time (e.g. a deleted-and-recreated "Nova") be told apart, even
+        # though sender_name alone can't distinguish them.
+        "persona_id": metadata.get("persona_id"),
         "sequence": msg.sequence,
         "created_at": msg.created_at.isoformat(),
     }

@@ -16,6 +16,9 @@ class MessageOut(Schema):
     sender_name: Optional[str] = None
     sender_id: Optional[str] = None
     sender_type: str
+    persona_id: Optional[str] = None  # frozen at send-time -- distinguishes two
+                                       # personas that have shared the same name
+                                       # over time (e.g. deleted + recreated "Nova")
     sequence: int
     created_at: str
 
