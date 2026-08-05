@@ -9,7 +9,7 @@ from .registry import OutputTypeRegistry, OutputTypeSpec
 
 # ── text ─────────────────────────────────────────────────────────────────────
 
-nexus - ai / apps / outOutputTypeRegistry.register(
+OutputTypeRegistry.register(
     OutputTypeSpec(
         name="text",
         render_as="text",

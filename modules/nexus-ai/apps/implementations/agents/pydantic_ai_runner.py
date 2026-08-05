@@ -12,14 +12,18 @@ Model routing via model_id prefix (LiteLLM convention):
 
 For M8 MCP integration: wrap with pydantic-ai Agent + mcp_servers here only.
 """
+
 from __future__ import annotations
 
 import logging
 import time
+import json
+import contextlib
 from typing import AsyncIterator
 
 import httpx
 import litellm
+from pydantic_ai.mcp import FastMCPClient
 
 from apps.interfaces.agent import AgentRunner
 from apps.schemas.trigger import TriggerJob, AgentEvent, ModelConfig
@@ -78,7 +82,9 @@ class PydanticAIRunner(AgentRunner):
                 # Accumulate usage from the final chunk (some providers send it there)
                 if hasattr(chunk, "usage") and chunk.usage:
                     prompt_tokens = getattr(chunk.usage, "prompt_tokens", 0) or 0
-                    completion_tokens = getattr(chunk.usage, "completion_tokens", 0) or 0
+                    completion_tokens = (
+                        getattr(chunk.usage, "completion_tokens", 0) or 0
+                    )
         except Exception as exc:
             status = "error"
             error_msg = str(exc)
@@ -112,9 +118,6 @@ class PydanticAIRunner(AgentRunner):
         Loop: call LLM (non-stream) → if tool_calls → execute via MCP → repeat
               → final answer → yield as message_delta.
         """
-        import contextlib
-        import json
-        from pydantic_ai.mcp import FastMCPClient
 
         model_config = job.persona.model
         current_messages = list(messages)
@@ -129,7 +132,9 @@ class PydanticAIRunner(AgentRunner):
             if s.transport == "stdio":
                 cmd_parts = (s.command or "").split()
                 if cmd_parts:
-                    client_configs.append({"command": cmd_parts[0], "args": cmd_parts[1:]})
+                    client_configs.append(
+                        {"command": cmd_parts[0], "args": cmd_parts[1:]}
+                    )
             else:  # http | sse | streamable-http
                 if s.url:
                     client_configs.append(s.url)
@@ -143,14 +148,17 @@ class PydanticAIRunner(AgentRunner):
                 for cfg in client_configs:
                     client = await stack.enter_async_context(FastMCPClient(cfg))
                     for t in await client.list_tools():
-                        all_tools.append({
-                            "type": "function",
-                            "function": {
-                                "name": t.name,
-                                "description": t.description or "",
-                                "parameters": t.inputSchema or {"type": "object", "properties": {}},
-                            },
-                        })
+                        all_tools.append(
+                            {
+                                "type": "function",
+                                "function": {
+                                    "name": t.name,
+                                    "description": t.description or "",
+                                    "parameters": t.inputSchema
+                                    or {"type": "object", "properties": {}},
+                                },
+                            }
+                        )
                         tool_client_map[t.name] = client
 
                 # Agentic tool-calling loop (max 10 rounds)
@@ -166,7 +174,9 @@ class PydanticAIRunner(AgentRunner):
 
                     if not tool_calls:
                         # No more tool calls — stream the final answer
-                        final_kwargs = _build_litellm_kwargs(model_config, current_messages)
+                        final_kwargs = _build_litellm_kwargs(
+                            model_config, current_messages
+                        )
                         final_response = await litellm.acompletion(**final_kwargs)
                         async for chunk in final_response:
                             delta = chunk.choices[0].delta.content or ""
@@ -180,21 +190,23 @@ class PydanticAIRunner(AgentRunner):
                         break
 
                     # Append assistant message with tool calls
-                    current_messages.append({
-                        "role": "assistant",
-                        "content": msg.content or "",
-                        "tool_calls": [
-                            {
-                                "id": tc.id,
-                                "type": "function",
-                                "function": {
-                                    "name": tc.function.name,
-                                    "arguments": tc.function.arguments,
-                                },
-                            }
-                            for tc in tool_calls
-                        ],
-                    })
+                    current_messages.append(
+                        {
+                            "role": "assistant",
+                            "content": msg.content or "",
+                            "tool_calls": [
+                                {
+                                    "id": tc.id,
+                                    "type": "function",
+                                    "function": {
+                                        "name": tc.function.name,
+                                        "arguments": tc.function.arguments,
+                                    },
+                                }
+                                for tc in tool_calls
+                            ],
+                        }
+                    )
 
                     # Execute each tool via MCP
                     for tc in tool_calls:
@@ -205,7 +217,11 @@ class PydanticAIRunner(AgentRunner):
                             try:
                                 args = json.loads(tc.function.arguments or "{}")
                                 result = await client.call_tool(tc.function.name, args)
-                                items = result if isinstance(result, list) else getattr(result, "content", [result])
+                                items = (
+                                    result
+                                    if isinstance(result, list)
+                                    else getattr(result, "content", [result])
+                                )
                                 content = "\n".join(
                                     item.text if hasattr(item, "text") else str(item)
                                     for item in items
@@ -213,11 +229,13 @@ class PydanticAIRunner(AgentRunner):
                             except Exception as exc:
                                 content = f"Tool error: {exc}"
 
-                        current_messages.append({
-                            "role": "tool",
-                            "content": content,
-                            "tool_call_id": tc.id,
-                        })
+                        current_messages.append(
+                            {
+                                "role": "tool",
+                                "content": content,
+                                "tool_call_id": tc.id,
+                            }
+                        )
 
         except Exception as exc:
             status = "error"
@@ -253,6 +271,7 @@ def _build_pydantic_model(model_config, settings):
     if model_config.provider == "local":
         from pydantic_ai.models.openai import OpenAIChatModel
         from pydantic_ai.providers.openai import OpenAIProvider
+
         return OpenAIChatModel(
             model_id,
             provider=OpenAIProvider(
@@ -270,14 +289,18 @@ def _build_pydantic_model(model_config, settings):
     if prefix == "anthropic":
         from pydantic_ai.models.anthropic import AnthropicModel
         from pydantic_ai.providers.anthropic import AnthropicProvider
+
         return AnthropicModel(
             bare_model,
-            provider=AnthropicProvider(api_key=api_key) if api_key else AnthropicProvider(),
+            provider=AnthropicProvider(api_key=api_key)
+            if api_key
+            else AnthropicProvider(),
         )
 
     # openai / azure / any OpenAI-compatible provider
     from pydantic_ai.models.openai import OpenAIChatModel
     from pydantic_ai.providers.openai import OpenAIProvider
+
     return OpenAIChatModel(
         bare_model,
         provider=OpenAIProvider(api_key=api_key) if api_key else OpenAIProvider(),
