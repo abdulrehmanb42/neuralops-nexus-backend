@@ -9,11 +9,15 @@ Usage:
     output_type = await classify_output_type("show me a pie chart of sales")
     # → "chart"
 """
+
 from __future__ import annotations
 
 import logging
 
 import numpy as np
+
+from apps.factories.embedding import EmbeddingFactory
+from .registry import OutputTypeRegistry
 
 log = logging.getLogger(__name__)
 
@@ -24,7 +28,6 @@ _centroids: dict[str, np.ndarray] | None = None  # type_name → mean embedding 
 def _get_embedder():
     global _embedder
     if _embedder is None:
-        from apps.factories.embedding import EmbeddingFactory
         _embedder = EmbeddingFactory.get()
     return _embedder
 
@@ -34,8 +37,6 @@ async def _build_centroids() -> dict[str, np.ndarray]:
     global _centroids
     if _centroids is not None:
         return _centroids
-
-    from apps.output_types.registry import OutputTypeRegistry
 
     embedder = _get_embedder()
     result: dict[str, np.ndarray] = {}
@@ -48,7 +49,9 @@ async def _build_centroids() -> dict[str, np.ndarray]:
             arr = np.array(vecs, dtype=np.float32)
             result[spec.name] = arr.mean(axis=0)
         except Exception as exc:
-            log.warning("[classifier] failed to embed prompts for type %s: %s", spec.name, exc)
+            log.warning(
+                "[classifier] failed to embed prompts for type %s: %s", spec.name, exc
+            )
 
     _centroids = result
     log.info("[classifier] built centroids for %d output types", len(result))
@@ -81,8 +84,7 @@ async def classify_output_type(prompt: str, threshold: float = 0.05) -> str:
         query_vec = np.array((await embedder.embed([prompt]))[0], dtype=np.float32)
 
         scores: dict[str, float] = {
-            name: _cosine(query_vec, centroid)
-            for name, centroid in centroids.items()
+            name: _cosine(query_vec, centroid) for name, centroid in centroids.items()
         }
 
         text_score = scores.get("text", 0.0)
@@ -94,7 +96,10 @@ async def classify_output_type(prompt: str, threshold: float = 0.05) -> str:
 
         log.debug(
             "[classifier] %r → %s (%.3f) text=%.3f",
-            prompt[:60], best_type, best_score, text_score,
+            prompt[:60],
+            best_type,
+            best_score,
+            text_score,
         )
         return best_type
 

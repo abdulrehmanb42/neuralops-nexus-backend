@@ -10,6 +10,7 @@ Assembles the final messages array for LiteLLM from:
 
 Returns a clean list[dict] ready for the LLM call.
 """
+
 from __future__ import annotations
 
 from apps.interfaces.vectorstore import Chunk
@@ -17,7 +18,6 @@ from apps.schemas.trigger import TriggerJob
 
 
 class PromptBuilder:
-
     def build(
         self,
         job: TriggerJob,
@@ -38,18 +38,22 @@ class PromptBuilder:
                 f"--- OUTPUT FORMAT INSTRUCTION ---\n"
                 f"{output_type_instruction}"
             )
-        messages.append({
-            "role": "system",
-            "content": system_content,
-        })
+        messages.append(
+            {
+                "role": "system",
+                "content": system_content,
+            }
+        )
 
         # 2. Context chunks — grouped and labelled by source
         if context_chunks:
             context_text = self._format_chunks(context_chunks)
-            messages.append({
-                "role": "user",
-                "content": f"[Relevant context from attached sources]\n\n{context_text}",
-            })
+            messages.append(
+                {
+                    "role": "user",
+                    "content": f"[Relevant context from attached sources]\n\n{context_text}",
+                }
+            )
             # When an output format is active, use a terse ack that doesn't
             # set a conversational tone — otherwise the model echoes it.
             context_ack = (
@@ -57,26 +61,40 @@ class PromptBuilder:
                 if output_type_instruction
                 else "I've reviewed the provided context. How can I help?"
             )
-            messages.append({
-                "role": "assistant",
-                "content": context_ack,
-            })
+            messages.append(
+                {
+                    "role": "assistant",
+                    "content": context_ack,
+                }
+            )
 
         # 3. Conversation history (role: user/assistant only — strip sender_name)
         #    For assistant messages that contain rendered HTML (charts, tables, diagrams),
         #    replace the raw HTML with a short placeholder. Sending full HTML blocks wastes
         #    tokens and confuses the model when asked to make follow-up modifications.
         for msg in job.history:
-            messages.append({
-                "role": msg.role,
-                "content": self._summarise_rendered(msg.content, msg.role),
-            })
+            content = self._summarise_rendered(msg.content, msg.role)
+
+            if (
+                msg.role == "assistant"
+                and getattr(msg, "sender_name", None)
+                and msg.sender_name != job.persona.name
+            ):
+                content = f"[Another Agent: {msg.sender_name}]\n{content}"
+            messages.append(
+                {
+                    "role": msg.role,
+                    "content": content,
+                }
+            )
 
         # 4. Current user message
-        messages.append({
-            "role": "user",
-            "content": job.message,
-        })
+        messages.append(
+            {
+                "role": "user",
+                "content": job.message,
+            }
+        )
 
         return messages
 
@@ -110,9 +128,7 @@ class PromptBuilder:
             language = chunk.metadata.get("language", "")
 
             if chunk_type == "code" and language:
-                parts.append(
-                    f"[From {label}]\n```{language}\n{chunk.text}\n```"
-                )
+                parts.append(f"[From {label}]\n```{language}\n{chunk.text}\n```")
             else:
                 parts.append(f"[From {label}]\n{chunk.text}")
 
