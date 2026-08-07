@@ -10,6 +10,7 @@ export interface ApiMessage {
   output_type?: string;  // M7: "text" | "chart" | "table" | "diagram" | ...
   sender_name: string;
   sender_id: string | null;
+  sender_avatar?: string | null;  // #148
   sender_type: string;
   sequence: number;
   created_at: string;
@@ -42,5 +43,18 @@ export async function sendMessage(
       method: "POST",
       body: JSON.stringify({ content }),
     },
+  );
+}
+
+// Broadcasts "I'm typing" to the topic -- call this throttled (not on every
+// keystroke) from MessageInput while there's text in the box. See #141.
+export async function sendTyping(
+  projectId: string,
+  channelId: string,
+  topicId: string,
+): Promise<void> {
+  await apiJson(
+    `/api/v1/projects/${projectId}/channels/${channelId}/topics/${topicId}/typing/`,
+    { method: "POST" },
   );
 }

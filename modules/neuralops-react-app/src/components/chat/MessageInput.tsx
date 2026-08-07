@@ -9,6 +9,7 @@ import { toast } from "sonner";
 import { inviteToProject } from "@/services/workspace.service";
 import { changeUsername } from "@/services/auth.service";
 import { attachFileContext } from "@/services/context.service";
+import { sendTyping } from "@/services/chat.service";
 import { listPersonas } from "@/services/personas.service";
 import { AddModelForm } from "./slash-commands/forms/AddModelForm";
 import { AddMCPForm } from "./slash-commands/forms/AddMCPForm";
@@ -67,13 +68,18 @@ const FORM_MAP: Record<string, ActiveForm> = {
   "/list-personas": "list-personas",
 };
 
+// Minimum gap between typing pings sent to the server -- avoids firing on
+// every single keystroke. See #141.
+const TYPING_THROTTLE_MS = 2500;
+
 export function MessageInput({
-  disabled, onSend, placeholder, projectId, topicId,
+  disabled, onSend, placeholder, projectId, channelId, topicId,
 }: {
   disabled?: boolean;
   onSend?: (text: string, file?: File) => void;
   placeholder?: string;
   projectId?: string;
+  channelId?: string | null;
   topicId?: string | null;
 }) {
   const [text, setText] = useState("");
@@ -89,6 +95,7 @@ export function MessageInput({
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const contextFileInputRef = useRef<HTMLInputElement>(null);
+  const lastTypingSentRef = useRef(0);
 
   useEffect(() => {
     listPersonas()
@@ -106,6 +113,17 @@ export function MessageInput({
   function handleChange(e: React.ChangeEvent<HTMLTextAreaElement>) {
     const v = e.target.value;
     setText(v);
+
+    // Throttled "I'm typing" broadcast -- only while there's real content,
+    // and at most once per TYPING_THROTTLE_MS regardless of keystroke rate.
+    if (v.trim() && projectId && channelId && topicId) {
+      const now = Date.now();
+      if (now - lastTypingSentRef.current >= TYPING_THROTTLE_MS) {
+        lastTypingSentRef.current = now;
+        sendTyping(projectId, channelId, topicId).catch(() => {});
+      }
+    }
+
     const upto = v.slice(0, e.target.selectionStart);
     const mentionMatch = upto.match(/@(\w*)$/);
     if (mentionMatch) {

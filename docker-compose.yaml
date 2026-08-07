@@ -104,11 +104,19 @@ services:
       - EMBEDDING_BASE_URL=${EMBEDDING_BASE_URL:-}
       - OLLAMA_BASE_URL=${OLLAMA_BASE_URL:-http://nexus-ollama:11434}
       - INTERNAL_API_KEY=${INTERNAL_API_KEY}
+      # nexus-ai calls back into nucleus for persona/history resolution
+      # (#131) -- "nucleus" is nucleus's Compose *service* name, the one
+      # DNS name Compose actually guarantees resolves on this network.
+      # nucleus's container_name (nexus-nucleus) is NOT reliably the same
+      # thing -- see the #131 test-run incident where this was missing
+      # entirely and every AI trigger died with a DNS resolution error.
+      - NEXUS_NUCLEUS_URL=${NEXUS_NUCLEUS_URL:-http://nucleus:8000}
       - PYTHONPATH=/nexus-ai
     networks:
       - nexus-network
     depends_on:
       - chromadb
+      - nucleus
     working_dir: /nexus-ai
     command: >
       sh -c "export PYTHONPATH=$PYTHONPATH:/nexus-ai &&

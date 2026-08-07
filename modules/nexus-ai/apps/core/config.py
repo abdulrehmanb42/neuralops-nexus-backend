@@ -47,7 +47,19 @@ class Settings(BaseSettings):
     INTERNAL_API_KEY: str = "change-me-in-production"
 
     # ── nexus-nucleus base URL (nexus-ai → nexus-nucleus calls) ───────────────
-    NEXUS_NUCLEUS_URL: str = "http://nexus-nucleus:8000"
+    # "nucleus" -- nucleus's docker-compose *service* name, not its
+    # container_name (nexus-nucleus). Compose only guarantees the service
+    # name resolves over the network's embedded DNS; container_name is
+    # just a docker ps label unless it happens to also line up. Override
+    # via env var in non-Compose setups.
+    NEXUS_NUCLEUS_URL: str = "http://nucleus:8000"
+
+    # ── Prompt tuning ─────────────────────────────────────────────────────────
+    # How many past messages to pull as conversation history per trigger.
+    # Lives here, not in nexus-nucleus, on purpose -- this is a prompt-quality
+    # knob (see apps/managers/nucleus_client.py:fetch_history), tunable without
+    # a nexus-nucleus deploy.
+    HISTORY_DEPTH: int = 20
 
     class Config:
         env_file = ".env"

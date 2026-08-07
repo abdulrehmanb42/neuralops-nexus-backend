@@ -1,4 +1,4 @@
-from typing import Literal, Optional
+from typing import Optional
 
 from ninja import Schema
 
@@ -26,23 +26,6 @@ class ExternalIdentityOut(Schema):
 class SignInResponse(Schema):
     user: LocalUserOut
     external_identity: ExternalIdentityOut
-
-
-# ── Device activation flow ──────────────────────────────────────────────────
-
-class AuthInitResponse(Schema):
-    status: Literal["authenticated", "unauthenticated"]
-    email: Optional[str] = None
-    user_id: Optional[str] = None
-    session_expires_at: Optional[str] = None
-    login_url: Optional[str] = None
-
-
-class AuthStatusResponse(Schema):
-    status: Literal["pending", "active", "session_expired"]
-    email: Optional[str] = None
-    user_id: Optional[str] = None
-    session_expires_at: Optional[str] = None
 
 
 # ── Server connection verify ─────────────────────────────────────────────────

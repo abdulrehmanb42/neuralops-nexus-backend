@@ -4,13 +4,21 @@ Chat API — human-to-human messaging + AI trigger (M3 + M7 + M7.1).
 Flow:
     POST /messages/
         1. Validate project / channel / topic membership
-        2. Save message to DB (sender = authenticated user)
-        3. Fire-and-forget async publish to Centrifugo topic:{topic_id}
-        4. Fire-and-forget async embed to nexus-ai (M2)
-        5. Detect @session / @session close directive (M7.1)
-        6. Detect @output_type directive (M7) — strip from message, pass to trigger
-        7. Detect ALL @persona mentions (M3 + M7.1)
-        8. Apply session routing priority (M7.1):
+        2. Parse every @directive up front (chat/services.py:MessageDirectives)
+           — @session, @session close, @output_type, @persona mentions
+        3. Save message to DB (sender = authenticated user, raw text
+           with @directives intact, so the sender sees what they typed)
+        4. Fire-and-forget async embed to nexus-ai (M2), right after the
+           save — uses the directive-stripped text, not the raw
+           @session/@chart control directives, since those aren't
+           meaningful content to search on. Whether this should skip
+           firing based on the eventual routing outcome is a separate,
+           still-open question (#128) — not entangled with save/publish
+           ordering for now
+        5. Fire-and-forget async publish to Centrifugo topic:{topic_id}
+        6. Resolve @mentions to Persona objects (M3 + M7.1)
+        7. Apply session routing priority (M7.1), using the directives
+           parsed in step 2:
               (a) @session close                → close session, no AI trigger
               (b) @mentions + @session          → close old, open new session,
                                                   trigger mentioned personas
@@ -18,37 +26,29 @@ Flow:
                                                   session unchanged
               (d) no @mention, session active   → trigger all session personas
               (e) no @mention, no session       → no AI trigger
-        9. Return immediately — React receives the message via WebSocket
+        8. Return immediately — React receives the message via WebSocket
 
     GET /messages/
-        Return last 100 messages (history) when a topic is opened.
+        Return up to `limit` messages (default 100), oldest first. Pass
+        before_sequence to page further back in history -- see
+        chat/services.py:list_messages.
 """
 import asyncio
 import logging
-import re
-from typing import List
+from typing import List, Optional
 
 logger = logging.getLogger(__name__)
 
 from asgiref.sync import sync_to_async
-from ninja import Router
+from ninja import Query, Router
 from ninja.errors import HttpError
 
 from authn.auth import SupabaseBearer
 from chat.schema import MessageOut, SendMessageIn, SendMessageOut
 from chat import services as chat_svc
+from chat.services import MessageDirectives
 from workspace import services as ws_svc
 from intelligence import services as intel_svc
-
-# Matches @Word — finds ALL @mentions in the message.
-# @session and @session close are stripped before this regex runs.
-_MENTION_RE = re.compile(r'@([\w]+)')
-
-# Reserved keywords that are never persona names.
-_RESERVED = frozenset({
-    "session", "close",
-    "text", "code", "chart", "html", "table", "diagram", "form", "terminal",
-})
 
 router = Router(tags=["Chat"], auth=SupabaseBearer())
 
@@ -56,7 +56,18 @@ router = Router(tags=["Chat"], auth=SupabaseBearer())
 # ── Helpers ────────────────────────────────────────────────────────────────────
 
 def _resolve_topic_sync(request, project_id: str, channel_id: str, topic_id: str):
-    """Resolve and validate all path params — raises HttpError on any miss."""
+    """
+    Resolve and validate all path params — raises HttpError on any miss.
+
+    Channel/topic are resolved through list_channels()/list_topics() (the
+    same visible_channels/visible_topics row-visibility used by the sidebar
+    list endpoints in workspace/api.py) rather than a plain ID lookup, so a
+    channel or topic this user can't see can't be reached here either just
+    because they're a member of the parent project. See the git history /
+    prior chat discussion for the still-open half of this: a user with
+    ONLY a Topic-scoped RoleAssignment (no Project-scope role) still fails
+    the project.view check below before we even get here.
+    """
     user = request.auth
     company = ws_svc.get_company()
     if not company:
@@ -66,11 +77,11 @@ def _resolve_topic_sync(request, project_id: str, channel_id: str, topic_id: str
     if not project:
         raise HttpError(404, "Project not found.")
 
-    channel = ws_svc.get_channel(company, project, channel_id)
+    channel = ws_svc.list_channels(user, project).filter(id=channel_id).first()
     if not channel:
         raise HttpError(404, "Channel not found.")
 
-    topic = ws_svc.get_topic(company, project, channel, topic_id)
+    topic = ws_svc.list_topics(user, channel).filter(id=topic_id).first()
     if not topic:
         raise HttpError(404, "Topic not found.")
 
@@ -81,7 +92,6 @@ _resolve_topic = sync_to_async(_resolve_topic_sync)
 _list_messages = sync_to_async(chat_svc.list_messages)
 _save_user_message = sync_to_async(chat_svc.save_user_message)
 _get_persona_by_mention = sync_to_async(intel_svc.get_persona_by_mention)
-_list_messages_sync = sync_to_async(chat_svc.list_messages)
 _get_active_session = sync_to_async(chat_svc.get_active_session)
 _create_session = sync_to_async(chat_svc.create_session)
 _close_session = sync_to_async(chat_svc.close_session)
@@ -110,16 +120,48 @@ async def list_messages(
     project_id: str,
     channel_id: str,
     topic_id: str,
+    limit: int = Query(default=100, le=200),
+    before_sequence: Optional[int] = Query(default=None),
 ):
     """
-    Return the last 100 messages in a topic, oldest first.
-    Called by React on topic open to populate history.
+    Return up to `limit` messages in a topic, oldest first. Called by React
+    on topic open to populate history (no before_sequence -- gets the most
+    recent `limit`), and again on scroll-to-top with before_sequence set
+    to the oldest loaded message's sequence, to page further back.
+
+    Resolving the topic here is purely the visibility/permission check
+    (project.view / channel.list / topic.list) -- the returned objects
+    aren't otherwise needed, since the actual message query below just
+    uses the already-known, now-validated topic_id.
     """
     await _resolve_topic(request, project_id, channel_id, topic_id)
-    return await _list_messages(topic_id)
+    return await _list_messages(topic_id, limit=limit, before_sequence=before_sequence)
 
 
 # ── POST /messages/ — send message ────────────────────────────────────────────
+
+@router.post("/{project_id}/channels/{channel_id}/topics/{topic_id}/typing/")
+async def send_typing(request, project_id: str, channel_id: str, topic_id: str):
+    """
+    Fire-and-forget: broadcast a user_typing event to everyone else
+    subscribed to this topic's Centrifugo channel. Called by
+    MessageInput.tsx, throttled client-side while there's text in the box
+    -- no server-side rate limiting needed on top of that. No DB write;
+    purely a Centrifugo publish. Receiving clients expire the indicator
+    themselves after a few seconds of no further pings -- there's no
+    explicit "stopped typing" counterpart event. See #141.
+    """
+    company, user, project, channel, topic = await _resolve_topic(
+        request, project_id, channel_id, topic_id
+    )
+    asyncio.create_task(chat_svc.publish_async(chat_svc.topic_channel(topic_id), {
+        "type": "user_typing",
+        "id": str(user.id),
+        "name": user.get_display_name(),
+        "avatar": user.get_avatar_url(),
+    }))
+    return {"ok": True}
+
 
 @router.post(
     "/{project_id}/channels/{channel_id}/topics/{topic_id}/messages/",
@@ -137,31 +179,36 @@ async def send_message(
 
     Both publish and embed are fire-and-forget (asyncio.create_task) so this
     endpoint returns immediately — latency stays low regardless of AI/Centrifugo.
+
+    Content is already validated + stripped by SendMessageIn's own field
+    validator (chat/schema.py) before this function ever runs -- no empty-
+    check or length-check here, and payload.content is used as-is below,
+    not re-stripped.
     """
-    if not payload.content.strip():
-        raise HttpError(400, "Message content cannot be empty.")
-
-    if len(payload.content) > 4000:
-        raise HttpError(400, "Message too long (max 4000 characters). Attach large text as a context source.")
-
     company, user, project, channel, topic = await _resolve_topic(
         request, project_id, channel_id, topic_id
     )
 
-    # 1. Save to DB (original message with @directives intact for display)
+    # 1. Parse every @directive up front -- see chat/services.py:MessageDirectives.
+    #    Everything below just reads these fields; nothing parses text itself.
+    directives = MessageDirectives(payload.content)
+
+    # 2. Save to DB (original message with @directives intact for display)
     msg = await _save_user_message(
         company=company,
         project=project,
         topic=topic,
         user=user,
-        content=payload.content.strip(),
+        content=payload.content,
     )
 
-    # 2. Publish to Centrifugo — fire and forget
-    centrifugo_channel = chat_svc.topic_channel(topic_id)
-    asyncio.create_task(chat_svc.publish_async(centrifugo_channel, msg))
-
-    # 3. Embed to nexus-ai — fire and forget (M2)
+    # 3. Embed to nexus-ai — fire and forget (M2), right after the save.
+    #    Uses the directive-stripped text (session/output_type control
+    #    directives removed), not the raw content, since those directives
+    #    aren't meaningful semantic content to search on later. Whether
+    #    this should skip firing based on the routing outcome (e.g. a
+    #    pure @session close) is a separate, still-open question -- see
+    #    #128 -- deliberately not entangled with save/publish ordering.
     asyncio.create_task(
         chat_svc.embed_message_async(
             message_id=msg["id"],
@@ -173,27 +220,18 @@ async def send_message(
             sender_id=msg["sender_id"],
             sender_name=msg["sender_name"],
             sender_type=msg["sender_type"],
-            content=msg["content"],
+            content=directives.clean_message,
             created_at=msg["created_at"],
         )
     )
 
-    # 4. M7.1: Extract @session directive first (before output_type or mention parsing)
-    has_session_open, is_session_close, after_session = chat_svc.extract_session_directive(
-        payload.content.strip()
-    )
+    # 4. Publish to Centrifugo — fire and forget
+    centrifugo_channel = chat_svc.topic_channel(topic_id)
+    asyncio.create_task(chat_svc.publish_async(centrifugo_channel, msg))
 
-    # 5. M7: Extract @output_type directive
-    #    e.g. "@Nova show me sales @chart" → output_type="chart", clean="@Nova show me sales"
-    output_type, clean_message = chat_svc.extract_output_type(after_session)
-
-    # 6. M7.1: Collect ALL @persona mentions (filter out reserved keywords)
-    raw_mentions = _MENTION_RE.findall(clean_message)  # list of names
-    mention_names = [n for n in raw_mentions if n.lower() not in _RESERVED]
-
-    # Resolve mentions to Persona objects (parallel)
+    # 5. Resolve @mentions to Persona objects (parallel)
     mentioned_personas = []
-    for name in mention_names:
+    for name in directives.mention_names:
         # Personas are project-owned -- scoped to this topic's project, not
         # the whole company (see intelligence/services.py:get_persona_by_mention).
         p = await _get_persona_by_mention(project, name)
@@ -201,9 +239,9 @@ async def send_message(
             mentioned_personas.append(p)
             logger.info("[chat/api] mention=%s resolved persona=%s", name, p)
 
-    # 7. M7.1: Apply session routing priority
+    # 6. Apply session routing priority
 
-    if is_session_close:
+    if directives.is_session_close:
         # Rule 1: @session close — close session, no AI trigger
         closed = await _close_session(user.id, topic.id)
         logger.warning("[chat/api] session closed user=%s topic=%s found=%s", user.id, topic_id, closed)
@@ -215,7 +253,7 @@ async def send_message(
             centrifugo_channel, {**sys_msg, "type": "message"}
         ))
 
-    elif mentioned_personas and has_session_open:
+    elif mentioned_personas and directives.has_session_open:
         # Rule 2: @mentions + @session — open new session with mentioned personas
         timeout = await _get_session_timeout(company)
         await _create_session(user, topic, mentioned_personas, timeout)
@@ -232,15 +270,14 @@ async def send_message(
             centrifugo_channel, {**sys_msg, "type": "message"}
         ))
         # Only trigger personas if there is actual content beyond the @mention
-        user_content = _MENTION_RE.sub("", clean_message).strip()
-        if user_content:
+        if directives.message_without_mentions():
             await _trigger_personas(mentioned_personas, company, project, topic,
-                                     topic_id, msg, clean_message, output_type)
+                                     topic_id, msg, directives.clean_message, directives.output_type)
 
     elif mentioned_personas:
         # Rule 3: @mentions (no @session) — trigger only mentioned, session unchanged
         await _trigger_personas(mentioned_personas, company, project, topic,
-                                 topic_id, msg, clean_message, output_type)
+                                 topic_id, msg, directives.clean_message, directives.output_type)
 
     else:
         # Rules 4 + 5: no explicit mention — check session
@@ -253,10 +290,10 @@ async def send_message(
                 [p.name for p in session_personas],
             )
             await _trigger_personas(session_personas, company, project, topic,
-                                     topic_id, msg, clean_message, output_type)
+                                     topic_id, msg, directives.clean_message, directives.output_type)
         # Rule 5: no mention, no session — human-only message, nothing to do
 
-    # 8. Return immediately
+    # 7. Return immediately
     return {
         "message": msg,
         "channel": centrifugo_channel,
@@ -275,39 +312,17 @@ async def _trigger_personas(
 ) -> None:
     """
     Fire AI trigger tasks for each persona in parallel.
-    Builds history once and spawns one asyncio task per persona.
-    Only triggers personas that have a model (source_type=model for now;
-    source_type=agent handled in M8).
+    Spawns one asyncio task per persona. Only triggers personas that have
+    a model configured (source_type=model for now; source_type=agent
+    handled in M8) -- a cheap existence check, not a judgment about the
+    model's actual configuration, so it stays here.
+
+    History is NOT built here anymore -- nexus-ai fetches and filters it
+    itself, per persona, right before building that persona's prompt (see
+    #131). This function's only job is deciding WHO to trigger.
     """
     if not personas:
         return
-
-    # Build history once (shared across all persona triggers)
-    raw_history = await _list_messages_sync(topic_id, limit=20)
-    ai_history = []
-    for m in raw_history:
-        # Skip the message we just saved (sent separately as user_message)
-        if m["id"] == msg["id"]:
-            continue
-        if not m["content"]:
-            continue
-        role = "user" if m["sender_type"] == "human" else "assistant"
-        render_as = m.get("render_as", "text")
-        output_type_val = m.get("output_type", "text")
-        content = m["content"].strip()
-        if role == "assistant":
-            _VISUAL_TYPES = {"chart", "table", "diagram", "html", "form"}
-            if render_as == "html" and not (
-                content.startswith("<!DOCTYPE") or content.startswith("<html")
-            ):
-                continue
-            if output_type_val in _VISUAL_TYPES and render_as == "text":
-                continue
-        ai_history.append({
-            "role": role,
-            "content": m["content"],
-            "sender_name": m["sender_name"],
-        })
 
     for persona in personas:
         source_type = getattr(persona, "source_type", "model")
@@ -326,7 +341,7 @@ async def _trigger_personas(
                 topic=topic,
                 persona=persona,
                 user_message=clean_message,
-                history=ai_history,
+                user_message_id=msg["id"],
                 topic_id=topic_id,
                 output_type=output_type,
             )

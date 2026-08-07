@@ -101,7 +101,11 @@ export function MessageItem({ message }: { message: ChatMessage }) {
           })()}
         </div>
         <div className="mt-1">
-          <Renderer message={message} />
+          {message.isError ? (
+            <p className="text-sm text-destructive">{message.content}</p>
+          ) : (
+            <Renderer message={message} />
+          )}
           {message.isStreaming && (
             <span className="ml-0.5 inline-block h-3 w-1.5 animate-pulse bg-foreground align-middle" />
           )}

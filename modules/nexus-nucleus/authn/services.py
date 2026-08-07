@@ -2,8 +2,6 @@ import logging
 import random
 import re
 
-import httpx
-from django.conf import settings
 from django.contrib.auth import get_user_model
 from django.db import transaction
 from django.utils import timezone
@@ -43,6 +41,63 @@ def assign_display_name(user) -> str:
     user.display_name = candidate
     user.save(update_fields=["display_name"])
     return candidate
+
+
+def assign_avatar(user) -> str | None:
+    """
+    Auto-assign a random avatar from the preset pool (see #148), mirroring
+    assign_display_name()'s "skip if already set" idempotency.
+
+    Pool must be pre-seeded once via `python manage.py seed_avatars`, which
+    caches DiceBear-generated PNGs under MEDIA_ROOT/avatars/pool/<kind>/ --
+    a different style for humans vs personas so identity type is visually
+    distinguishable at a glance.
+
+    Best-effort unique: prefers a pool file not already used by another
+    active user, falling back to any pool file (allowing reuse) once the
+    pool is exhausted -- uniqueness is a nice-to-have here, not enforced.
+
+    Called for both real users (auth_verify(), on invite-accept and as a
+    fallback) and personas (create_persona()'s shadow_user, since a persona
+    is "the same as a User, just model-backed" -- see #148 discussion).
+
+    Returns the assigned relative avatar path, or None if the pool hasn't
+    been seeded yet / is empty for this user's kind.
+    """
+    # Already has one — skip
+    if user.avatar:
+        return user.avatar.name
+
+    import random
+    from pathlib import Path
+    from django.conf import settings
+
+    kind = "persona" if user.user_type == User.UserType.PERSONA else "human"
+    pool_dir = Path(settings.MEDIA_ROOT) / "avatars" / "pool" / kind
+
+    if not pool_dir.is_dir():
+        logger.warning(
+            "[assign_avatar] pool dir missing: %s -- run `python manage.py seed_avatars` first",
+            pool_dir,
+        )
+        return None
+
+    available = sorted(p.name for p in pool_dir.glob("*.png"))
+    if not available:
+        logger.warning("[assign_avatar] pool dir empty: %s", pool_dir)
+        return None
+
+    taken = set(
+        User.objects.filter(is_active=True, avatar__startswith=f"avatars/pool/{kind}/")
+        .exclude(pk=user.pk)
+        .values_list("avatar", flat=True)
+    )
+    unused = [f for f in available if f"avatars/pool/{kind}/{f}" not in taken]
+    chosen = random.choice(unused) if unused else random.choice(available)
+
+    user.avatar.name = f"avatars/pool/{kind}/{chosen}"
+    user.save(update_fields=["avatar"])
+    return user.avatar.name
 
 
 # =========================================================
@@ -182,6 +237,17 @@ def auth_verify(access_token: str) -> dict:
             invited_by=invitation.invited_by,
         )
         assign_display_name(user)
+        assign_avatar(user)
+
+        # Real permission grant -- CompanyAccess above is just the legacy
+        # "is this person a member" flag; PermissionChecker only ever reads
+        # RoleAssignment. Without this, an accepted invite still leaves the
+        # person with zero real rights. See #120.
+        from authn.permissions.checker import PermissionChecker
+        from authn.permissions.models import Role
+        company_role = Role.objects.filter(company=company, name=invitation.role.capitalize()).first()
+        if company_role:
+            PermissionChecker.assign_role(user, company_role, company, granted_by=invitation.invited_by)
 
         # Add to corresponding Django group
         try:
@@ -202,6 +268,7 @@ def auth_verify(access_token: str) -> dict:
 
     # ── Assign display name if not yet set ────────────────────────────────
     assign_display_name(user)
+    assign_avatar(user)
 
     # ── Update current_company if not set ──────────────────────────────────
     if user.current_company_id != company.id:
@@ -229,10 +296,24 @@ def auth_verify(access_token: str) -> dict:
 # =========================================================
 
 def _add_user_to_invited_project(company, user, invitation):
-    """Add a newly accepted user to the project they were invited from."""
-    from nucleus.models import Project, ProjectMember
+    """
+    Finish the project/topic half of an accepted invite.
 
-    project_id = (invitation.access_payload or {}).get("project_id")
+    Reads what was promised in invitation.access_payload -- stashed by
+    workspace/services.py:invite_to_project() when this person was brand
+    new -- and grants BOTH the legacy row (ProjectMember/TopicParticipant)
+    AND the real RoleAssignment the RBAC system checks. Mirrors the
+    existing-member path inside invite_to_project() itself, step for
+    step. If access_payload has no project_id, this was a system-only
+    invite (e.g. POST /members/invite/) -- nothing more to grant. See #120.
+    """
+    from nucleus.models import Project, ProjectMember, ChatTopic
+    from authn.permissions.checker import PermissionChecker
+    from authn.permissions.models import Role
+    from workspace.services import _add_to_topic
+
+    payload = invitation.access_payload or {}
+    project_id = payload.get("project_id")
     if not project_id:
         return
 
@@ -247,104 +328,29 @@ def _add_user_to_invited_project(company, user, invitation):
     if not member.is_active:
         member.is_active = True
         member.save(update_fields=["is_active"])
-    logger.info("[invite] user=%s added to project=%s", user.email, project.name)
+
+    project_role = Role.objects.filter(company=company, name=invitation.role.capitalize()).first()
+    scope = payload.get("scope", "project")
+    topic_id = payload.get("topic_id")
+
+    if scope == "topic" and topic_id:
+        _add_to_topic(company, project, topic_id, user, invitation.role)
+        topic = ChatTopic.objects.filter(
+            company=company, project=project, id=topic_id, is_active=True
+        ).first()
+        if topic and project_role:
+            PermissionChecker.assign_role(user, project_role, topic, granted_by=invitation.invited_by)
+    elif project_role:
+        PermissionChecker.assign_role(user, project_role, project, granted_by=invitation.invited_by)
+
+    logger.info("[invite] user=%s added to project=%s (scope=%s)", user.email, project.name, scope)
 
 
 # =========================================================
-# Device activation flow
+# Device activation flow — REMOVED
 # =========================================================
-
-class DeviceAuthError(Exception):
-    pass
-
-
-def _register_device_in_supabase(device_id: str) -> None:
-    try:
-        response = httpx.post(
-            settings.SUPABASE_DEVICE_REQUEST_URL,
-            json={"device_id": device_id, "device_name": "NeuralOps Desktop"},
-            headers={
-                "Authorization": f"Bearer {settings.SUPABASE_ANON_KEY}",
-                "X-NeuralOps-Token": settings.NEURALOPS_INSTALL_TOKEN,
-                "Content-Type": "application/json",
-            },
-            timeout=15,
-        )
-        response.raise_for_status()
-        logger.info("[device_auth] Registered device_id=%s with Supabase", device_id)
-    except httpx.HTTPStatusError as exc:
-        raise DeviceAuthError(
-            f"Supabase device-request returned {exc.response.status_code}: {exc.response.text}"
-        ) from exc
-    except Exception as exc:
-        raise DeviceAuthError(f"Failed to reach Supabase: {exc}") from exc
-
-
-def auth_init() -> dict:
-    from .models import DeviceSession
-    from .tasks import poll_device_activation
-
-    session = DeviceSession.objects.first()
-
-    if session and session.status == DeviceSession.STATUS_ACTIVE:
-        if session.session_expires_at and session.session_expires_at > timezone.now():
-            return {
-                "status": "authenticated",
-                "email": session.email,
-                "user_id": session.user_id,
-                "session_expires_at": session.session_expires_at.isoformat(),
-            }
-        else:
-            session.status = DeviceSession.STATUS_EXPIRED
-            session.save(update_fields=["status", "updated_at"])
-
-    if session and session.status == DeviceSession.STATUS_PENDING:
-        login_url = f"{settings.NEURALOPS_PORTAL_URL}/login?device_id={session.device_id}"
-        return {"status": "unauthenticated", "login_url": login_url}
-
-    if session:
-        device_id = str(session.device_id)
-        _register_device_in_supabase(device_id)
-        session.status = DeviceSession.STATUS_PENDING
-        session.user_id = None
-        session.email = None
-        session.session_expires_at = None
-        session.celery_task_id = None
-        session.save()
-    else:
-        session = DeviceSession.objects.create()
-        device_id = str(session.device_id)
-        _register_device_in_supabase(device_id)
-
-    task = poll_device_activation.delay(device_id)
-    session.celery_task_id = task.id
-    session.save(update_fields=["celery_task_id", "updated_at"])
-
-    login_url = f"{settings.NEURALOPS_PORTAL_URL}/login?device_id={device_id}"
-    return {"status": "unauthenticated", "login_url": login_url}
-
-
-def auth_status() -> dict:
-    from .models import DeviceSession
-
-    session = DeviceSession.objects.first()
-    if not session:
-        return {"status": "pending"}
-
-    if session.status == DeviceSession.STATUS_ACTIVE:
-        if session.session_expires_at and session.session_expires_at > timezone.now():
-            return {
-                "status": "active",
-                "email": session.email,
-                "user_id": session.user_id,
-                "session_expires_at": session.session_expires_at.isoformat(),
-            }
-        else:
-            session.status = DeviceSession.STATUS_EXPIRED
-            session.save(update_fields=["status", "updated_at"])
-            return {"status": "session_expired"}
-
-    if session.status == DeviceSession.STATUS_EXPIRED:
-        return {"status": "session_expired"}
-
-    return {"status": "pending"}
+# auth_init(), auth_status(), DeviceAuthError, and _register_device_in_supabase()
+# used to live here. Removed: the frontend never called /auth/init/ or
+# /auth/status/ — it signs in via Supabase directly and calls auth_verify()
+# (above) instead. See git history to revive if device-poll login is needed
+# later (e.g. a CLI client without a browser).

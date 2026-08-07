@@ -6,6 +6,7 @@ export interface Member {
   role: "owner" | "admin" | "member" | "viewer";
   invited_by: string | null;
   joined_at: string;
+  avatar?: string | null;  // #148
 }
 
 export interface InvitePayload {

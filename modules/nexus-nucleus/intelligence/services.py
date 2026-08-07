@@ -299,6 +299,10 @@ def create_persona(company, user, data: dict) -> "Persona":
         user_type="persona",
         is_active=True,
     )
+    # Same identity-level helper real users get on join -- a persona is
+    # "the same as a User, just model-backed" (see #148 discussion).
+    from authn.services import assign_avatar
+    assign_avatar(shadow_user)
 
     persona = Persona.objects.create(
         company=company,

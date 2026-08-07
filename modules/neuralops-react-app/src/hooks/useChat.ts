@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { toast } from "sonner";
 import {
   listMessages,
@@ -8,7 +8,20 @@ import {
 import { renameTopic } from "@/services/workspace.service";
 import { useCentrifugo } from "./useCentrifugo";
 import { useAuthStore } from "@/store/auth.store";
-import type { ChatMessage, MessageRenderType } from "@/components/chat/types";
+import type { ChatMessage, MessageRenderType, TypingActor } from "@/components/chat/types";
+
+// A typing/thinking actor shown in TypingIndicator, plus:
+//  - key: for a persona mid-response, the message id it's standing in for
+//    (removed once that message is materialized on first delta/done/error);
+//    for a human, `human:${userId}` (removed on an inactivity timeout,
+//    since there's no explicit "stopped typing" event -- see #141).
+//  - timestamp: stashed so a persona actor materializing into a real
+//    ChatMessage on first delta has something to use for it.
+type PendingActor = TypingActor & { key: string; timestamp: string };
+
+// How long a human's "is typing" indicator stays up after their last
+// keystroke ping, absent any further pings resetting the clock.
+const HUMAN_TYPING_TIMEOUT_MS = 4000;
 
 // ---------------------------------------------------------------------------
 // Beep
@@ -40,6 +53,7 @@ interface AiStartEvent {
   id: string;
   sender_id: string;
   sender_name: string;
+  sender_avatar?: string | null;  // #148
   sequence: number;
   created_at: string;
 }
@@ -55,12 +69,33 @@ interface AiDoneEvent {
   output_type?: string;    // M7: e.g. "chart", "text"
   render_as?: string;      // M7: e.g. "html", "text", "code", "terminal"
 }
+interface AiErrorEvent {
+  // Sent instead of message_done when nexus-ai's pipeline failed for any
+  // reason (persona resolve, history fetch, the LLM call itself, ...) --
+  // see chat/services.py:trigger_ai_response_async on the backend. content
+  // is always a friendly placeholder, never the raw exception text.
+  type: "message_error";
+  id: string;
+  content?: string;
+}
+interface UserTypingEvent {
+  // Broadcast by chat/api.py's POST .../typing/, called (throttled) from
+  // MessageInput.tsx while someone has text in the box. No "stopped
+  // typing" counterpart -- the receiving end just lets the indicator
+  // expire after HUMAN_TYPING_TIMEOUT_MS of no further pings. See #141.
+  type: "user_typing";
+  id: string;
+  name: string;
+  avatar?: string | null;
+}
 
 type CentrifugoEvent =
   | HumanMessageEvent
   | AiStartEvent
   | AiDeltaEvent
-  | AiDoneEvent;
+  | AiDoneEvent
+  | AiErrorEvent
+  | UserTypingEvent;
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -97,7 +132,7 @@ function toUiMessage(m: ApiMessage): ChatMessage {
         m.sender_type === "persona" ? "agent"
         : m.sender_type === "system" ? "system"
         : "human",
-      avatar: null,
+      avatar: m.sender_avatar ?? null,
     },
     timestamp: m.created_at,
   };
@@ -114,11 +149,27 @@ export function useTopicMessages(
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [loading, setLoading] = useState(false);
   const [autoRenamed, setAutoRenamed] = useState(false);
+  const [typingActors, setTypingActors] = useState<PendingActor[]>([]);
   const { subscribe } = useCentrifugo();
   const currentUserId = useAuthStore((s) => s.userId);
 
-  // Reset auto-rename flag when topic changes
-  useEffect(() => { setAutoRenamed(false); }, [topicId]);
+  // Read inside the Centrifugo subscribe callback below -- that effect's
+  // dependency array doesn't include typingActors, so the state itself
+  // would be stale by the second event. Mirrored via effect, same pattern
+  // any other event-sourced state here would need.
+  const typingActorsRef = useRef<PendingActor[]>([]);
+  useEffect(() => { typingActorsRef.current = typingActors; }, [typingActors]);
+
+  // Per-human-actor expiry timers (see UserTypingEvent above).
+  const typingTimersRef = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map());
+
+  // Reset auto-rename flag + any stuck typing indicators when topic changes
+  useEffect(() => {
+    setAutoRenamed(false);
+    setTypingActors([]);
+    typingTimersRef.current.forEach((t) => clearTimeout(t));
+    typingTimersRef.current.clear();
+  }, [topicId]);
 
   // Load history
   useEffect(() => {
@@ -151,56 +202,181 @@ export function useTopicMessages(
           if (event.sender_type !== "system" && event.sender_id !== currentUserId) playBeep();
           return [...prev, toUiMessage(event)];
         });
+        // Whoever just sent a message is done typing -- drop their indicator
+        // immediately instead of waiting out the timeout.
+        const key = `human:${event.sender_id}`;
+        const timer = typingTimersRef.current.get(key);
+        if (timer) { clearTimeout(timer); typingTimersRef.current.delete(key); }
+        setTypingActors((prev) => prev.filter((a) => a.key !== key));
 
-      } else if (event.type === "message_start") {
-        // AI persona started responding — placeholder with streaming cursor
-        playBeep();
-        setMessages((prev) => {
-          if (prev.some((m) => m.id === event.id)) return prev;
+      } else if (event.type === "user_typing") {
+        // A human is actively typing -- ignore our own echo, upsert an
+        // actor, and (re)start its expiry timer. No explicit "stopped
+        // typing" event exists, so absence of further pings is the signal.
+        if (event.id === currentUserId) return;
+        const key = `human:${event.id}`;
+
+        setTypingActors((prev) => {
+          if (prev.some((a) => a.key === key)) return prev;
           return [
             ...prev,
             {
               id: event.id,
-              type: "text",          // placeholder — updated on message_done
-              output_type: "text",
-              content: "",
-              sender: {
-                id: event.sender_id,
-                name: event.sender_name,
-                type: "agent",
-                avatar: null,
-              },
+              name: event.name,
+              type: "human",
+              avatar: event.avatar ?? null,
+              key,
+              timestamp: new Date().toISOString(),
+            },
+          ];
+        });
+
+        const existing = typingTimersRef.current.get(key);
+        if (existing) clearTimeout(existing);
+        typingTimersRef.current.set(
+          key,
+          setTimeout(() => {
+            setTypingActors((prev) => prev.filter((a) => a.key !== key));
+            typingTimersRef.current.delete(key);
+          }, HUMAN_TYPING_TIMEOUT_MS),
+        );
+
+      } else if (event.type === "message_start") {
+        // AI persona started responding — show a "thinking" indicator
+        // (TypingIndicator, driven by typingActors below) instead of an
+        // empty bubble. The real message only enters `messages` once the
+        // first token (or an immediate done/error) arrives -- see #141.
+        playBeep();
+        setTypingActors((prev) => {
+          if (prev.some((a) => a.key === event.id)) return prev;
+          return [
+            ...prev,
+            {
+              id: event.sender_id,
+              name: event.sender_name,
+              type: "persona",
+              avatar: event.sender_avatar ?? null,
+              key: event.id,
               timestamp: event.created_at,
-              isStreaming: true,
-            } satisfies ChatMessage,
+            },
           ];
         });
 
       } else if (event.type === "message_delta") {
-        // Append streaming token
-        setMessages((prev) =>
-          prev.map((m) =>
-            m.id === event.id
-              ? { ...m, content: m.content + event.delta }
-              : m,
-          ),
-        );
+        // First token for this message -- materialize it out of its
+        // pending typing actor (see message_start above), then clear
+        // that actor. Subsequent deltas just append as before.
+        setMessages((prev) => {
+          if (prev.some((m) => m.id === event.id)) {
+            return prev.map((m) =>
+              m.id === event.id
+                ? { ...m, content: m.content + event.delta }
+                : m,
+            );
+          }
+          const actor = typingActorsRef.current.find((a) => a.key === event.id);
+          return [
+            ...prev,
+            {
+              id: event.id,
+              type: "text",
+              output_type: "text",
+              content: event.delta,
+              sender: {
+                id: actor?.id ?? "",
+                name: actor?.name ?? "",
+                type: "agent",
+                avatar: actor?.avatar ?? null,
+              },
+              timestamp: actor?.timestamp ?? new Date().toISOString(),
+              isStreaming: true,
+            } satisfies ChatMessage,
+          ];
+        });
+        setTypingActors((prev) => prev.filter((a) => a.key !== event.id));
+
+      } else if (event.type === "message_error") {
+        // Streaming failed -- stop the cursor, show the friendly message
+        // as plain text instead of leaving the placeholder stuck forever.
+        // If it failed before any token ever arrived, the message won't be
+        // in the list yet (still just a typing actor) -- materialize it
+        // directly as an error bubble instead of leaving that stuck.
+        setMessages((prev) => {
+          if (prev.some((m) => m.id === event.id)) {
+            return prev.map((m) =>
+              m.id === event.id
+                ? {
+                    ...m,
+                    isStreaming: false,
+                    isError: true,
+                    type: "text",
+                    content: event.content ?? "Something went wrong generating this response.",
+                  }
+                : m,
+            );
+          }
+          const actor = typingActorsRef.current.find((a) => a.key === event.id);
+          return [
+            ...prev,
+            {
+              id: event.id,
+              type: "text",
+              output_type: "text",
+              content: event.content ?? "Something went wrong generating this response.",
+              sender: {
+                id: actor?.id ?? "",
+                name: actor?.name ?? "",
+                type: "agent",
+                avatar: actor?.avatar ?? null,
+              },
+              timestamp: actor?.timestamp ?? new Date().toISOString(),
+              isStreaming: false,
+              isError: true,
+            } satisfies ChatMessage,
+          ];
+        });
+        setTypingActors((prev) => prev.filter((a) => a.key !== event.id));
 
       } else if (event.type === "message_done") {
         // Streaming complete — replace content with clean version + set renderer
+        // If no message_delta ever arrived (a very fast/empty reply), the
+        // message won't be in the list yet -- materialize it here instead.
         const renderType = toRenderType(event.render_as);
         setMessages((prev) => {
-          const updated = prev.map((m) =>
-            m.id === event.id
-              ? {
-                  ...m,
-                  isStreaming: false,
-                  type: renderType,
-                  output_type: event.output_type ?? "text",
-                  content: event.content !== undefined ? event.content : m.content,
-                }
-              : m,
-          );
+          const exists = prev.some((m) => m.id === event.id);
+          let updated: ChatMessage[];
+          if (exists) {
+            updated = prev.map((m) =>
+              m.id === event.id
+                ? {
+                    ...m,
+                    isStreaming: false,
+                    type: renderType,
+                    output_type: event.output_type ?? "text",
+                    content: event.content !== undefined ? event.content : m.content,
+                  }
+                : m,
+            );
+          } else {
+            const actor = typingActorsRef.current.find((a) => a.key === event.id);
+            updated = [
+              ...prev,
+              {
+                id: event.id,
+                type: renderType,
+                output_type: event.output_type ?? "text",
+                content: event.content ?? "",
+                sender: {
+                  id: actor?.id ?? "",
+                  name: actor?.name ?? "",
+                  type: "agent",
+                  avatar: actor?.avatar ?? null,
+                },
+                timestamp: actor?.timestamp ?? new Date().toISOString(),
+                isStreaming: false,
+              } satisfies ChatMessage,
+            ];
+          }
           // Auto-rename: on first AI response, use the first human message as title
           if (
             !autoRenamed && projectId && channelId && topicId &&
@@ -220,6 +396,7 @@ export function useTopicMessages(
           }
           return updated;
         });
+        setTypingActors((prev) => prev.filter((a) => a.key !== event.id));
       }
     });
 
@@ -267,5 +444,5 @@ export function useTopicMessages(
     [projectId, channelId, topicId],
   );
 
-  return { messages, loading, send };
+  return { messages, loading, send, typingActors };
 }

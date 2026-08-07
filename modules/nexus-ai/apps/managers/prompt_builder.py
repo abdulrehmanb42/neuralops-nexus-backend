@@ -13,7 +13,7 @@ Returns a clean list[dict] ready for the LLM call.
 from __future__ import annotations
 
 from apps.interfaces.vectorstore import Chunk
-from apps.schemas.trigger import TriggerJob
+from apps.schemas.trigger import HistoryMessage, PersonaConfig, TriggerJob
 
 
 class PromptBuilder:
@@ -21,17 +21,23 @@ class PromptBuilder:
     def build(
         self,
         job: TriggerJob,
+        persona: PersonaConfig,
+        history: list[HistoryMessage],
         context_chunks: list[Chunk],
         output_type_instruction: str | None = None,
     ) -> list[dict]:
         """
         Assemble messages array.
         Order: system (+ output instruction) → context → history → current message
+
+        persona/history are passed explicitly rather than read off `job`
+        (#131) -- job only carries persona_id/topic_id; AgenticManager.run()
+        resolves both via nucleus_client before calling this.
         """
         messages: list[dict] = []
 
         # 1. System prompt — persona prompt + optional output type instruction
-        system_content = job.persona.system_prompt
+        system_content = persona.system_prompt
         if output_type_instruction:
             system_content = (
                 f"{system_content}\n\n"
@@ -66,7 +72,7 @@ class PromptBuilder:
         #    For assistant messages that contain rendered HTML (charts, tables, diagrams),
         #    replace the raw HTML with a short placeholder. Sending full HTML blocks wastes
         #    tokens and confuses the model when asked to make follow-up modifications.
-        for msg in job.history:
+        for msg in history:
             messages.append({
                 "role": msg.role,
                 "content": self._summarise_rendered(msg.content, msg.role),

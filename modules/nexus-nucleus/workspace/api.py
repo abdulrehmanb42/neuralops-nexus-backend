@@ -291,7 +291,7 @@ def invite_member(request, payload: InviteRequest):
     if not user.has_perm("nucleus.add_invitation"):
         raise HttpError(403, "You don't have permission to invite users.")
     try:
-        return svc.send_invite(company, user, payload.email, payload.role)
+        return svc.invite_to_system(company, user, payload.email, payload.role)
     except ValueError as exc:
         raise HttpError(400, str(exc))
 

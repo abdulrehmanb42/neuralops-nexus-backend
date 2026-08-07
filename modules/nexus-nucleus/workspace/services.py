@@ -14,7 +14,9 @@ from django.utils.text import slugify
 
 from authn.permissions.checker import PermissionChecker
 from authn.permissions.models import Role
-from authn.permissions.row_rules import visible_channels, visible_projects, visible_topics
+from authn.permissions.row_rules import (
+    _reachable_project_ids, visible_channels, visible_projects, visible_topics,
+)
 from nucleus.models import (
     ChatMessage, ChatReadMarker, ChatTopic, Channel, Company, CompanyAccess,
     Invitation, Persona, Project, ProjectMember, TopicParticipant,
@@ -69,12 +71,20 @@ def create_project(company, user, name: str, description: str = None):
 
 
 def get_project(company, user, project_id: str):
-    # PermissionChecker — imported at top of file.
+    # PermissionChecker, _reachable_project_ids — imported at top of file.
 
     project = get_project_object(company, project_id)
     if not project:
         return None
     if PermissionChecker.can(user, "project.view", obj=project):
+        return project
+    # Fallback: a topic-scoped RoleAssignment doesn't show up in the direct
+    # check above (project.view's own scope chain never looks at topics
+    # below it), but it DOES make this project "reachable" -- same logic
+    # visible_projects() already uses for its narrow-case listing. Without
+    # this, a topic-only invitee can see the project in their sidebar but
+    # 404s the moment they try to open it. See #120.
+    if project.id in _reachable_project_ids(user):
         return project
     return None
 
@@ -234,15 +244,55 @@ def get_member_access(company, user):
     ).first()
 
 
-def send_invite(company, inviter, email: str, role: str) -> dict:
-    # CompanyAccess, Invitation — imported at top of file.
+def invite_to_system(company, inviter, email: str, role: str = "member", access_payload: dict = None) -> dict:
+    """
+    The ONE entry point for adding anyone to this company. Every other
+    invite (invite_to_project() below, and by extension its topic-scope
+    case) calls this FIRST to guarantee real system-level membership,
+    then layers its own narrower grant on top. Idempotent -- calling it
+    on someone who's already a member is a no-op.
+
+    Was named send_invite() -- same job (it's still what POST
+    /members/invite/ calls), renamed + fixed as part of #120: the old
+    version only ever created a CompanyAccess row (the legacy "is this
+    person a member" flag) and never the RoleAssignment row that
+    PermissionChecker actually checks, so invited people had no real
+    rights at all.
+
+    Two outcomes:
+      - Known platform user, just not on this company yet -> grant
+        CompanyAccess + a company-scope RoleAssignment immediately.
+      - Nobody with this email exists yet -> create a pending Invitation
+        (token + link) and stop. Membership + the RoleAssignment happen
+        later, when they accept -- see auth_verify() /
+        _add_user_to_invited_project() in authn/services.py, which reads
+        `access_payload` back out to finish the job.
+    """
+    # CompanyAccess, Invitation, Role, PermissionChecker, User — imported at top of file.
 
     valid_roles = [r.value for r in CompanyAccess.Role]
     if role not in valid_roles:
         raise ValueError(f"Invalid role '{role}'. Must be one of: {', '.join(valid_roles)}")
 
-    if CompanyAccess.objects.filter(company=company, user__email=email, is_active=True).exists():
-        raise ValueError(f"{email} is already a member of this server.")
+    existing_access = CompanyAccess.objects.filter(
+        company=company, user__email=email, is_active=True
+    ).first()
+    if existing_access:
+        return {
+            "ok": True, "is_new_user": False, "email": email, "role": existing_access.role,
+            "message": f"{email} is already a member of this server.",
+        }
+
+    user = User.objects.filter(email=email, is_active=True).first()
+    if user:
+        CompanyAccess.objects.create(company=company, user=user, role=role, invited_by=inviter)
+        company_role = Role.objects.filter(company=company, name=role.capitalize()).first()
+        if company_role:
+            PermissionChecker.assign_role(user, company_role, company, granted_by=inviter)
+        return {
+            "ok": True, "is_new_user": False, "email": email, "role": role,
+            "message": f"{email} added to this server.",
+        }
 
     if Invitation.objects.filter(
         company=company, email=email, status=Invitation.Status.PENDING, is_active=True,
@@ -254,9 +304,10 @@ def send_invite(company, inviter, email: str, role: str) -> dict:
     invitation = Invitation.objects.create(
         company=company, email=email, role=role, invited_by=inviter,
         token_hash=token_hash, expires_at=timezone.now() + timedelta(days=7),
+        access_payload=access_payload or {},
     )
     return {
-        "ok": True, "message": f"Invitation sent to {email}",
+        "ok": True, "is_new_user": True, "message": f"Invitation sent to {email}",
         "email": email, "role": role,
         "expires_at": invitation.expires_at.isoformat(),
     }
@@ -275,6 +326,7 @@ def list_members(company) -> list:
             "role": m.role,
             "invited_by": m.invited_by.email if m.invited_by else None,
             "joined_at": m.joined_at.isoformat(),
+            "avatar": m.user.get_avatar_url(),  # #148
         }
         for m in members
     ]
@@ -303,27 +355,28 @@ def remove_member(company, caller, target_user_id: str) -> dict:
 
 def _format_member(member) -> dict:
     user = member.user
+    # Avatar lives on User itself (shared by humans + personas -- see #148),
+    # not on the Human/Persona profile models -- those still have their own
+    # (largely unpopulated) avatar fields, but User.avatar is now the one
+    # actually kept up to date by assign_avatar().
+    avatar = user.get_avatar_url()
     if user.user_type == "persona":
         profile = getattr(user, "persona_profile", None)
         if profile and profile.is_active:
             name = profile.name
-            avatar = profile.avatar.url if profile.avatar else None
         else:
             name = user.username  # fallback: shouldn't normally happen
-            avatar = None
         email = ""
     else:
         # Human profile may not exist (device-auth users have no Human record).
         # Fall back to User.get_display_name() which uses display_name or email local-part.
         name = user.get_display_name()
         email = user.email or ""
-        avatar = None
         try:
             hp = user.human_profile
             if hp.full_name:
                 name = hp.full_name
             email = hp.email or email
-            avatar = hp.avatar.url if hp.avatar else None
         except Exception:
             pass
     return {
@@ -423,50 +476,52 @@ def invite_to_project(
     if not email:
         raise ValueError("Provide either an email address or a persona name.")
 
-    existing_access = CompanyAccess.objects.filter(
-        company=company, user__email=email, is_active=True
-    ).select_related("user").first()
-
-    if existing_access:
-        user = existing_access.user
-        member = ProjectMember.objects.filter(
-            company=company, project=project, user=user
-        ).first()
-        if not member:
-            ProjectMember.objects.create(
-                company=company, project=project, user=user, role=role
-            )
-        elif not member.is_active:
-            member.is_active = True
-            member.role = role
-            member.save(update_fields=["is_active", "role"])
-
-        if scope == "topic" and topic_id:
-            _add_to_topic(company, project, topic_id, user, role)
-
-        return {"ok": True, "is_new_user": False, "email": email, "scope": scope, "message": f"{email} added."}
-
-    if Invitation.objects.filter(
-        company=company, email=email, status=Invitation.Status.PENDING, is_active=True
-    ).exists():
-        raise ValueError(f"{email} has already been invited.")
-
-    raw_token = secrets.token_urlsafe(32)
-    token_hash = hashlib.sha256(raw_token.encode()).hexdigest()
-    Invitation.objects.create(
-        company=company, email=email, role=role, invited_by=inviter,
-        token_hash=token_hash, expires_at=timezone.now() + timedelta(days=30),
-        access_payload={"project_id": str(project.id)},
+    # Step 1: invite_to_system() is the ONE place company membership gets
+    # granted. Idempotent -- if this person is already a member, it's a
+    # no-op and we fall straight through to the project-level grant below.
+    # If they're brand new, it stashes {project_id, scope, topic_id} on the
+    # pending Invitation so the project/topic grant can finish later, at
+    # acceptance (see authn/services.py: auth_verify /
+    # _add_user_to_invited_project). See #120.
+    system_result = invite_to_system(
+        company, inviter, email, role=role,
+        access_payload={"project_id": str(project.id), "scope": scope, "topic_id": topic_id},
     )
-    portal_url = getattr(settings, "NEURALOPS_PORTAL_URL", "").rstrip("/")
-    server_url = getattr(settings, "NEURALOPS_SERVER_URL", "").rstrip("/")
-    invite_url = f"{portal_url}/invite?server_url={server_url}&token={raw_token}" if portal_url and server_url else None
-    return {
-        "ok": True, "is_new_user": True, "email": email, "scope": scope,
-        "server_url": server_url or None,
-        "invite_url": invite_url,
-        "message": f"Invite link generated for {email}.",
-    }
+
+    if system_result["is_new_user"]:
+        return {**system_result, "scope": scope}
+
+    # Step 2: real system member now (just granted above, or already was)
+    # -- add the legacy project membership row.
+    user = User.objects.filter(email=email, is_active=True).first()
+
+    member = ProjectMember.objects.filter(
+        company=company, project=project, user=user
+    ).first()
+    if not member:
+        ProjectMember.objects.create(
+            company=company, project=project, user=user, role=role
+        )
+    elif not member.is_active:
+        member.is_active = True
+        member.role = role
+        member.save(update_fields=["is_active", "role"])
+
+    # Step 3: the actual RBAC grant -- scoped to the project OR the one
+    # topic, never both, so a topic-only invite stays narrow (can't see
+    # sibling topics -- that's the whole point of scope="topic").
+    project_role = Role.objects.filter(company=company, name=role.capitalize()).first()
+    if scope == "topic" and topic_id:
+        _add_to_topic(company, project, topic_id, user, role)
+        topic = ChatTopic.objects.filter(
+            company=company, project=project, id=topic_id, is_active=True
+        ).first()
+        if topic and project_role:
+            PermissionChecker.assign_role(user, project_role, topic, granted_by=inviter)
+    elif project_role:
+        PermissionChecker.assign_role(user, project_role, project, granted_by=inviter)
+
+    return {"ok": True, "is_new_user": False, "email": email, "scope": scope, "message": f"{email} added."}
 
 
 def _add_to_topic(company, project, topic_id: str, user, role: str = "participant"):
@@ -508,7 +563,7 @@ def list_available_users(company, project, search: str = "") -> list:
             "user_id": str(user.id),
             "name": profile.full_name if profile else user.email,
             "email": profile.email if profile else user.email,
-            "avatar": profile.avatar.url if (profile and profile.avatar) else None,
+            "avatar": user.get_avatar_url(),  # #148 -- lives on User, not Human
         })
     return result
 
@@ -526,7 +581,7 @@ def list_available_personas(company, project) -> list:
         {
             "persona_id": str(p.id), "user_id": str(p.identity_user_id),
             "name": p.name, "source_type": p.source_type,
-            "avatar": p.avatar.url if p.avatar else None,
+            "avatar": p.identity_user.get_avatar_url(),  # #148 -- lives on User, not Persona
         }
         for p in personas
     ]

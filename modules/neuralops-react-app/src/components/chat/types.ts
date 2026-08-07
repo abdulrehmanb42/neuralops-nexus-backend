@@ -33,6 +33,9 @@ export interface ChatMessage {
   sender: MessageSender;
   timestamp: string;
   isStreaming?: boolean;
+  /** Set when nexus-ai reported a message_error instead of message_done --
+   *  see useChat.ts. Content is a friendly placeholder, not the raw error. */
+  isError?: boolean;
 }
 
 export interface TypingActor {
