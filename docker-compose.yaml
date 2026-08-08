@@ -1,134 +1,147 @@
+# =============================================================================
+# NeuralOps — single compose file, profile-selected stacks. See #143 / TASKS.md.
+#
+#   docker compose up -d           # dev stack (COMPOSE_PROFILES=dev in .env)
+#
+# Only "dev" exists right now on purpose -- production and the #170 fat
+# image are deliberately deferred, not built yet. When production is ready,
+# it gets added back as a straight copy of the dev-* blocks below (same
+# shape, own names/ports/data/secrets under a PROD_* prefix) -- same pattern,
+# just not needed today.
+#
+# All config lives in .env, using DEV_* prefixed variable names. Internal
+# service-to-service URLs (e.g. nucleus -> chromadb) are hardcoded literals,
+# NOT env vars -- those are structural, not secrets, and DNS between
+# containers only resolves by Compose *service name*, never by
+# container_name (see #131's incident notes in TASKS.md) -- every internal
+# URL below uses the service name on purpose.
+# =============================================================================
+
 services:
-  # NUCLEUS: The Orchestrator
-  nucleus:
+
+  nucleus-dev:
     image: nexus-backend:5.0
-    container_name: nexus-nucleus
-    # build:
-    #   context: ./modules/nexus-nucleus
-    #   dockerfile: ./docker/dev/Dockerfile.nexus-nucleus
-    # Port 8000 is internal only — all traffic goes through nginx on port 80.
-    # Removing direct port exposure forces the correct nginx → Django path.
-    # ports:
-    #   - "8003:8000"
+    build:
+      context: ./modules/nexus-nucleus
+      dockerfile: ./docker/dev/Dockerfile.nexus-nucleus
+    profiles: ["dev"]
+    container_name: dev-nucleus
     volumes:
       - ./modules/nexus-nucleus:/nexus-nucleus
-    environment:
-      - POSTGRES_USER=${POSTGRES_USER}
-      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
-      - POSTGRES_DB=${POSTGRES_DB}
-      - POSTGRES_URL=${POSTGRES_URL}
-      - POSTGRES_HOST=${POSTGRES_HOST}
-      - NEXUS_AI_URL=${NEXUS_AI_URL}
-      - FIELD_ENCRYPTION_KEY=${FIELD_ENCRYPTION_KEY}
-      - INTERNAL_API_KEY=${INTERNAL_API_KEY}
-      - CENTRIFUGO_API_URL=${CENTRIFUGO_API_URL}
-      - CENTRIFUGO_API_KEY=${CENTRIFUGO_API_KEY}
-      - CENTRIFUGO_HMAC_SECRET=${CENTRIFUGO_HMAC_SECRET}
-      - REDIS_URL=${REDIS_URL:-redis://redis:6379/0}
-      - SUPABASE_ANON_KEY=${SUPABASE_ANON_KEY}
-      - SUPABASE_SERVICE_KEY=${SUPABASE_SERVICE_KEY}
-      - NEURALOPS_INSTALL_TOKEN=${NEURALOPS_INSTALL_TOKEN}
-      - NEURALOPS_PORTAL_URL=${NEURALOPS_PORTAL_URL:-https://neuralops-nexus-auth.mapax.io}
-      - NEURALOPS_SERVER_URL=${NEURALOPS_SERVER_URL}
-      - PYTHONPATH=/nexus-nucleus
-    networks:
-      - nexus-network
-    depends_on:
-      - postgres
-      - redis
-      - realtime
     working_dir: /nexus-nucleus
     command: >-
       uvicorn core.asgi:application
       --host 0.0.0.0
       --port 8000
       --reload
-
-  # CELERY WORKER: Background Tasks
-  nucleus-celery:
-    image: nexus-backend:5.0
-    container_name: nexus-celery
-    volumes:
-      - ./modules/nexus-nucleus:/nexus-nucleus
     environment:
-      - POSTGRES_USER=${POSTGRES_USER}
-      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
-      - POSTGRES_DB=${POSTGRES_DB}
-      - POSTGRES_URL=${POSTGRES_URL}
-      - POSTGRES_HOST=${POSTGRES_HOST}
-      - REDIS_URL=${REDIS_URL:-redis://redis:6379/0}
-      - SUPABASE_ANON_KEY=${SUPABASE_ANON_KEY}
-      - NEURALOPS_INSTALL_TOKEN=${NEURALOPS_INSTALL_TOKEN}
+      - POSTGRES_USER=${DEV_POSTGRES_USER}
+      - POSTGRES_PASSWORD=${DEV_POSTGRES_PASSWORD}
+      - POSTGRES_DB=${DEV_POSTGRES_DB}
+      - POSTGRES_URL=${DEV_POSTGRES_URL}
+      - POSTGRES_HOST=postgres-dev
+      - NEXUS_AI_URL=http://nexus-ai-dev:8000
+      - FIELD_ENCRYPTION_KEY=${DEV_FIELD_ENCRYPTION_KEY}
+      - INTERNAL_API_KEY=${DEV_INTERNAL_API_KEY}
+      - CENTRIFUGO_API_URL=http://realtime-dev:8000/api
+      - CENTRIFUGO_API_KEY=${DEV_CENTRIFUGO_API_KEY}
+      - CENTRIFUGO_HMAC_SECRET=${DEV_CENTRIFUGO_HMAC_SECRET}
+      - REDIS_URL=redis://redis-dev:6379/0
+      - SUPABASE_ANON_KEY=${DEV_SUPABASE_ANON_KEY}
+      - SUPABASE_SERVICE_KEY=${DEV_SUPABASE_SERVICE_KEY}
+      - NEURALOPS_INSTALL_TOKEN=${DEV_NEURALOPS_INSTALL_TOKEN}
+      - NEURALOPS_PORTAL_URL=${DEV_NEURALOPS_PORTAL_URL:-https://neuralops-nexus-auth.mapax.io}
+      - NEURALOPS_SERVER_URL=${DEV_NEURALOPS_SERVER_URL}
       - PYTHONPATH=/nexus-nucleus
     networks:
-      - nexus-network
+      - dev-network
     depends_on:
-      - postgres
-      - redis
+      - postgres-dev
+      - redis-dev
+      - realtime-dev
+
+  nucleus-celery-dev:
+    image: nexus-backend:5.0
+    build:
+      context: ./modules/nexus-nucleus
+      dockerfile: ./docker/dev/Dockerfile.nexus-nucleus
+    profiles: ["dev"]
+    container_name: dev-celery
+    volumes:
+      - ./modules/nexus-nucleus:/nexus-nucleus
     working_dir: /nexus-nucleus
     command: tail -f /dev/null
     restart: unless-stopped
-
-  # REDIS: Celery Broker & Result Backend + Centrifugo engine
-  redis:
-    image: redis:7-alpine
-    container_name: nexus-redis
-    ports:
-      - "${REDIS_HOST_PORT:-6379}:6379"
-    volumes:
-      - ./data/redis_data:/data
+    environment:
+      - POSTGRES_USER=${DEV_POSTGRES_USER}
+      - POSTGRES_PASSWORD=${DEV_POSTGRES_PASSWORD}
+      - POSTGRES_DB=${DEV_POSTGRES_DB}
+      - POSTGRES_URL=${DEV_POSTGRES_URL}
+      - POSTGRES_HOST=postgres-dev
+      - REDIS_URL=redis://redis-dev:6379/0
+      - SUPABASE_ANON_KEY=${DEV_SUPABASE_ANON_KEY}
+      - NEURALOPS_INSTALL_TOKEN=${DEV_NEURALOPS_INSTALL_TOKEN}
+      - PYTHONPATH=/nexus-nucleus
     networks:
-      - nexus-network
-    restart: unless-stopped
+      - dev-network
+    depends_on:
+      - postgres-dev
+      - redis-dev
 
-  # NEXUS-AI: The AI Worker
-  nexus-ai:
+  redis-dev:
+    image: redis:7-alpine
+    profiles: ["dev"]
+    container_name: dev-redis
+    restart: unless-stopped
+    ports:
+      - "${DEV_REDIS_HOST_PORT:-6379}:6379"
+    volumes:
+      - ./data/dev/redis_data:/data
+    networks:
+      - dev-network
+
+  nexus-ai-dev:
     image: nexus-ai:2.0
-    container_name: nexus-ai
     build:
       context: ./modules/nexus-ai
       dockerfile: ./docker/dev/Dockerfile.nexus-ai
+    profiles: ["dev"]
+    container_name: dev-nexus-ai
     ports:
-      - "${NEXUS_AI_HOST_PORT:-8000}:8000"
+      - "${DEV_NEXUS_AI_HOST_PORT:-8000}:8000"
     volumes:
       - ./modules/nexus-ai:/nexus-ai
-      - ./data/fastembed_cache:/root/.cache/fastembed
-    environment:
-      - CHROMA_HOST=${CHROMA_HOST:-nexus-chroma}
-      - CHROMA_PORT=${CHROMA_PORT:-8000}
-      - OPENAI_API_KEY=${OPENAI_API_KEY}
-      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
-      - LLM_MODEL=${LLM_MODEL:-anthropic/claude-haiku-4-5-20251001}
-      - EMBEDDING_PROVIDER=${EMBEDDING_PROVIDER:-fastembed}
-      - EMBEDDING_MODEL=${EMBEDDING_MODEL:-nomic-ai/nomic-embed-text-v1.5}
-      - EMBEDDING_BASE_URL=${EMBEDDING_BASE_URL:-}
-      - OLLAMA_BASE_URL=${OLLAMA_BASE_URL:-http://nexus-ollama:11434}
-      - INTERNAL_API_KEY=${INTERNAL_API_KEY}
-      # nexus-ai calls back into nucleus for persona/history resolution
-      # (#131) -- "nucleus" is nucleus's Compose *service* name, the one
-      # DNS name Compose actually guarantees resolves on this network.
-      # nucleus's container_name (nexus-nucleus) is NOT reliably the same
-      # thing -- see the #131 test-run incident where this was missing
-      # entirely and every AI trigger died with a DNS resolution error.
-      - NEXUS_NUCLEUS_URL=${NEXUS_NUCLEUS_URL:-http://nucleus:8000}
-      - PYTHONPATH=/nexus-ai
-    networks:
-      - nexus-network
-    depends_on:
-      - chromadb
-      - nucleus
+      - ./data/dev/fastembed_cache:/root/.cache/fastembed
     working_dir: /nexus-ai
     command: >
       sh -c "export PYTHONPATH=$PYTHONPATH:/nexus-ai &&
              python3 -m uvicorn apps.main:app --host 0.0.0.0 --port 8000 --reload"
-
-  # REALTIME: Centrifugo transport with Redis engine
-  realtime:
-    image: noamanfaisal/nexus-transport:6.0
-    container_name: nexus-transport
     environment:
-      - CENTRIFUGO_HTTP_API_KEY=${CENTRIFUGO_API_KEY}
-      - CENTRIFUGO_ALLOWED_ORIGINS=http://192.168.1.90:3000
+      - CHROMA_HOST=chromadb-dev
+      - CHROMA_PORT=8000
+      - OPENAI_API_KEY=${DEV_OPENAI_API_KEY}
+      - ANTHROPIC_API_KEY=${DEV_ANTHROPIC_API_KEY}
+      - LLM_MODEL=${DEV_LLM_MODEL:-anthropic/claude-haiku-4-5-20251001}
+      - EMBEDDING_PROVIDER=${DEV_EMBEDDING_PROVIDER:-fastembed}
+      - EMBEDDING_MODEL=${DEV_EMBEDDING_MODEL:-nomic-ai/nomic-embed-text-v1.5}
+      - EMBEDDING_BASE_URL=${DEV_EMBEDDING_BASE_URL:-}
+      - OLLAMA_BASE_URL=${DEV_OLLAMA_BASE_URL:-http://nexus-ollama:11434}
+      - INTERNAL_API_KEY=${DEV_INTERNAL_API_KEY}
+      - NEXUS_NUCLEUS_URL=http://nucleus-dev:8000
+      - PYTHONPATH=/nexus-ai
+    networks:
+      - dev-network
+    depends_on:
+      - chromadb-dev
+      - nucleus-dev
+
+  realtime-dev:
+    image: noamanfaisal/nexus-transport:6.0
+    profiles: ["dev"]
+    container_name: dev-transport
+    environment:
+      - CENTRIFUGO_HTTP_API_KEY=${DEV_CENTRIFUGO_API_KEY}
+      - CENTRIFUGO_ALLOWED_ORIGINS=${DEV_NEURALOPS_SERVER_URL}
     command: >
       nexus-transport
       --admin.enabled
@@ -136,123 +149,76 @@ services:
       --client.insecure
       --http_api.insecure
     networks:
-      - nexus-network
+      - dev-network
     depends_on:
-      - redis
+      - redis-dev
 
-  # NGINX: Reverse proxy — single entry point for all clients
-  nginx:
+  nginx-dev:
     image: nginx:alpine
-    container_name: nexus-nginx
+    profiles: ["dev"]
+    container_name: dev-nginx
+    restart: unless-stopped
     ports:
-      - "${NGINX_HOST_PORT:-80}:80"
+      - "${DEV_NGINX_HOST_PORT:-8081}:80"
     volumes:
       - ./nginx.conf:/etc/nginx/nginx.conf:ro
     networks:
-      - nexus-network
+      - dev-network
     depends_on:
-      - nucleus
-      - realtime
-    restart: unless-stopped
+      - nucleus-dev
+      - realtime-dev
 
-  # CHROMADB & POSTGRES
-  chromadb:
+  chromadb-dev:
     image: chromadb/chroma:latest
-    container_name: nexus-chroma
-    volumes:
-      - ./data/chroma_data:/chroma/chroma
+    profiles: ["dev"]
+    container_name: dev-chroma
     environment:
       - IS_PERSISTENT=TRUE
+    volumes:
+      - ./data/dev/chroma_data:/chroma/chroma
     networks:
-      - nexus-network
+      - dev-network
 
-  postgres:
+  postgres-dev:
     image: postgres:17-alpine
-    container_name: nexus-postgres
+    profiles: ["dev"]
+    container_name: dev-postgres
     restart: always
     environment:
-      - POSTGRES_DB=${POSTGRES_DB}
-      - POSTGRES_USER=${POSTGRES_USER}
-      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
+      - POSTGRES_DB=${DEV_POSTGRES_DB}
+      - POSTGRES_USER=${DEV_POSTGRES_USER}
+      - POSTGRES_PASSWORD=${DEV_POSTGRES_PASSWORD}
     ports:
-      - "${POSTGRES_HOST_PORT:-5433}:5432"
+      - "${DEV_POSTGRES_HOST_PORT:-5433}:5432"
     volumes:
-      - ./data/postgres_data:/var/lib/postgresql/data
+      - ./data/dev/postgres_data:/var/lib/postgresql/data
     networks:
-      - nexus-network
+      - dev-network
 
-  # NEXUS-ERP-MCP: Odoo ERP tools
-  # nexus-erp-mcp:
-  #   build:
-  #     context: ./modules/nexus-mcp
-  #     dockerfile: Dockerfile
-  #   container_name: nexus-erp-mcp
-  #   ports:
-  #     - "8011:8000"
-  #   command: ["python", "server_erp.py"]
-  #   environment:
-  #     - ERP_TYPE=${ERP_TYPE:-odoo}
-  #     - ERP_URL=${ERP_URL:-}
-  #     - ERP_DB=${ERP_DB:-odoo}
-  #     - ERP_USERNAME=${ERP_USERNAME:-admin}
-  #     - ERP_PASSWORD=${ERP_PASSWORD:-admin}
-  #   networks:
-  #     - nexus-network
-  #   restart: unless-stopped
-
-  # NEXUS-SSH-MCP: SSH / DevOps tools
-  # nexus-ssh-mcp:
-  #   build:
-  #     context: ./modules/nexus-mcp
-  #     dockerfile: Dockerfile
-  #   container_name: nexus-ssh-mcp
-  #   ports:
-  #     - "8012:8000"
-  #   command: ["python", "server_ssh.py"]
-  #   environment:
-  #     - SSH_DEFAULT_HOST=${SSH_DEFAULT_HOST:-}
-  #     - SSH_DEFAULT_PORT=${SSH_DEFAULT_PORT:-22}
-  #     - SSH_DEFAULT_USER=${SSH_DEFAULT_USER:-}
-  #     - SSH_DEFAULT_PASSWORD=${SSH_DEFAULT_PASSWORD:-}
-  #     - SSH_DEFAULT_KEY_PATH=${SSH_DEFAULT_KEY_PATH:-}
-  #     - SSH_ALLOWED_PATHS=${SSH_ALLOWED_PATHS:-}
-  #     - SSH_ALLOWED_COMMANDS=${SSH_ALLOWED_COMMANDS:-}
-  #     - CODE_WORK_DIR=${CODE_WORK_DIR:-/home/ubuntu/code}
-  #   networks:
-  #     - nexus-network
-  #   restart: unless-stopped
-
-  # NEXUS-SERP-MCP: SerpAPI / Shopping tools
-  # nexus-serp-mcp:
-  #   build:
-  #     context: ./modules/nexus-mcp
-  #     dockerfile: Dockerfile
-  #   container_name: nexus-serp-mcp
-  #   ports:
-  #     - "8013:8000"
-  #   command: ["python", "server_serp.py"]
-  #   environment:
-  #     - SERPAPI_KEY=${SERPAPI_KEY:-}
-  #   networks:
-  #     - nexus-network
-  #   restart: unless-stopped
-
-  # NEURALOPS REACT APP: The UI
-  # neuralops-react-app:
-  #   build:
-  #     context: ./modules/neuralops-react-app
-  #     dockerfile: Dockerfile
-  #   container_name: neuralops-react-app
-  #   ports:
-  #     - "3000:3000"
-  #   volumes:
-  #     - ./modules/neuralops-react-app:/app
-  #   networks:
-  #     - nexus-network
-  #   depends_on:
-  #     - nucleus
-  #   restart: unless-stopped
+  react-app-dev:
+    build:
+      context: ./modules/neuralops-react-app
+      dockerfile: Dockerfile
+    profiles: ["dev"]
+    container_name: dev-react-app
+    restart: unless-stopped
+    ports:
+      - "${DEV_REACT_HOST_PORT:-3003}:3000"
+    environment:
+      - VITE_SUPABASE_URL=${DEV_SUPABASE_URL}
+      - VITE_SUPABASE_ANON_KEY=${DEV_SUPABASE_ANON_KEY}
+    volumes:
+      - ./modules/neuralops-react-app:/app
+      - dev_react_node_modules:/app/node_modules
+    networks:
+      - dev-network
+    depends_on:
+      - nucleus-dev
 
 networks:
-  nexus-network:
+  dev-network:
+    name: dev-network
     driver: bridge
+
+volumes:
+  dev_react_node_modules:
