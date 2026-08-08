@@ -13,24 +13,32 @@ NeuralOps app and connect it to your self-hosted server's URL — see step 3.
 curl -fsSL https://raw.githubusercontent.com/noamanfaisal/neuralops-nexus-backend/staging/install.sh | bash
 ```
 
-This single command:
+This command:
 
 1. Checks for Docker, installs it if missing (with your confirmation).
-2. Downloads the pinned `docker-compose.yaml` for the current version.
+2. Downloads the pinned `docker-compose.yaml` for the current version, into
+   whatever directory you run it from (no nested subfolder).
 3. Generates the internal secrets that don't need a human (encryption key,
-   API keys between our own services) and asks you for the two or three
-   that do (an AI provider key, your Supabase service key).
+   API keys between our own services). AI provider keys and the Supabase
+   service key are left blank — add them later, see step 6 below.
 4. Pulls the images and starts the stack.
-5. Runs the one-time setup: database migration, permission seeding, and an
-   interactive prompt to create the server owner (you'll need an existing
-   NeuralOps/Supabase account for this step — sign up first if you don't
-   have one).
-6. Offers to expose the server via Tailscale Funnel. No auth key or secret
-   needed — it'll print a login URL, you click it once in a browser, and
-   everything else (funnel setup, writing the resulting URL into `.env`,
-   restarting the affected services) happens automatically. Skip this with
-   `./install.sh --no-tailscale` if you'd rather expose it your own way
-   (router port-forward, your own reverse proxy, LAN-only).
+
+It deliberately stops there. The remaining steps are printed at the end as
+plain commands for you to run yourself, one at a time:
+
+5. `migrate`, then `seed_permissions`, then the interactive `create_owner`
+   (needs an existing NeuralOps/Supabase account — sign up first if you
+   don't have one).
+6. Add your AI provider key(s) and Supabase service key to `.env`, then
+   restart the two services that use them.
+7. Optionally expose the server via Tailscale Funnel — no auth key needed,
+   just one login click if you're not already signed in.
+
+Running these individually instead of hiding them inside the script is
+deliberate — an earlier version tried to babysit Postgres readiness with a
+silent wait-loop, which turned a real (if minor) misconfiguration into an
+opaque hang. Seeing each step's actual output makes it obvious where things
+stand if something goes wrong.
 
 At the end it prints your server's URL — that's what you connect to from
 the hosted frontend.

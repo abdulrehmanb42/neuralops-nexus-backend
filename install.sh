@@ -3,29 +3,28 @@
 # DECISIONS.md §20 for the full design story.
 #
 # Usage:
-#   ./install.sh            first-time install
+#   ./install.sh            first-time setup (download, secrets, bring the stack up)
 #   ./install.sh update     pull the latest version and restart
-#   ./install.sh --no-tailscale   skip Tailscale exposure entirely
+#
+# Deliberately stops after the stack is up — migrate/seed_permissions/
+# create_owner/Tailscale are separate, visible commands printed at the end
+# instead of being hidden inside this script. That's on purpose: a scripted
+# wait-loop around Postgres readiness silently masked a real bug earlier
+# (pg_isready defaulting to the wrong database name) and made it impossible
+# to tell "still starting" from "actually broken". Running each step by hand
+# means you see exactly what's happening and where it stops, if it stops.
 #
 # What this does NOT do: touch your existing "dev" stack, require any
-# Tailscale auth key/secret (a single browser login click is the only
-# manual step), or need any source tree — everything it pulls is a
-# pre-built image from Docker Hub.
+# Tailscale auth key/secret, or need any source tree — everything it pulls
+# is a pre-built image from Docker Hub.
 
 set -euo pipefail
 
 # ── Config — adjust REPO_RAW_BASE/REF once a real release tag exists ────────
 REPO_RAW_BASE="https://raw.githubusercontent.com/noamanfaisal/neuralops-nexus-backend"
 REF="${NEURALOPS_REF:-staging}"   # TODO: point at a real git tag (e.g. v0.1.0) once one is cut
-INSTALL_DIR="${NEURALOPS_INSTALL_DIR:-$(pwd)/neuralops}"
+INSTALL_DIR="${NEURALOPS_INSTALL_DIR:-$(pwd)}"   # installs into the CURRENT directory, no nested subfolder
 VERSION_MARKER="$INSTALL_DIR/.neuralops-version"
-NO_TAILSCALE=0
-
-for arg in "$@"; do
-  case "$arg" in
-    --no-tailscale) NO_TAILSCALE=1 ;;
-  esac
-done
 
 divider() { printf '%s\n' "────────────────────────────────────────────────────────"; }
 
@@ -79,7 +78,7 @@ curl -fsSL "$REPO_RAW_BASE/$REF/docker-compose.yaml" -o docker-compose.yaml
 latest_version=$(curl -fsSL "$REPO_RAW_BASE/$REF/VERSION" 2>/dev/null || echo "0.1.0")
 echo "$latest_version" > "$VERSION_MARKER"
 
-# ── 3. Secrets — auto-generate what can be, prompt for the rest ─────────────
+# ── 3. Secrets — auto-generate what can be, leave the rest blank ────────────
 gen_hex()   { python3 -c "import secrets; print(secrets.token_hex(32))" 2>/dev/null || openssl rand -hex 32; }
 gen_fernet(){ python3 -c "import base64, os; print(base64.urlsafe_b64encode(os.urandom(32)).decode())" 2>/dev/null || openssl rand -base64 32; }
 
@@ -92,13 +91,8 @@ CENTRIFUGO_HMAC_SECRET=$(gen_hex)
 INSTALL_TOKEN=$(gen_hex)
 POSTGRES_PASSWORD=$(gen_hex)
 
-echo
-echo "  AI provider key(s) and the Supabase service key are left blank on"
-echo "  purpose -- add them to .env whenever you're ready (see the summary"
-echo "  printed at the end of this script)."
-OPENAI_API_KEY=""
-ANTHROPIC_API_KEY=""
-SUPABASE_SERVICE_KEY=""
+# AI provider key(s) and the Supabase service key are left blank on purpose —
+# add them to .env whenever you're ready (see the summary at the end).
 
 # ── 4. Write .env ─────────────────────────────────────────────────────────────
 cat > .env <<EOF
@@ -117,10 +111,10 @@ FAT_CENTRIFUGO_HMAC_SECRET=$CENTRIFUGO_HMAC_SECRET
 
 FAT_SUPABASE_URL=https://xgfsxikypxjhqlutiepw.supabase.co
 FAT_SUPABASE_ANON_KEY=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InhnZnN4aWt5cHhqaHFsdXRpZXB3Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODIyNDg3MDcsImV4cCI6MjA5NzgyNDcwN30.2_OUNTHuKSeDJh6S-aUW16IqvDTmew8ZcFuKvFkt3Dk
-FAT_SUPABASE_SERVICE_KEY=$SUPABASE_SERVICE_KEY
+FAT_SUPABASE_SERVICE_KEY=
 
-FAT_OPENAI_API_KEY=$OPENAI_API_KEY
-FAT_ANTHROPIC_API_KEY=$ANTHROPIC_API_KEY
+FAT_OPENAI_API_KEY=
+FAT_ANTHROPIC_API_KEY=
 
 FAT_NEURALOPS_INSTALL_TOKEN=$INSTALL_TOKEN
 FAT_NEURALOPS_SERVER_URL=http://localhost:8090
@@ -134,66 +128,42 @@ echo "  Pulling images and starting the stack..."
 docker compose pull
 docker compose up -d
 
-echo "  Waiting for Postgres..."
-until docker compose exec -T postgres-fat pg_isready -U neuralops >/dev/null 2>&1; do
-  sleep 2
-done
-
-# ── 6. First-run sequence ────────────────────────────────────────────────────
-echo
-echo "  Running first-time setup (migrate, permissions)..."
-docker compose exec -T nucleus-fat python manage.py migrate
-docker compose exec -T nucleus-fat python manage.py seed_permissions
-
-echo
-echo "  Now let's create the server owner (needs a NeuralOps/Supabase account):"
-docker compose exec nucleus-fat python manage.py create_owner < /dev/tty
-
-# ── 7. Tailscale (optional, no auth key required) ───────────────────────────
-if [ "$NO_TAILSCALE" -eq 0 ]; then
-  echo
-  read -rp "  Expose this server via Tailscale Funnel? (Y/n): " use_tailscale < /dev/tty
-  if [ "$use_tailscale" != "n" ] && [ "$use_tailscale" != "no" ]; then
-    if ! command -v tailscale >/dev/null 2>&1; then
-      echo "  Installing Tailscale..."
-      curl -fsSL https://tailscale.com/install.sh | sh
-    fi
-
-    if ! sudo tailscale status >/dev/null 2>&1; then
-      echo "  Log in to Tailscale — a URL will appear below, open it in a browser:"
-      sudo tailscale up
-    fi
-
-    NGINX_PORT=$(grep '^FAT_NGINX_HOST_PORT=' .env | cut -d= -f2)
-    NGINX_PORT="${NGINX_PORT:-8090}"
-    sudo tailscale funnel --bg "$NGINX_PORT"
-
-    FUNNEL_URL=$(tailscale funnel status 2>/dev/null | grep -o 'https://[^ ]*' | head -1)
-    if [ -n "$FUNNEL_URL" ]; then
-      sed -i.bak "s#^FAT_NEURALOPS_SERVER_URL=.*#FAT_NEURALOPS_SERVER_URL=$FUNNEL_URL#" .env
-      docker compose restart nucleus-fat realtime-fat
-      echo "  ✓ Exposed at $FUNNEL_URL"
-    else
-      echo "  ⚠ Could not detect the Funnel URL automatically — run"
-      echo "    'tailscale funnel status' and set FAT_NEURALOPS_SERVER_URL in"
-      echo "    .env by hand, then 'docker compose restart nucleus-fat realtime-fat'."
-    fi
-  fi
-fi
-
-# ── 8. Done ───────────────────────────────────────────────────────────────────
+# ── 6. Done — hand off the remaining steps as explicit, visible commands ────
 divider
-SERVER_URL=$(grep '^FAT_NEURALOPS_SERVER_URL=' .env | cut -d= -f2)
-echo "  ✓ NeuralOps is running."
+echo "  ✓ Stack is up. Installed in: $INSTALL_DIR"
 echo
-echo "  Server URL: $SERVER_URL"
+echo "  Next steps — run these yourself, one at a time, so you can see exactly"
+echo "  what's happening at each step:"
+echo
+echo "  1) Confirm Postgres is actually ready (don't skip — check the output):"
+echo "       docker compose logs --tail=20 postgres-fat"
+echo "     Look for \"database system is ready to accept connections\"."
+echo
+echo "  2) Create the schema:"
+echo "       docker compose exec nucleus-fat python manage.py migrate"
+echo
+echo "  3) Seed the permission registry:"
+echo "       docker compose exec nucleus-fat python manage.py seed_permissions"
+echo
+echo "  4) Create the server owner (interactive — needs a NeuralOps/Supabase account):"
+echo "       docker compose exec nucleus-fat python manage.py create_owner"
+echo
+echo "  5) (Optional) Expose this server via Tailscale Funnel — no auth key"
+echo "     needed, just one login click if you're not already signed in:"
+echo "       curl -fsSL https://tailscale.com/install.sh | sh   # if not already installed"
+echo "       sudo tailscale up                                  # skip if already logged in"
+echo "       sudo tailscale funnel --bg 8090"
+echo "     Then set FAT_NEURALOPS_SERVER_URL in .env to the printed"
+echo "     https://...ts.net URL and run:"
+echo "       docker compose restart nucleus-fat realtime-fat"
+echo
+echo "  6) Before adding an AI model, edit .env and set FAT_OPENAI_API_KEY"
+echo "     and/or FAT_ANTHROPIC_API_KEY, and FAT_SUPABASE_SERVICE_KEY, then:"
+echo "       docker compose restart nucleus-fat nexus-ai-fat"
+echo
 echo "  There is no local frontend in this bundle — sign in at the hosted"
-echo "  NeuralOps app and connect it to the server URL above."
-echo
-echo "  Before adding an AI model, edit .env in this folder and set"
-echo "  FAT_OPENAI_API_KEY and/or FAT_ANTHROPIC_API_KEY, and"
-echo "  FAT_SUPABASE_SERVICE_KEY, then run:"
-echo "    docker compose restart nucleus-fat nexus-ai-fat"
+echo "  NeuralOps app and connect it to your server URL (FAT_NEURALOPS_SERVER_URL"
+echo "  in .env, default http://localhost:8090 for local-only access)."
 echo
 echo "  Run './install.sh update' any time to pull the latest version."
 divider
