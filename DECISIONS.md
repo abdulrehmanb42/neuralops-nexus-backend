@@ -383,6 +383,23 @@ is cut.
    and pointing `docker/fat/Dockerfile.nginx` at it instead of the repo-root
    file. **Requires rebuilding + re-pushing `noamanfaisal/neuralops-nginx`
    and re-pulling on the test host** — not yet done as of this note.
+6. **Chrome Private Network Access (PNA) silently blocks the connect fetch.**
+   After fix #5, `curl` proved nginx/CORS/Django were all working correctly
+   (`GET /api/v1/auth/verify/` → 401 as expected, `OPTIONS` preflight → 200
+   with correct `access-control-allow-*` headers) but the hosted frontend
+   still showed "Could not connect to server" (the exact string
+   `ServerList.tsx` shows only when `verifyServerAccess()`'s `fetch()` throws
+   — status `0`, never a real HTTP response). Root cause: Tailscale addresses
+   fall in `100.64.0.0/10` (CGNAT), which Chrome classifies as a "private"
+   network target. A public-origin page (the Vercel-hosted frontend) fetching
+   a private-range target needs `Access-Control-Allow-Private-Network: true`
+   on the preflight response or Chrome blocks the request client-side before
+   it ever shows up as a real HTTP error — curl has no such check, which is
+   why it looked server-side-healthy while the browser still failed. Fixed by
+   adding `add_header 'Access-Control-Allow-Private-Network' 'true' always;`
+   to the `/api/` location in both `docker/fat/nginx.conf` and the root
+   (dev) `nginx.conf`. Same rebuild/push/re-pull requirement as #5 applies to
+   the fat image.
 
 **Design change:** `install.sh` originally automated the full first-run
 sequence (including a Postgres-readiness wait-loop). After bug #4 made this
