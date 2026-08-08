@@ -54,7 +54,7 @@ divider
 
 if ! command -v docker >/dev/null 2>&1; then
   echo
-  read -rp "  Docker isn't installed. Install it now? (yes/no): " install_docker
+  read -rp "  Docker isn't installed. Install it now? (yes/no): " install_docker < /dev/tty
   if [ "$install_docker" = "yes" ] || [ "$install_docker" = "y" ]; then
     curl -fsSL https://get.docker.com | sh
   else
@@ -93,11 +93,12 @@ INSTALL_TOKEN=$(gen_hex)
 POSTGRES_PASSWORD=$(gen_hex)
 
 echo
-echo "  A couple of values need your input (leave blank to fill in later by"
-echo "  editing .env directly):"
-read -rp "  OpenAI API key (optional if using Anthropic): " OPENAI_API_KEY
-read -rp "  Anthropic API key (optional if using OpenAI): " ANTHROPIC_API_KEY
-read -rp "  Supabase service_role key (project settings -> API): " SUPABASE_SERVICE_KEY
+echo "  AI provider key(s) and the Supabase service key are left blank on"
+echo "  purpose -- add them to .env whenever you're ready (see the summary"
+echo "  printed at the end of this script)."
+OPENAI_API_KEY=""
+ANTHROPIC_API_KEY=""
+SUPABASE_SERVICE_KEY=""
 
 # ── 4. Write .env ─────────────────────────────────────────────────────────────
 cat > .env <<EOF
@@ -146,12 +147,12 @@ docker compose exec -T nucleus-fat python manage.py seed_permissions
 
 echo
 echo "  Now let's create the server owner (needs a NeuralOps/Supabase account):"
-docker compose exec nucleus-fat python manage.py create_owner
+docker compose exec nucleus-fat python manage.py create_owner < /dev/tty
 
 # ── 7. Tailscale (optional, no auth key required) ───────────────────────────
 if [ "$NO_TAILSCALE" -eq 0 ]; then
   echo
-  read -rp "  Expose this server via Tailscale Funnel? (Y/n): " use_tailscale
+  read -rp "  Expose this server via Tailscale Funnel? (Y/n): " use_tailscale < /dev/tty
   if [ "$use_tailscale" != "n" ] && [ "$use_tailscale" != "no" ]; then
     if ! command -v tailscale >/dev/null 2>&1; then
       echo "  Installing Tailscale..."
@@ -188,6 +189,11 @@ echo
 echo "  Server URL: $SERVER_URL"
 echo "  There is no local frontend in this bundle — sign in at the hosted"
 echo "  NeuralOps app and connect it to the server URL above."
+echo
+echo "  Before adding an AI model, edit .env in this folder and set"
+echo "  FAT_OPENAI_API_KEY and/or FAT_ANTHROPIC_API_KEY, and"
+echo "  FAT_SUPABASE_SERVICE_KEY, then run:"
+echo "    docker compose restart nucleus-fat nexus-ai-fat"
 echo
 echo "  Run './install.sh update' any time to pull the latest version."
 divider
