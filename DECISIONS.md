@@ -344,14 +344,52 @@ Do NOT assume API compatibility across major versions without checking.
 
 ## 20. Self-Host Distribution (#170) — Fat Docker Profile + Installer
 
-**Status:** Built (2026-08-08) — `fat` profile in `docker-compose.yaml`,
-`docker/fat/Dockerfile.nginx`, `modules/nexus-nucleus/docker/fat/Dockerfile.nexus-nucleus`,
+**Status:** Built and in live testing (2026-08-08) — `fat` profile in
+`docker-compose.yaml`, `docker/fat/Dockerfile.nginx` + `docker/fat/nginx.conf`,
+`modules/nexus-nucleus/docker/fat/Dockerfile.nexus-nucleus`,
 `modules/nexus-ai/docker/fat/Dockerfile.nexus-ai`, `.env.example` FAT_* section,
-`install.sh`, `SELF-HOST.md`, `VERSION`. NOT yet tested end-to-end and NO
-images have been built/pushed to Docker Hub yet — owner is doing that build
-+ push themselves (no execute access from this session). `install.sh`'s
-`REPO_RAW_BASE`/`REF` point at the `staging` branch as a placeholder; update
-`REF` to a real git tag once one is cut.
+`install.sh`, `SELF-HOST.md`, `VERSION`. All three custom images
+(`noamanfaisal/neuralops-{nucleus,nexus-ai,nginx}:0.1.0`) built and pushed to
+Docker Hub by the owner. `install.sh`'s `REPO_RAW_BASE`/`REF` still point at
+the `staging` branch as a placeholder; update `REF` to a real git tag once one
+is cut.
+
+**Bugs found during end-to-end testing on node-3 (all fixed):**
+1. `install.sh` used `mapax-io` GitHub org (copied from `readme.md`'s unrelated
+   upstream-fork clone instructions) instead of the real push target
+   `noamanfaisal` — fixed in `install.sh` and `SELF-HOST.md`.
+2. `curl | bash` consumes stdin for the script body itself, so any `read`
+   inside had no terminal to read from — under `set -u` this threw "unbound
+   variable" and killed the script. Fixed by dropping the optional
+   `OPENAI_API_KEY`/`ANTHROPIC_API_KEY`/`SUPABASE_SERVICE_KEY` prompts
+   entirely (left blank in `.env` by design — end users fill these in later,
+   no `.env` authoring expected of them) and redirecting the remaining
+   genuinely-interactive prompts (Docker install confirm, Tailscale yes/no,
+   `create_owner`) from `< /dev/tty`.
+3. `install.sh` installed into `$(pwd)/neuralops`, creating a confusing extra
+   nested folder. Fixed to install directly into `$(pwd)`.
+4. `pg_isready -U neuralops` with no `-d` flag checks a database matching the
+   *username*, not `FAT_POSTGRES_DB` (`neuralops_fat`) — looped forever on a
+   false negative even though Postgres was fully healthy (confirmed via raw
+   `docker compose logs postgres-fat`). Root cause of the broader redesign
+   below rather than a targeted `-d` fix.
+5. **`nginx.conf`'s upstream service names are dev-network only**
+   (`nucleus-dev:8000`, `realtime-dev:8000`) but `docker/fat/Dockerfile.nginx`
+   was baking that exact file into the fat nginx image — on `fat-network`
+   those names don't resolve, so every request through `nginx-fat` failed
+   (surfaced as "could not connect to server" from the hosted frontend's
+   connect flow, containers otherwise healthy). Fixed by adding a dedicated
+   `docker/fat/nginx.conf` (upstreams `nucleus-fat:8000`/`realtime-fat:8000`)
+   and pointing `docker/fat/Dockerfile.nginx` at it instead of the repo-root
+   file. **Requires rebuilding + re-pushing `noamanfaisal/neuralops-nginx`
+   and re-pulling on the test host** — not yet done as of this note.
+
+**Design change:** `install.sh` originally automated the full first-run
+sequence (including a Postgres-readiness wait-loop). After bug #4 made this
+opaque to debug, redesigned per owner's instruction: the script now stops
+right after `docker compose up -d` and prints `migrate`/`seed_permissions`/
+`create_owner`/Tailscale as explicit commands for the user to run one at a
+time — trading full automation for visibility.
 
 **Decision:** Fat distribution uses MULTIPLE pre-built Docker Hub images
 orchestrated by a `fat` Compose profile added to the same `docker-compose.yaml`
