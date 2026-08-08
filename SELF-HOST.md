@@ -10,7 +10,7 @@ NeuralOps app and connect it to your self-hosted server's URL — see step 3.
 ## Option A — the installer (recommended)
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/mapax-io/neuralops-nexus-backend/staging/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/noamanfaisal/neuralops-nexus-backend/staging/install.sh | bash
 ```
 
 This single command:
@@ -47,8 +47,8 @@ If you'd rather not pipe a script into bash, or want to see every step:
 
 ```bash
 mkdir neuralops && cd neuralops
-curl -fsSL https://raw.githubusercontent.com/mapax-io/neuralops-nexus-backend/staging/docker-compose.yaml -o docker-compose.yaml
-curl -fsSL https://raw.githubusercontent.com/mapax-io/neuralops-nexus-backend/staging/.env.example -o .env
+curl -fsSL https://raw.githubusercontent.com/noamanfaisal/neuralops-nexus-backend/staging/docker-compose.yaml -o docker-compose.yaml
+curl -fsSL https://raw.githubusercontent.com/noamanfaisal/neuralops-nexus-backend/staging/.env.example -o .env
 ```
 
 Edit `.env`: set `COMPOSE_PROFILES=fat` at the top, and fill in the `FAT_*`
