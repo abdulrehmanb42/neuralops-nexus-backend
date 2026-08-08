@@ -342,7 +342,104 @@ Do NOT assume API compatibility across major versions without checking.
 
 ---
 
-## 20. Before Starting Any Task
+## 20. Self-Host Distribution (#170) — Fat Docker Profile + Installer
+
+**Status:** Built (2026-08-08) — `fat` profile in `docker-compose.yaml`,
+`docker/fat/Dockerfile.nginx`, `modules/nexus-nucleus/docker/fat/Dockerfile.nexus-nucleus`,
+`modules/nexus-ai/docker/fat/Dockerfile.nexus-ai`, `.env.example` FAT_* section,
+`install.sh`, `SELF-HOST.md`, `VERSION`. NOT yet tested end-to-end and NO
+images have been built/pushed to Docker Hub yet — owner is doing that build
++ push themselves (no execute access from this session). `install.sh`'s
+`REPO_RAW_BASE`/`REF` point at the `staging` branch as a placeholder; update
+`REF` to a real git tag once one is cut.
+
+**Decision:** Fat distribution uses MULTIPLE pre-built Docker Hub images
+orchestrated by a `fat` Compose profile added to the same `docker-compose.yaml`
+(alongside `dev`) — NOT a single merged/supervisord image. A merged image was
+seriously considered (real precedent: GitLab Omnibus) but rejected for now —
+it trades a small UX win (`docker run` vs `docker compose up`) for real costs
+(Postgres data-safety risk unless volumes are very carefully externalized, a
+full-image rebuild+re-pull on every single-service fix instead of just that
+service's image, no per-service restart/log isolation). Multiple pre-built
+images keep those benefits while still being effectively "pull and go."
+
+**Services in the `fat` profile:** nucleus, nucleus-celery (reuses the nucleus
+image, different `command:` — same pattern as `dev`), postgres, redis,
+chromadb, realtime (centrifugo), nginx.
+
+**No frontend service — explicit decision.** Self-hosters connect the
+already-hosted frontend to their server instead of running a local UI. Removes
+one container, one port to expose, and means frontend fixes only ever ship in
+one place. Pairs with Tailscale Funnel exposure (README §3 Option A).
+
+**Images:**
+- Reuse as-is: `postgres:17-alpine`, `redis:7-alpine`, `chromadb/chroma:latest`
+  (pin to a specific tag, not `latest`), `noamanfaisal/nexus-transport:6.0`.
+- Build + push new: `noamanfaisal/neuralops-nucleus:<version>` and
+  `noamanfaisal/neuralops-nexus-ai:<version>`, each from a NEW
+  `docker/fat/Dockerfile.*` (source baked in, no bind mount, no `--reload`,
+  fixed worker count — do NOT reuse the dev Dockerfiles). Also
+  `noamanfaisal/neuralops-nginx:<version>` — thin custom image, `FROM
+  nginx:alpine` + `COPY nginx.conf` baked in, since the fat bundle ships no
+  source tree to bind-mount `nginx.conf` from the way `dev` does.
+
+**Data:** Postgres/Redis/Chroma on host-mounted volumes under their own
+`./data/fat/` tree — same pattern as `dev`'s `./data/dev/` — so pulling a new
+image version never touches existing data.
+
+**Versioning:** One semver version per release (e.g. `v1.0.0`) covers all
+three custom images together, even if only one actually changed — keeps
+"which version am I on" simple for the user. The compose file always pins
+exact tags, never `:latest`, so updates only happen when deliberately
+triggered via the installer, not silently.
+
+**First-run sequence:** `migrate` → `create_owner` → `seed_permissions` →
+optional `seed_avatars`. Order between `create_owner` and `seed_permissions`
+does NOT actually matter — both do `get_or_create` on the same Owner `Role`
+row (confirmed by reading `create_owner.py`'s `_grant_owner_role()` docstring
+directly); whichever runs second just populates the `RoleRight` links on the
+row the other already created.
+
+**Distribution:** Stays in this same repo — not a separate repo, to avoid a
+permanent two-repo sync burden. Git-tagged releases (`v1.0.0`, etc.) make a
+specific version's compose file fetchable without a full clone. A dedicated
+`SELF-HOST.md` (not the dev-focused `readme.md`) will hold only the
+fat-docker install instructions.
+
+**Installer (`install.sh`):** A plain shell script — NOT a Docker-socket-
+mounting "installer container" (that pattern, like Watchtower, needs
+root-equivalent Docker socket access just to check for updates; a script
+achieves the same using whatever Docker permissions the user already has).
+Flow: check/install Docker → download the pinned compose file + `.env.example`
+→ prompt for required secrets → `docker compose pull && up -d` → run the
+first-run sequence → check/install Tailscale → `tailscale up` (plain, **no
+auth-key requirement** — the one unavoidable manual step is a single browser
+login click, by design; do not build an auth-key path into the default flow)
+→ `tailscale funnel --bg <nginx port>` → write the resulting URL into `.env`
+as `NEURALOPS_SERVER_URL` → restart `nucleus`/`realtime` → print the connect
+URL for the hosted frontend's "add server" flow. Also supports `install.sh
+update`: compares a local version marker against the latest published
+version, re-pulls if newer. The Tailscale step should be skippable via a flag
+for anyone who wants LAN-only access or their own router/port-forward setup.
+
+**RAM budget:** ~2GB total if `nexus-ai` uses an API-based embedding provider;
+~3–4GB if it keeps local `fastembed` inference (the single biggest lever on
+memory footprint — a local embedding model gets fully loaded into RAM).
+Document a 4GB minimum host spec for the fat profile.
+
+**Considered and rejected:**
+- **Snap** — real daemon-service support + a close precedent (Nextcloud's
+  official snap bundles Apache/PHP/MySQL/Redis into one package), but
+  Ubuntu-only reach in practice and throws away today's working Docker
+  investment.
+- **Flatpak / AppImage** — built around single-window GUI desktop apps, no
+  real background-daemon model, no reuse of existing work, more effort for a
+  worse fit than either Docker or Snap.
+- **Single merged supervisord image** — see main decision above.
+
+---
+
+## 21. Before Starting Any Task
 
 1. Read this file (`DECISIONS.md`)
 2. Read the specific files you intend to edit — do not assume their contents

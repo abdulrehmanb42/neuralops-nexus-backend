@@ -1,18 +1,30 @@
 # =============================================================================
-# NeuralOps — single compose file, profile-selected stacks. See #143 / TASKS.md.
+# NeuralOps — single compose file, profile-selected stacks. See #143 / #170 /
+# TASKS.md / DECISIONS.md §20.
 #
-#   docker compose up -d           # dev stack (COMPOSE_PROFILES=dev in .env)
+#   docker compose up -d                  # dev stack (COMPOSE_PROFILES=dev in .env)
+#   docker compose --profile fat up -d    # fat stack — pre-built Docker Hub images, no source needed
 #
-# Only "dev" exists right now on purpose -- production and the #170 fat
-# image are deliberately deferred, not built yet. When production is ready,
-# it gets added back as a straight copy of the dev-* blocks below (same
-# shape, own names/ports/data/secrets under a PROD_* prefix) -- same pattern,
-# just not needed today.
+# production is still deferred, not built yet. When it's ready, it gets added
+# back as a straight copy of the dev-*/fat-* blocks below (same shape, own
+# names/ports/data/secrets under a PROD_* prefix) -- same pattern, just not
+# needed today.
 #
-# All config lives in .env, using DEV_* prefixed variable names. Internal
-# service-to-service URLs (e.g. nucleus -> chromadb) are hardcoded literals,
-# NOT env vars -- those are structural, not secrets, and DNS between
-# containers only resolves by Compose *service name*, never by
+# fat profile notes (#170, full rationale in DECISIONS.md §20):
+#   - No frontend service. Self-hosters connect the hosted frontend to their
+#     server instead of running a local UI.
+#   - Every fat-* service uses image: only, no build: key -- there is
+#     deliberately no source tree required to run the fat profile. Images
+#     are built from docker/fat/Dockerfile.* (and the per-module ones under
+#     modules/*/docker/fat/) in this repo and pushed to Docker Hub as
+#     noamanfaisal/neuralops-{nucleus,nexus-ai,nginx}:${FAT_VERSION}.
+#   - nginx-fat bakes nginx.conf into the image at build time (no bind
+#     mount) for the same "no source tree" reason.
+#
+# All config lives in .env, using DEV_*/FAT_* prefixed variable names.
+# Internal service-to-service URLs (e.g. nucleus -> chromadb) are hardcoded
+# literals, NOT env vars -- those are structural, not secrets, and DNS
+# between containers only resolves by Compose *service name*, never by
 # container_name (see #131's incident notes in TASKS.md) -- every internal
 # URL below uses the service name on purpose.
 # =============================================================================
@@ -215,9 +227,167 @@ services:
     depends_on:
       - nucleus-dev
 
+  # ===========================================================================
+  # FAT profile (#170) — pre-built Docker Hub images, no source tree needed.
+  # No frontend service here on purpose — see the note at the top of this file.
+  # ===========================================================================
+
+  nucleus-fat:
+    image: noamanfaisal/neuralops-nucleus:${FAT_VERSION:-0.1.0}
+    profiles: ["fat"]
+    container_name: fat-nucleus
+    command: >-
+      uvicorn core.asgi:application
+      --host 0.0.0.0
+      --port 8000
+      --workers 2
+    environment:
+      - POSTGRES_USER=${FAT_POSTGRES_USER}
+      - POSTGRES_PASSWORD=${FAT_POSTGRES_PASSWORD}
+      - POSTGRES_DB=${FAT_POSTGRES_DB}
+      - POSTGRES_URL=${FAT_POSTGRES_URL}
+      - POSTGRES_HOST=postgres-fat
+      - NEXUS_AI_URL=http://nexus-ai-fat:8000
+      - FIELD_ENCRYPTION_KEY=${FAT_FIELD_ENCRYPTION_KEY}
+      - INTERNAL_API_KEY=${FAT_INTERNAL_API_KEY}
+      - CENTRIFUGO_API_URL=http://realtime-fat:8000/api
+      - CENTRIFUGO_API_KEY=${FAT_CENTRIFUGO_API_KEY}
+      - CENTRIFUGO_HMAC_SECRET=${FAT_CENTRIFUGO_HMAC_SECRET}
+      - REDIS_URL=redis://redis-fat:6379/0
+      - SUPABASE_ANON_KEY=${FAT_SUPABASE_ANON_KEY}
+      - SUPABASE_SERVICE_KEY=${FAT_SUPABASE_SERVICE_KEY}
+      - NEURALOPS_INSTALL_TOKEN=${FAT_NEURALOPS_INSTALL_TOKEN}
+      - NEURALOPS_PORTAL_URL=${FAT_NEURALOPS_PORTAL_URL:-https://neuralops-nexus-auth.mapax.io}
+      - NEURALOPS_SERVER_URL=${FAT_NEURALOPS_SERVER_URL}
+    networks:
+      - fat-network
+    depends_on:
+      - postgres-fat
+      - redis-fat
+      - realtime-fat
+
+  nucleus-celery-fat:
+    image: noamanfaisal/neuralops-nucleus:${FAT_VERSION:-0.1.0}
+    profiles: ["fat"]
+    container_name: fat-celery
+    command: tail -f /dev/null
+    restart: unless-stopped
+    environment:
+      - POSTGRES_USER=${FAT_POSTGRES_USER}
+      - POSTGRES_PASSWORD=${FAT_POSTGRES_PASSWORD}
+      - POSTGRES_DB=${FAT_POSTGRES_DB}
+      - POSTGRES_URL=${FAT_POSTGRES_URL}
+      - POSTGRES_HOST=postgres-fat
+      - REDIS_URL=redis://redis-fat:6379/0
+      - SUPABASE_ANON_KEY=${FAT_SUPABASE_ANON_KEY}
+      - NEURALOPS_INSTALL_TOKEN=${FAT_NEURALOPS_INSTALL_TOKEN}
+    networks:
+      - fat-network
+    depends_on:
+      - postgres-fat
+      - redis-fat
+
+  redis-fat:
+    image: redis:7-alpine
+    profiles: ["fat"]
+    container_name: fat-redis
+    restart: unless-stopped
+    ports:
+      - "${FAT_REDIS_HOST_PORT:-6390}:6379"
+    volumes:
+      - ./data/fat/redis_data:/data
+    networks:
+      - fat-network
+
+  nexus-ai-fat:
+    image: noamanfaisal/neuralops-nexus-ai:${FAT_VERSION:-0.1.0}
+    profiles: ["fat"]
+    container_name: fat-nexus-ai
+    ports:
+      - "${FAT_NEXUS_AI_HOST_PORT:-8010}:8000"
+    volumes:
+      - ./data/fat/fastembed_cache:/root/.cache/fastembed
+    environment:
+      - CHROMA_HOST=chromadb-fat
+      - CHROMA_PORT=8000
+      - OPENAI_API_KEY=${FAT_OPENAI_API_KEY}
+      - ANTHROPIC_API_KEY=${FAT_ANTHROPIC_API_KEY}
+      - LLM_MODEL=${FAT_LLM_MODEL:-anthropic/claude-haiku-4-5-20251001}
+      - EMBEDDING_PROVIDER=${FAT_EMBEDDING_PROVIDER:-fastembed}
+      - EMBEDDING_MODEL=${FAT_EMBEDDING_MODEL:-nomic-ai/nomic-embed-text-v1.5}
+      - EMBEDDING_BASE_URL=${FAT_EMBEDDING_BASE_URL:-}
+      - INTERNAL_API_KEY=${FAT_INTERNAL_API_KEY}
+      - NEXUS_NUCLEUS_URL=http://nucleus-fat:8000
+    networks:
+      - fat-network
+    depends_on:
+      - chromadb-fat
+      - nucleus-fat
+
+  realtime-fat:
+    image: noamanfaisal/nexus-transport:6.0
+    profiles: ["fat"]
+    container_name: fat-transport
+    environment:
+      - CENTRIFUGO_HTTP_API_KEY=${FAT_CENTRIFUGO_API_KEY}
+      - CENTRIFUGO_ALLOWED_ORIGINS=${FAT_NEURALOPS_SERVER_URL}
+    command: >
+      nexus-transport
+      --admin.enabled
+      --admin.insecure
+      --client.insecure
+      --http_api.insecure
+    networks:
+      - fat-network
+    depends_on:
+      - redis-fat
+
+  nginx-fat:
+    image: noamanfaisal/neuralops-nginx:${FAT_VERSION:-0.1.0}
+    profiles: ["fat"]
+    container_name: fat-nginx
+    restart: unless-stopped
+    ports:
+      - "${FAT_NGINX_HOST_PORT:-8090}:80"
+    networks:
+      - fat-network
+    depends_on:
+      - nucleus-fat
+      - realtime-fat
+
+  chromadb-fat:
+    image: chromadb/chroma:latest
+    profiles: ["fat"]
+    container_name: fat-chroma
+    environment:
+      - IS_PERSISTENT=TRUE
+    volumes:
+      - ./data/fat/chroma_data:/chroma/chroma
+    networks:
+      - fat-network
+
+  postgres-fat:
+    image: postgres:17-alpine
+    profiles: ["fat"]
+    container_name: fat-postgres
+    restart: always
+    environment:
+      - POSTGRES_DB=${FAT_POSTGRES_DB}
+      - POSTGRES_USER=${FAT_POSTGRES_USER}
+      - POSTGRES_PASSWORD=${FAT_POSTGRES_PASSWORD}
+    ports:
+      - "${FAT_POSTGRES_HOST_PORT:-5440}:5432"
+    volumes:
+      - ./data/fat/postgres_data:/var/lib/postgresql/data
+    networks:
+      - fat-network
+
 networks:
   dev-network:
     name: dev-network
+    driver: bridge
+  fat-network:
+    name: fat-network
     driver: bridge
 
 volumes:
