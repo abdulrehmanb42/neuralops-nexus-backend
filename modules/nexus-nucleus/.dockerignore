@@ -1,0 +1,14 @@
+# Used when building modules/nexus-nucleus/docker/fat/Dockerfile.nexus-nucleus
+# (context = this directory). The dev build never needed this — dev bind-mounts
+# source at runtime instead of COPYing it at build time — but fat bakes source
+# into the image, so this keeps runtime/local junk out of that image. See #170.
+
+__pycache__/
+*.pyc
+*.pyo
+.venv/
+env/
+.git/
+.vscode/
+db.sqlite3
+media/
