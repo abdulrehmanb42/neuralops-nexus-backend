@@ -1,13 +1,15 @@
 """Schemas for the /trigger/ endpoint (nexus-nucleus → nexus-ai) and SSE events."""
-from pydantic import BaseModel
+
+from pydantic import BaseModel, Field
 
 
 # ── Inbound job payload ────────────────────────────────────────────────────────
 
+
 class ModelConfig(BaseModel):
-    provider: str                    # "litellm" | "local"
-    model_id: str                    # "anthropic/claude-haiku-4-5-20251001"
-    api_key: str | None = None       # decrypted key from AIModel — passed per-call
+    provider: str  # "litellm" | "local"
+    model_id: str  # "anthropic/claude-haiku-4-5-20251001"
+    api_key: str | None = None  # decrypted key from AIModel — passed per-call
     max_tokens: int = 4096
     temperature: float = 0.7
     supports_vision: bool = False
@@ -15,12 +17,13 @@ class ModelConfig(BaseModel):
 
 class MCPServerConfig(BaseModel):
     """MCP server descriptor passed from nexus-nucleus in the TriggerJob."""
+
     id: str
     name: str
-    transport: str                   # "stdio" | "http" | "sse" | "websocket"
-    url: str | None = None           # for http/sse/websocket
-    command: str | None = None       # for stdio
-    config: dict = {}
+    transport: str  # "stdio" | "http" | "sse" | "websocket"
+    url: str | None = None  # for http/sse/websocket
+    command: str | None = None  # for stdio
+    config: dict = Field(default_factory=dict)
     timeout_seconds: int = 60
     is_first_party: bool = False
     embed_output: bool = False
@@ -28,24 +31,24 @@ class MCPServerConfig(BaseModel):
 
 class PersonaConfig(BaseModel):
     id: str
-    name: str                        # "NeuralBot"
+    name: str  # "NeuralBot"
     system_prompt: str
     model: ModelConfig
-    mcp_servers: list[MCPServerConfig] = []  # M8: empty = plain LLM, non-empty = agent
+    mcp_servers: list[MCPServerConfig] = Field(default_factory=list)
 
 
 class HistoryMessage(BaseModel):
-    role: str                        # "user" | "assistant"
+    role: str  # "user" | "assistant"
     content: str
-    sender_name: str | None = None   # display only, not sent to LLM
+    sender_name: str | None = None  # display only, not sent to LLM
 
 
 class ContextSourceRef(BaseModel):
     source_id: str
-    type: str                        # "doc" | "code"
-    label: str                       # "auth.py"
+    type: str  # "doc" | "code"
+    label: str  # "auth.py"
     language: str | None = None
-    collection_id: str               # Chroma collection to search
+    collection_id: str  # Chroma collection to search
 
 
 class TriggerJob(BaseModel):
@@ -58,7 +61,7 @@ class TriggerJob(BaseModel):
     the comment on trigger_ai_response_async in chat/services.py for why.
     """
     job_id: str
-    msg_id: str                      # pre-generated UUID — used in SSE events + DB save
+    msg_id: str  # pre-generated UUID — used in SSE events + DB save
 
     persona_id: str
     topic_id: str
@@ -66,7 +69,7 @@ class TriggerJob(BaseModel):
                                       # excluded when nucleus_client fetches history,
                                       # since it's sent separately as `message` below
     message: str                     # the user's current message (mentions stripped)
-    context_sources: list[ContextSourceRef] = []
+    context_sources: list[ContextSourceRef] = Field(default_factory=list)
 
     # M7: output type — resolved in nexus-nucleus from @mention detection.
     # "auto" = nexus-ai should classify intent via cosine similarity.
@@ -75,6 +78,7 @@ class TriggerJob(BaseModel):
 
 
 # ── Outbound SSE events (nexus-ai → nexus-nucleus) ────────────────────────────
+
 
 class AgentEvent(BaseModel):
     type: str                        # "message_start" | "message_delta" | "message_done" | "message_error"
@@ -87,11 +91,11 @@ class AgentEvent(BaseModel):
     delta: str | None = None
 
     # message_done only
-    content: str | None = None       # full assembled response (markers stripped) for DB save
+    content: str | None = None  # full assembled response (markers stripped) for DB save
 
     # M7: output type metadata — populated in message_done
-    output_type: str | None = None   # resolved type: "chart", "terminal", "text", etc.
-    render_as: str | None = None     # renderer hint: "html" | "code" | "text" | "terminal"
+    output_type: str | None = None  # resolved type: "chart", "terminal", "text", etc.
+    render_as: str | None = None  # renderer hint: "html" | "code" | "text" | "terminal"
 
     # M8: embed description — text inside <<<EMBED>>>...<<<END_EMBED>>> block
     # Only present for html/form/terminal render_as. Used instead of raw HTML for embedding.
