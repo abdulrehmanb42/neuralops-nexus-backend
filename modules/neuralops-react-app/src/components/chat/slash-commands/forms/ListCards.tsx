@@ -164,15 +164,15 @@ export function ListAgentsDialog({ open, onClose }: { open: boolean; onClose: ()
 
 // ── Personas ──────────────────────────────────────────────────────────────────
 
-export function ListPersonasDialog({ open, onClose }: { open: boolean; onClose: () => void }) {
+export function ListPersonasDialog({ open, onClose, projectId }: { open: boolean; onClose: () => void; projectId?: string | null }) {
   const [items, setItems] = useState<Persona[]>([]);
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
     if (!open) return;
     setLoading(true);
-    listPersonas().then(setItems).catch(() => {}).finally(() => setLoading(false));
-  }, [open]);
+    listPersonas(projectId).then(setItems).catch(() => {}).finally(() => setLoading(false));
+  }, [open, projectId]);
 
   async function remove(id: string, name: string) {
     await deletePersona(id);

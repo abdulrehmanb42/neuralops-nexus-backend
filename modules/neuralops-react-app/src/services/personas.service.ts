@@ -1,14 +1,18 @@
 import { apiJson } from "./api-client";
 import type { Persona } from "@/types";
 
-export async function listPersonas(): Promise<Persona[]> {
-  return apiJson<Persona[]>("/api/v1/personas/");
+// Personas are project-owned (see DECISIONS.md #1, #92) -- both endpoints
+// require project_id. listPersonas() returns [] early instead of calling
+// the API with an empty project_id, which the backend would 422 on.
+export async function listPersonas(projectId?: string | null): Promise<Persona[]> {
+  if (!projectId) return [];
+  return apiJson<Persona[]>(`/api/v1/personas/?project_id=${encodeURIComponent(projectId)}`);
 }
 
-export async function createPersona(input: Partial<Persona>): Promise<Persona> {
+export async function createPersona(projectId: string, input: Partial<Persona>): Promise<Persona> {
   return apiJson<Persona>("/api/v1/personas/", {
     method: "POST",
-    body: JSON.stringify(input),
+    body: JSON.stringify({ ...input, project_id: projectId }),
   });
 }
 

@@ -37,9 +37,11 @@ const EMPTY: FormState = {
 export function AddPersonaForm({
   open,
   onClose,
+  projectId,
 }: {
   open: boolean;
   onClose: () => void;
+  projectId?: string | null;
 }) {
   const [models, setModels] = useState<AIModel[]>([]);
   const [agents, setAgents] = useState<Agent[]>([]);
@@ -65,6 +67,10 @@ export function AddPersonaForm({
     e.preventDefault();
     const hasTarget =
       form.source_type === "agent" ? !!form.agent_id : !!form.model_id;
+    if (!projectId) {
+      toast.error("Open a project first -- personas belong to a project.");
+      return;
+    }
     if (!form.name || !hasTarget) {
       toast.error(
         !form.name ? "Name is required" : `Select a ${form.source_type}`,
@@ -73,7 +79,7 @@ export function AddPersonaForm({
     }
     setSaving(true);
     try {
-      await createPersona({
+      await createPersona(projectId, {
         name: form.name,
         description: form.description || undefined,
         source_type: form.source_type,

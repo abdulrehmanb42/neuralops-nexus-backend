@@ -98,10 +98,10 @@ export function MessageInput({
   const lastTypingSentRef = useRef(0);
 
   useEffect(() => {
-    listPersonas()
+    listPersonas(projectId)
       .then((ps) => setPersonas(ps.map((p) => ({ id: p.id, name: p.name }))))
       .catch(() => {});
-  }, []);
+  }, [projectId]);
 
   useEffect(() => {
     const ta = textareaRef.current;
@@ -281,8 +281,8 @@ export function MessageInput({
       <ListMCPsDialog  open={activeForm === "list-mcps"}     onClose={() => setActiveForm(null)} />
       <AddAgentForm    open={activeForm === "add-agent"}     onClose={() => setActiveForm(null)} />
       <ListAgentsDialog open={activeForm === "list-agents"}  onClose={() => setActiveForm(null)} />
-      <AddPersonaForm  open={activeForm === "add-persona"}   onClose={() => setActiveForm(null)} />
-      <ListPersonasDialog open={activeForm === "list-personas"} onClose={() => setActiveForm(null)} />
+      <AddPersonaForm  open={activeForm === "add-persona"}   onClose={() => setActiveForm(null)} projectId={projectId} />
+      <ListPersonasDialog open={activeForm === "list-personas"} onClose={() => setActiveForm(null)} projectId={projectId} />
 
       <div className="relative border-t border-sidebar-border bg-sidebar px-3 py-3">
         {file && (
