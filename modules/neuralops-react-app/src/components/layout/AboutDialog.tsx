@@ -5,6 +5,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { APP_NAME, APP_STAGE, APP_VERSION } from "@/lib/version";
+import { useAuthStore } from "@/store/auth.store";
 
 interface Props {
   open: boolean;
@@ -12,6 +13,9 @@ interface Props {
 }
 
 export function AboutDialog({ open, onOpenChange }: Props) {
+  const serverVersion = useAuthStore((s) => s.serverVersion);
+  const serverUrl = useAuthStore((s) => s.serverUrl);
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-sm">
@@ -34,6 +38,22 @@ export function AboutDialog({ open, onOpenChange }: Props) {
             <br />
             Built with NexusNucleus + NexusAI.
           </p>
+          {serverUrl && (
+            <>
+              <div className="w-full border-t border-border" />
+              <div className="w-full text-left text-xs text-foreground-muted">
+                <div className="truncate">
+                  <span className="font-medium text-foreground">Server:</span> {serverUrl}
+                </div>
+                {serverVersion && (
+                  <div>
+                    <span className="font-medium text-foreground">Server version:</span>{" "}
+                    {serverVersion}
+                  </div>
+                )}
+              </div>
+            </>
+          )}
         </div>
       </DialogContent>
     </Dialog>
