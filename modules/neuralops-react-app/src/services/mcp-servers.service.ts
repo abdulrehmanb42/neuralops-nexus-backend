@@ -18,6 +18,16 @@ export async function createMCPServer(
   });
 }
 
+export async function patchMCPServer(
+  id: string,
+  input: Partial<MCPServer>,
+): Promise<MCPServer> {
+  return apiJson<MCPServer>(`/api/v1/mcp-servers/${id}/`, {
+    method: "PATCH",
+    body: JSON.stringify(input),
+  });
+}
+
 export async function deleteMCPServer(id: string): Promise<void> {
   return apiJson<void>(`/api/v1/mcp-servers/${id}/`, { method: "DELETE" });
 }

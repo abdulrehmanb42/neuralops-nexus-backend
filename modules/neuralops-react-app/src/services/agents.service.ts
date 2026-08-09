@@ -19,6 +19,13 @@ export async function createAgent(projectId: string, input: Partial<Agent>): Pro
   });
 }
 
+export async function patchAgent(id: string, input: Partial<Agent>): Promise<Agent> {
+  return apiJson<Agent>(`/api/v1/agents/${id}/`, {
+    method: "PATCH",
+    body: JSON.stringify(input),
+  });
+}
+
 export async function deleteAgent(id: string): Promise<void> {
   return apiJson<void>(`/api/v1/agents/${id}/`, { method: "DELETE" });
 }
