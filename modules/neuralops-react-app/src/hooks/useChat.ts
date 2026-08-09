@@ -377,15 +377,23 @@ export function useTopicMessages(
               } satisfies ChatMessage,
             ];
           }
-          // Auto-rename: on first AI response, use the first human message as title
+          // Auto-rename: on first AI response, use the human message that
+          // actually triggered it -- the most recent human message right
+          // before this AI reply -- not just the topic's very first message,
+          // which could be unrelated small talk before anyone ever
+          // @mentioned a persona.
           if (
             !autoRenamed && projectId && channelId && topicId &&
             updated.some((m) => m.sender.type === "agent" && m.id === event.id)
           ) {
-            const firstHuman = updated.find((m) => m.sender.type === "human");
-            if (firstHuman) {
+            const aiIndex = updated.findIndex((m) => m.id === event.id);
+            let triggerHuman: ChatMessage | undefined;
+            for (let i = aiIndex - 1; i >= 0; i--) {
+              if (updated[i].sender.type === "human") { triggerHuman = updated[i]; break; }
+            }
+            if (triggerHuman) {
               // Strip @mentions and output_type markers, trim to 60 chars
-              const title = firstHuman.content
+              const title = triggerHuman.content
                 .replace(/@\w+/g, "")
                 .replace(/@output_type:\w+/g, "")
                 .trim()
