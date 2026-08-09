@@ -64,6 +64,7 @@ services:
       - NEURALOPS_INSTALL_TOKEN=${DEV_NEURALOPS_INSTALL_TOKEN}
       - NEURALOPS_PORTAL_URL=${DEV_NEURALOPS_PORTAL_URL:-https://neuralops-nexus-auth.mapax.io}
       - NEURALOPS_SERVER_URL=${DEV_NEURALOPS_SERVER_URL}
+      - NEURALOPS_VERSION=dev
       - PYTHONPATH=/nexus-nucleus
     networks:
       - dev-network
@@ -233,7 +234,7 @@ services:
   # ===========================================================================
 
   nucleus-fat:
-    image: noamanfaisal/neuralops-nucleus:${FAT_VERSION:-0.1.0}
+    image: noamanfaisal/neuralops-nucleus:${FAT_VERSION:-0.1.1}
     profiles: ["fat"]
     container_name: fat-nucleus
     command: >-
@@ -259,6 +260,7 @@ services:
       - NEURALOPS_INSTALL_TOKEN=${FAT_NEURALOPS_INSTALL_TOKEN}
       - NEURALOPS_PORTAL_URL=${FAT_NEURALOPS_PORTAL_URL:-https://neuralops-nexus-auth.mapax.io}
       - NEURALOPS_SERVER_URL=${FAT_NEURALOPS_SERVER_URL}
+      - NEURALOPS_VERSION=${FAT_VERSION:-0.1.1}
     networks:
       - fat-network
     depends_on:
@@ -267,7 +269,7 @@ services:
       - realtime-fat
 
   nucleus-celery-fat:
-    image: noamanfaisal/neuralops-nucleus:${FAT_VERSION:-0.1.0}
+    image: noamanfaisal/neuralops-nucleus:${FAT_VERSION:-0.1.1}
     profiles: ["fat"]
     container_name: fat-celery
     command: tail -f /dev/null
@@ -300,7 +302,7 @@ services:
       - fat-network
 
   nexus-ai-fat:
-    image: noamanfaisal/neuralops-nexus-ai:${FAT_VERSION:-0.1.0}
+    image: noamanfaisal/neuralops-nexus-ai:${FAT_VERSION:-0.1.1}
     profiles: ["fat"]
     container_name: fat-nexus-ai
     ports:
@@ -343,7 +345,7 @@ services:
       - redis-fat
 
   nginx-fat:
-    image: noamanfaisal/neuralops-nginx:${FAT_VERSION:-0.1.0}
+    image: noamanfaisal/neuralops-nginx:${FAT_VERSION:-0.1.1}
     profiles: ["fat"]
     container_name: fat-nginx
     restart: unless-stopped

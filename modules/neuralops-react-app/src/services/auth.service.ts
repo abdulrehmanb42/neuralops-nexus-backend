@@ -58,6 +58,7 @@ export interface VerifyResult {
   role?: string;
   companyName?: string;
   isOwner?: boolean;
+  serverVersion?: string; // #170 -- self-host version check, see version.ts
 }
 
 /** Verify the Supabase JWT against a Django NeuralOps server. */
@@ -77,6 +78,34 @@ export async function changeUsername(
   });
 }
 
+export interface ServerConfigResult {
+  serverUrl: string;
+  serverVersion: string | null;
+}
+
+/**
+ * Public, unauthenticated peek at a server's version -- used to preview
+ * version drift on ServerList.tsx *before* the user clicks Connect. Does
+ * NOT use /auth/verify/, which has real side effects (creates the user
+ * record, assigns avatar/display name) that shouldn't fire just from
+ * having a server saved in the list.
+ */
+export async function fetchServerConfig(
+  serverUrl: string,
+): Promise<ServerConfigResult | null> {
+  try {
+    const res = await fetch(`${serverUrl}/api/v1/auth/config/`);
+    if (!res.ok) return null;
+    const data = await res.json().catch(() => ({}));
+    return {
+      serverUrl: data.server_url ?? serverUrl,
+      serverVersion: data.server_version ?? null,
+    };
+  } catch {
+    return null;
+  }
+}
+
 export async function verifyServerAccess(
   serverUrl: string,
   token: string,
@@ -94,6 +123,7 @@ export async function verifyServerAccess(
         role: data.role ?? null,
         companyName: data.company_name ?? null,
         isOwner: data.is_owner ?? false,
+        serverVersion: data.server_version ?? undefined,
       };
     }
     return { ok: false, status: res.status };

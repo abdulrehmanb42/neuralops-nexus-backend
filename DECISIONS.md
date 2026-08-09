@@ -423,6 +423,37 @@ right after `docker compose up -d` and prints `migrate`/`seed_permissions`/
 `create_owner`/Tailscale as explicit commands for the user to run one at a
 time — trading full automation for visibility.
 
+**Server/frontend version check (2026-08-08):** The hosted frontend always
+runs the newest code, but a self-hosted `fat` server can be pinned to any
+older `FAT_VERSION` (exactly what caused the avatar bug above — an image
+built before the avatar pool existed). Without a check, a stale server just
+fails in confusing ways instead of surfacing the real cause. Fix: `FAT_VERSION`
+(`"dev"` for the dev profile) is now passed into `nucleus-fat`/`nucleus-dev`
+as `NEURALOPS_VERSION`, exposed as `server_version` in the existing
+`GET /api/v1/auth/verify/` response (no new endpoint), and compared by the
+frontend against `COMPATIBLE_SERVER_VERSION` (`modules/neuralops-react-app/
+src/lib/version.ts`) on every connect. On any mismatch (server older or
+newer), `ServerList.tsx` shows a non-blocking banner telling the self-hoster
+to run `./install.sh update` — doesn't refuse the connection, just makes
+version drift visible instead of silent. `"dev"`/`"unknown"` servers skip the
+check entirely. Files: `authn/schema.py` (`AuthVerifyResponse.server_version`),
+`authn/services.py` (`auth_verify()`), `core/settings.py`
+(`NEURALOPS_VERSION`), `docker-compose.yaml` (env var wiring),
+`auth.service.ts` (`VerifyResult.serverVersion`), `ServerList.tsx` +
+`ServerCard.tsx` (the banner), `lib/version.ts` (`COMPATIBLE_SERVER_VERSION`).
+
+**Real version bump to test it (2026-08-08): `0.1.0` → `0.1.1`.** Reusing the
+same `0.1.0` tag for the rebuilt-with-avatars image would have made "did the
+rebuild actually take" impossible to verify by tag alone, and there was
+nothing to trigger the mismatch banner against. While bumping, found a real
+bug in `install.sh update`: it downloads the new `docker-compose.yaml` and
+writes the new version to `.neuralops-version`, but never updates `.env`'s
+`FAT_VERSION=` line — since image tags come from `FAT_VERSION`, not the
+version marker file, `docker compose pull` would keep silently pulling the
+OLD image forever after every future `update`. Fixed with a `sed` on `.env`
+right after the marker write. `COMPATIBLE_SERVER_VERSION` bumped to `0.1.1`
+to match.
+
 **Decision:** Fat distribution uses MULTIPLE pre-built Docker Hub images
 orchestrated by a `fat` Compose profile added to the same `docker-compose.yaml`
 (alongside `dev`) — NOT a single merged/supervisord image. A merged image was

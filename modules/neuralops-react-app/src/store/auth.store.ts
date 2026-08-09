@@ -10,6 +10,7 @@ export interface AuthState {
   role: string | null;
   companyName: string | null;
   isOwner: boolean;
+  serverVersion: string | null; // #170 -- the connected server's version
 
   setIdentity: (token: string, userId: string, email: string) => void;
   setServerUrl: (url: string) => void;
@@ -19,6 +20,7 @@ export interface AuthState {
     role?: string;
     companyName?: string;
     isOwner?: boolean;
+    serverVersion?: string;
   }) => void;
   clearAuth: () => void;
 }
@@ -33,16 +35,18 @@ export const useAuthStore = create<AuthState>()(
       role: null,
       companyName: null,
       isOwner: false,
+      serverVersion: null,
       setIdentity: (supabaseToken, userId, email) =>
         set({ supabaseToken, userId, email }),
       setServerUrl: (serverUrl) => set({ serverUrl }),
-      setServerInfo: ({ serverUrl, userId, role, companyName, isOwner }) =>
+      setServerInfo: ({ serverUrl, userId, role, companyName, isOwner, serverVersion }) =>
         set({
           serverUrl,
           ...(userId !== undefined && { userId }),
           role: role ?? null,
           companyName: companyName ?? null,
           isOwner: isOwner ?? false,
+          serverVersion: serverVersion ?? null,
         }),
       clearAuth: () =>
         set({
@@ -53,6 +57,7 @@ export const useAuthStore = create<AuthState>()(
           role: null,
           companyName: null,
           isOwner: false,
+          serverVersion: null,
         }),
     }),
     {
@@ -65,6 +70,7 @@ export const useAuthStore = create<AuthState>()(
         role: s.role,
         companyName: s.companyName,
         isOwner: s.isOwner,
+        serverVersion: s.serverVersion,
       }),
     },
   ),

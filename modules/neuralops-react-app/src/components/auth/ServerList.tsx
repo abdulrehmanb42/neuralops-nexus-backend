@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useNavigate } from "@tanstack/react-router";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -6,7 +6,8 @@ import { Label } from "@/components/ui/label";
 import { ServerCard } from "./ServerCard";
 import { useServers } from "./use-servers";
 import { useAuthStore } from "@/store/auth.store";
-import { verifyServerAccess } from "@/services/auth.service";
+import { verifyServerAccess, fetchServerConfig } from "@/services/auth.service";
+import { COMPATIBLE_SERVER_VERSION, compareServerVersion, type ServerVersionDrift } from "@/lib/version";
 import type { ServerEntry } from "@/types";
 import { Plus, Server } from "lucide-react";
 
@@ -22,12 +23,51 @@ export function ServerList() {
   const [connectingId, setConnectingId] = useState<string | null>(null);
   const [connectedId, setConnectedId] = useState<string | null>(null);
   const [errors, setErrors] = useState<Record<string, string>>({});
+  const [versionWarnings, setVersionWarnings] = useState<Record<string, string>>({});
+
+  // #170 -- pre-connect version preview. Public/no-auth (fetchServerConfig
+  // hits /auth/config/, not /auth/verify/), fetched for every saved server
+  // on mount/whenever the list changes, so drift is visible on the card
+  // BEFORE the user clicks Connect, and so a "breaking" mismatch can block
+  // the Connect button outright instead of failing after the fact.
+  const [serverVersions, setServerVersions] = useState<Record<string, string | null>>({});
+
+  useEffect(() => {
+    let cancelled = false;
+    servers.forEach((s) => {
+      const cleanUrl = s.url.replace(/\/$/, "");
+      fetchServerConfig(cleanUrl).then((cfg) => {
+        if (cancelled) return;
+        setServerVersions((v) => ({ ...v, [s.id]: cfg?.serverVersion ?? null }));
+      });
+    });
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [servers.map((s) => s.id + s.url).join(",")]);
+
+  function driftFor(serverId: string): ServerVersionDrift {
+    return compareServerVersion(serverVersions[serverId]);
+  }
 
   async function handleConnect(server: ServerEntry) {
     if (!supabaseToken) {
       setErrors({ [server.id]: "You are not signed in." });
       return;
     }
+
+    // Hard block on a breaking mismatch -- known before we even call verify,
+    // thanks to the pre-connect preview above. See compareServerVersion()
+    // in lib/version.ts for what counts as "breaking".
+    if (driftFor(server.id) === "breaking") {
+      setErrors((e) => ({
+        ...e,
+        [server.id]: `Server is on v${serverVersions[server.id]}, this app requires v${COMPATIBLE_SERVER_VERSION}. Run './install.sh update' on the server, then try again.`,
+      }));
+      return;
+    }
+
     setErrors((e) => ({ ...e, [server.id]: "" }));
     setConnectingId(server.id);
     const cleanUrl = server.url.replace(/\/$/, "");
@@ -43,8 +83,22 @@ export function ServerList() {
         role: result.role,
         companyName: result.companyName,
         isOwner: result.isOwner,
+        serverVersion: result.serverVersion,
       });
-      setTimeout(() => navigate({ to: "/app" }), 500);
+
+      // Minor/patch drift: warn, don't block -- see lib/version.ts. Falls
+      // back to verify's own serverVersion in case the pre-connect preview
+      // failed (e.g. transient network blip) but the real connect worked.
+      const drift = compareServerVersion(result.serverVersion ?? serverVersions[server.id]);
+      const hasVersionDrift = drift === "minor";
+      if (hasVersionDrift) {
+        setVersionWarnings((w) => ({
+          ...w,
+          [server.id]: `Server is on v${result.serverVersion}, this app expects v${COMPATIBLE_SERVER_VERSION}. Run './install.sh update' on the server to update it.`,
+        }));
+      }
+
+      setTimeout(() => navigate({ to: "/app" }), hasVersionDrift ? 2200 : 500);
     } else {
       const msg =
         result.status === 403
@@ -99,6 +153,9 @@ export function ServerList() {
             connecting={connectingId === s.id}
             connected={connectedId === s.id}
             error={errors[s.id] || null}
+            warning={versionWarnings[s.id] || null}
+            serverVersion={serverVersions[s.id] ?? undefined}
+            versionDrift={driftFor(s.id)}
           />
         ))}
       </div>

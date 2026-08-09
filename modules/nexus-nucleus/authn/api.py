@@ -20,6 +20,12 @@ router = Router(tags=["Authentication"])
 
 class ServerConfigOut(Schema):
     server_url: str
+    # Self-host version check (#170) -- public/no-auth so the frontend can
+    # preview a saved server's version (ServerList.tsx) before the user
+    # clicks Connect, without touching /auth/verify/ (which has real side
+    # effects: creates the user record, assigns avatar/display name, etc.
+    # -- not something to trigger just for a version peek).
+    server_version: Optional[str] = None
 
 class InvitePreviewOut(Schema):
     company_name: str
@@ -40,11 +46,15 @@ _USERNAME_RE = re.compile(r'^[a-zA-Z0-9_]{2,30}$')
 @router.get("/config/", response=ServerConfigOut, auth=None)
 def server_config(request):
     """
-    Returns the public server URL (NEURALOPS_SERVER_URL env var).
-    Used by the frontend so users know what address to share.
-    No authentication required.
+    Returns the public server URL (NEURALOPS_SERVER_URL env var) and this
+    server's version. Used by the frontend so users know what address to
+    share, and (as of #170) to preview a saved server's version before
+    connecting. No authentication required.
     """
-    return {"server_url": getattr(settings, "NEURALOPS_SERVER_URL", "")}
+    return {
+        "server_url": getattr(settings, "NEURALOPS_SERVER_URL", ""),
+        "server_version": getattr(settings, "NEURALOPS_VERSION", "unknown"),
+    }
 
 # ── Supabase JWT sign-in ─────────────────────────────────────────────────────
 

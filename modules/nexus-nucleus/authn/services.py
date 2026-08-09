@@ -193,6 +193,7 @@ def auth_verify(access_token: str) -> dict:
     if not company:
         # No company set up yet — server is unconfigured
         logger.info("[auth_verify] no company found, server needs setup. user=%s", email)
+        from django.conf import settings as dj_settings
         return {
             "ok": True,
             "email": user.email,
@@ -202,6 +203,7 @@ def auth_verify(access_token: str) -> dict:
             "is_owner": False,
             "role": None,
             "company_name": None,
+            "server_version": dj_settings.NEURALOPS_VERSION,
         }
 
     # ── Membership check ───────────────────────────────────────────────────
@@ -279,6 +281,7 @@ def auth_verify(access_token: str) -> dict:
 
     logger.info("[auth_verify] user=%s role=%s company=%s", email, access.role, company.name)
 
+    from django.conf import settings as dj_settings
     return {
         "ok": True,
         "email": user.email,
@@ -288,6 +291,7 @@ def auth_verify(access_token: str) -> dict:
         "is_owner": is_owner,
         "role": access.role,
         "company_name": company.name,
+        "server_version": dj_settings.NEURALOPS_VERSION,
     }
 
 
