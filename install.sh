@@ -21,8 +21,8 @@
 set -euo pipefail
 
 # ── Config — adjust REPO_RAW_BASE/REF once a real release tag exists ────────
-REPO_RAW_BASE="https://raw.githubusercontent.com/noamanfaisal/neuralops-nexus-backend"
-REF="${NEURALOPS_REF:-staging}"   # TODO: point at a real git tag (e.g. v0.1.0) once one is cut
+REPO_RAW_BASE="https://raw.githubusercontent.com/mapax-io/neuralops-nexus"
+REF="${NEURALOPS_REF:-dev}"   # TODO: point at a real git tag (e.g. v0.1.0) once one is cut
 INSTALL_DIR="${NEURALOPS_INSTALL_DIR:-$(pwd)}"   # installs into the CURRENT directory, no nested subfolder
 VERSION_MARKER="$INSTALL_DIR/.neuralops-version"
 

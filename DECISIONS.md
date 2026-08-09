@@ -344,15 +344,30 @@ Do NOT assume API compatibility across major versions without checking.
 
 ## 20. Self-Host Distribution (#170) — Fat Docker Profile + Installer
 
-**Status:** Built and in live testing (2026-08-08) — `fat` profile in
+**Status:** Verified end-to-end (2026-08-08) — `fat` profile in
 `docker-compose.yaml`, `docker/fat/Dockerfile.nginx` + `docker/fat/nginx.conf`,
 `modules/nexus-nucleus/docker/fat/Dockerfile.nexus-nucleus`,
 `modules/nexus-ai/docker/fat/Dockerfile.nexus-ai`, `.env.example` FAT_* section,
 `install.sh`, `SELF-HOST.md`, `VERSION`. All three custom images
 (`noamanfaisal/neuralops-{nucleus,nexus-ai,nginx}:0.1.0`) built and pushed to
-Docker Hub by the owner. `install.sh`'s `REPO_RAW_BASE`/`REF` still point at
-the `staging` branch as a placeholder; update `REF` to a real git tag once one
-is cut.
+Docker Hub by the owner. Full first-run sequence (`migrate`/`seed_permissions`/
+`create_owner`) run successfully; the hosted frontend's "Connect" flow
+succeeds against the Tailscale Funnel URL; avatars and typing-status render
+correctly through the self-hosted backend, confirming end-to-end parity with
+the `dev` profile.
+
+**Distribution address (2026-08-08):** `install.sh`'s `REPO_RAW_BASE`/`REF`
+and `SELF-HOST.md`'s curl examples now point at `mapax-io/neuralops-nexus`
+on branch `dev` (the canonical/upstream repo, since the fat profile is a
+user-facing feature and belongs at the public address, not the personal fork
+used during development). **This is forward-looking** — the fat-profile
+files only exist on the fork (`noamanfaisal/neuralops-nexus-backend`,
+branch `staging`) as of this note. Owner is merging to the fork's `main`
+first, then opening a PR from fork `main` → `mapax-io/neuralops-nexus`
+`dev`. Until that PR merges, `install.sh`/`SELF-HOST.md` in this repo will
+404 against the real `mapax-io` URLs — that's expected and resolves itself
+once the PR lands. Update `REF` to a real git tag once one is cut, same as
+before.
 
 **Bugs found during end-to-end testing on node-3 (all fixed):**
 1. `install.sh` used `mapax-io` GitHub org (copied from `readme.md`'s unrelated

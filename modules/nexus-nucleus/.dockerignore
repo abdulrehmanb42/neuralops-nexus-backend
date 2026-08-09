@@ -11,4 +11,10 @@ env/
 .git/
 .vscode/
 db.sqlite3
-media/
+
+# Exclude runtime/user media (uploads, etc.) but keep the pre-generated
+# avatar pool (#148/#170) so it ships baked into the fat image -- avoids a
+# runtime dependency on the DiceBear API for self-hosters.
+media/*
+!media/avatars
+!media/avatars/**

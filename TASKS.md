@@ -16,7 +16,6 @@ Generated from the session task tracker — last updated 2026-08-07.
 | 149 | Prompt building design pass | Rework of PromptBuilder in nexus-ai — not yet scoped in detail |
 | 150 | MCP servers focus pass | Not yet scoped in detail |
 | 169 | Add file context type | Split off from #141 — keep separate from typing/thinking indicators |
-| 170 | Fat docker image for easy self-host distribution | **Fully designed, not yet built.** Multiple pre-built Docker Hub images (NOT one merged image) under a new `fat` Compose profile in the same `docker-compose.yaml`: nucleus, nucleus-celery, postgres, redis, chromadb, realtime, nginx — no frontend (self-hosters connect the hosted frontend instead). Three new images to build+push: `neuralops-nucleus`, `neuralops-nexus-ai`, `neuralops-nginx` (own Dockerfiles under `docker/fat/`, no bind mounts/`--reload`). `install.sh` (plain shell script, not a socket-mounting container) handles Docker check, `.env` setup, `docker compose up -d`, first-run commands (`migrate`→`create_owner`→`seed_permissions`, order doesn't matter between the last two), and folds in Tailscale (`tailscale up` + `funnel`, no auth-key requirement — one manual browser click is fine). Stays in this repo, git-tagged releases, dedicated `SELF-HOST.md`. Owner wants to batch other pending changes before the first Hub push. Full detail: `DECISIONS.md` §20. |
 | 171 | Library of system prompt templates (hundreds) for personas | `PromptTemplate` model already exists — needs content (hundreds of starter prompts) + search/category filtering in `list_prompt_templates()`, which currently only sorts by `-is_featured, title` |
 
 ## Completed
@@ -205,6 +204,10 @@ Generated from the session task tracker — last updated 2026-08-07.
 161. Wire avatar into frontend members panel
 162. Verify avatars render end-to-end in browser
 163. Backfill avatars for existing users/personas (fixed NULL-vs-empty-string migration bug + missing nginx /media/ route along the way)
+
+### #170 — Fat docker self-host distribution
+170. Fat docker image for easy self-host distribution — `fat` Compose profile (nucleus, nucleus-celery, postgres, redis, chromadb, realtime, nginx, no frontend), three new Docker Hub images (`neuralops-nucleus`, `neuralops-nexus-ai`, `neuralops-nginx`), `install.sh`, `SELF-HOST.md`. Verified end-to-end: containers up, `migrate`/`seed_permissions`/`create_owner` run, hosted frontend "Connect" succeeds against the Tailscale Funnel URL, avatars/typing-status render correctly through the self-hosted backend. Six real bugs found and fixed during testing (wrong GitHub org, `curl\|bash` stdin/unbound-variable crash, install dir nesting, `pg_isready` false negative, nginx-fat baked with dev-network upstream names, missing Chrome Private Network Access header for Tailscale's CGNAT range) — full list in `DECISIONS.md` §20.
+174. Build #170 fat docker profile + installer
 
 ---
 
