@@ -23,8 +23,8 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { listAIModels, createAIModel, deleteAIModel } from "@/services/ai-models.service";
-import { listMCPServers, createMCPServer, deleteMCPServer } from "@/services/mcp-servers.service";
-import { listAgents, createAgent, deleteAgent } from "@/services/agents.service";
+import { listMCPServers, createMCPServer, patchMCPServer, deleteMCPServer } from "@/services/mcp-servers.service";
+import { listAgents, createAgent, patchAgent, deleteAgent } from "@/services/agents.service";
 import { listPersonas, createPersona, patchPersona, deletePersona } from "@/services/personas.service";
 import { listProjects } from "@/services/projects.service";
 import type { AIModel, MCPServer, Agent, Persona, Project } from "@/types";
@@ -235,6 +235,35 @@ function MCPServersTab() {
     embed_output: true,
   });
 
+  // Edit state
+  const [editTarget, setEditTarget] = useState<MCPServer | null>(null);
+  const [editForm, setEditForm] = useState({ name: "", description: "", url: "" });
+  const [editSaving, setEditSaving] = useState(false);
+
+  function openEdit(s: MCPServer) {
+    setEditTarget(s);
+    setEditForm({ name: s.name, description: s.description ?? "", url: s.url ?? "" });
+  }
+
+  async function handleEdit() {
+    if (!editTarget) return;
+    setEditSaving(true);
+    try {
+      const updated = await patchMCPServer(editTarget.id, {
+        name: editForm.name || undefined,
+        description: editForm.description || undefined,
+        url: editForm.url || undefined,
+      });
+      setServers((prev) => prev.map((s) => s.id === updated.id ? updated : s));
+      setEditTarget(null);
+      toast.success(`MCP server "${updated.name}" updated.`);
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Failed to update MCP server.");
+    } finally {
+      setEditSaving(false);
+    }
+  }
+
   useEffect(() => {
     listMCPServers().then(setServers).catch(() => {});
     listProjects().then((pr) => {
@@ -317,12 +346,50 @@ function MCPServersTab() {
                 {s.is_first_party && (
                   <span className="rounded-full bg-blue-500/10 px-2 py-0.5 text-[10px] text-blue-600">first-party</span>
                 )}
+                <Button
+                  size="icon"
+                  variant="ghost"
+                  className="h-7 w-7 shrink-0 text-foreground-muted hover:text-foreground"
+                  onClick={() => openEdit(s)}
+                >
+                  <Pencil className="h-3.5 w-3.5" />
+                </Button>
                 <DeleteButton onDelete={() => handleDelete(s.id, s.name)} />
               </div>
             </Row>
           ))}
         </div>
       )}
+
+      {/* ── Edit MCP Server Dialog ── */}
+      <Dialog open={!!editTarget} onOpenChange={(v) => !v && setEditTarget(null)}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Edit {editTarget?.name}</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-3">
+            <div>
+              <Label>Name</Label>
+              <Input value={editForm.name} onChange={(e) => setEditForm({ ...editForm, name: e.target.value })} className="mt-1" />
+            </div>
+            <div>
+              <Label>Description <span className="text-foreground-muted">(optional)</span></Label>
+              <Input value={editForm.description} onChange={(e) => setEditForm({ ...editForm, description: e.target.value })} className="mt-1" />
+            </div>
+            <div>
+              <Label>URL</Label>
+              <Input value={editForm.url} onChange={(e) => setEditForm({ ...editForm, url: e.target.value })} placeholder="http://nexus-erp-mcp:8000/mcp" className="mt-1" />
+              <p className="mt-1 text-xs text-foreground-muted">
+                Transport/server type can't be changed after creation -- delete and re-add if you need a different one.
+              </p>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="ghost" onClick={() => setEditTarget(null)}>Cancel</Button>
+            <Button onClick={handleEdit} disabled={editSaving}>{editSaving ? "Saving..." : "Save Changes"}</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       <Dialog open={open} onOpenChange={setOpen}>
         <DialogContent className="max-w-md">
@@ -393,6 +460,45 @@ function AgentsTab() {
     mcp_server_id: "",
     system_prompt: "",
   });
+
+  // Edit state
+  const [editTarget, setEditTarget] = useState<Agent | null>(null);
+  const [editForm, setEditForm] = useState({
+    name: "", description: "", model_id: "", mcp_server_id: "", system_prompt: "",
+  });
+  const [editSaving, setEditSaving] = useState(false);
+
+  function openEdit(a: Agent) {
+    setEditTarget(a);
+    setEditForm({
+      name: a.name,
+      description: a.description ?? "",
+      model_id: a.model_id ?? "",
+      mcp_server_id: a.mcp_server_id ?? "",
+      system_prompt: a.system_prompt ?? "",
+    });
+  }
+
+  async function handleEdit() {
+    if (!editTarget) return;
+    setEditSaving(true);
+    try {
+      const updated = await patchAgent(editTarget.id, {
+        name: editForm.name || undefined,
+        description: editForm.description || undefined,
+        model_id: editForm.model_id || undefined,
+        mcp_server_id: editForm.mcp_server_id || undefined,
+        system_prompt: editForm.system_prompt || undefined,
+      });
+      setAgents((prev) => prev.map((a) => a.id === updated.id ? updated : a));
+      setEditTarget(null);
+      toast.success(`Agent "${updated.name}" updated.`);
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Failed to update agent.");
+    } finally {
+      setEditSaving(false);
+    }
+  }
 
   useEffect(() => {
     Promise.all([listAgents(), listAIModels(), listMCPServers(), listProjects()])
@@ -472,12 +578,74 @@ function AgentsTab() {
               </div>
               <div className="flex items-center gap-2 shrink-0">
                 <span className="rounded-full bg-accent px-2 py-0.5 text-[10px]">{a.agent_type}</span>
+                <Button
+                  size="icon"
+                  variant="ghost"
+                  className="h-7 w-7 shrink-0 text-foreground-muted hover:text-foreground"
+                  onClick={() => openEdit(a)}
+                >
+                  <Pencil className="h-3.5 w-3.5" />
+                </Button>
                 <DeleteButton onDelete={() => handleDelete(a.id, a.name)} />
               </div>
             </Row>
           ))}
         </div>
       )}
+
+      {/* ── Edit Agent Dialog ── */}
+      <Dialog open={!!editTarget} onOpenChange={(v) => !v && setEditTarget(null)}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Edit {editTarget?.name}</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-3">
+            <div>
+              <Label>Agent Name</Label>
+              <Input value={editForm.name} onChange={(e) => setEditForm({ ...editForm, name: e.target.value })} className="mt-1" />
+            </div>
+            <div>
+              <Label>Description <span className="text-foreground-muted">(optional)</span></Label>
+              <Input value={editForm.description} onChange={(e) => setEditForm({ ...editForm, description: e.target.value })} className="mt-1" />
+            </div>
+            <div>
+              <Label>AI Model</Label>
+              <Select value={editForm.model_id} onValueChange={(v) => setEditForm({ ...editForm, model_id: v })}>
+                <SelectTrigger className="mt-1"><SelectValue placeholder="Select a model..." /></SelectTrigger>
+                <SelectContent>
+                  {models.map((m) => (
+                    <SelectItem key={m.id} value={m.id}>{m.name}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div>
+              <Label>MCP Server <span className="text-foreground-muted">(optional)</span></Label>
+              <Select value={editForm.mcp_server_id} onValueChange={(v) => setEditForm({ ...editForm, mcp_server_id: v })}>
+                <SelectTrigger className="mt-1"><SelectValue placeholder="None (model only)" /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="">None</SelectItem>
+                  {mcps.map((s) => (
+                    <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div>
+              <Label>System Prompt <span className="text-foreground-muted">(optional)</span></Label>
+              <Textarea
+                value={editForm.system_prompt}
+                onChange={(e) => setEditForm({ ...editForm, system_prompt: e.target.value })}
+                className="mt-1 min-h-[80px]"
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="ghost" onClick={() => setEditTarget(null)}>Cancel</Button>
+            <Button onClick={handleEdit} disabled={editSaving}>{editSaving ? "Saving..." : "Save Changes"}</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       <Dialog open={open} onOpenChange={setOpen}>
         <DialogContent className="max-w-md">
