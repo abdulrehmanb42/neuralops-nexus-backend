@@ -7,11 +7,9 @@ from django.utils import timezone
 from ninja import Router, Schema
 from ninja.errors import HttpError
 
-from .schema import AuthInitResponse, AuthStatusResponse, AuthVerifyResponse, SignInRequest, SignInResponse
-from .services import DeviceAuthError, SignInError, auth_init, auth_status, auth_verify, signin_with_supabase_token
+from .schema import AuthVerifyResponse, SignInRequest, SignInResponse
+from .services import SignInError, auth_verify, signin_with_supabase_token
 from .supabase import SupabaseTokenError
-from . import workspace_services as ws_svc
-from . import team_services as team_svc
 from authn.auth import SupabaseBearer
 
 
@@ -23,6 +21,21 @@ router = Router(tags=["Authentication"])
 class ServerConfigOut(Schema):
     server_url: str
 
+class InvitePreviewOut(Schema):
+    company_name: str
+    inviter_name: str
+    email: str
+    expires_at: Optional[str] = None
+
+class ChangeUsernameIn(Schema):
+    new_name: str
+    topic_id: str
+
+class ChangeUsernameOut(Schema):
+    ok: bool
+    display_name: str
+
+_USERNAME_RE = re.compile(r'^[a-zA-Z0-9_]{2,30}$')
 
 @router.get("/config/", response=ServerConfigOut, auth=None)
 def server_config(request):
@@ -33,7 +46,6 @@ def server_config(request):
     """
     return {"server_url": getattr(settings, "NEURALOPS_SERVER_URL", "")}
 
-
 # ── Supabase JWT sign-in ─────────────────────────────────────────────────────
 
 @router.post("/signin", response=SignInResponse)
@@ -42,22 +54,6 @@ def signin(request, payload: SignInRequest):
         return signin_with_supabase_token(payload.access_token)
     except (SignInError, SupabaseTokenError) as exc:
         raise HttpError(401, str(exc))
-
-
-# ── Device activation flow ───────────────────────────────────────────────────
-
-@router.get("/init/", response=AuthInitResponse)
-def init(request):
-    try:
-        return auth_init()
-    except DeviceAuthError as exc:
-        raise HttpError(502, f"Could not reach activation service: {exc}")
-
-
-@router.get("/status/", response=AuthStatusResponse)
-def status(request):
-    return auth_status()
-
 
 # ── Server connection verify ─────────────────────────────────────────────────
 
@@ -81,16 +77,7 @@ def verify(request):
     except PermissionError as exc:
         raise HttpError(403, str(exc))
 
-
 # ── Public invite preview (no auth — called by portal invite page) ──────────
-
-class InvitePreviewOut(Schema):
-    company_name: str
-    inviter_name: str
-    email: str
-    expires_at: Optional[str] = None
-
-
 
 @router.get("/invite-preview/", response=InvitePreviewOut, auth=None)
 def invite_preview(request, token: str):
@@ -126,21 +113,7 @@ def invite_preview(request, token: str):
         "expires_at": invitation.expires_at.isoformat() if invitation.expires_at else None,
     }
 
-
 # ── Change display name ───────────────────────────────────────────────────────
-
-class ChangeUsernameIn(Schema):
-    new_name: str
-    topic_id: str
-
-
-class ChangeUsernameOut(Schema):
-    ok: bool
-    display_name: str
-
-
-_USERNAME_RE = re.compile(r'^[a-zA-Z0-9_]{2,30}$')
-
 
 @router.post("/change-username/", response=ChangeUsernameOut, auth=SupabaseBearer())
 def change_username(request, payload: ChangeUsernameIn):

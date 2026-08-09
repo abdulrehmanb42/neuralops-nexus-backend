@@ -1,0 +1,10 @@
+# Used when building modules/nexus-ai/docker/fat/Dockerfile.nexus-ai
+# (context = this directory). See #170.
+
+__pycache__/
+*.pyc
+*.pyo
+.venv/
+env/
+.git/
+.vscode/

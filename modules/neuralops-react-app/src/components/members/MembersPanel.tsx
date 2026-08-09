@@ -2,7 +2,7 @@ import { useState } from "react";
 import { Trash2, UserPlus, Users } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
-import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
   AlertDialog,
@@ -101,6 +101,7 @@ export function MembersPanel() {
                 className="flex items-center gap-3 px-4 py-3"
               >
                 <Avatar className="h-9 w-9">
+                  {m.avatar && <AvatarImage src={m.avatar} alt={m.email} />}
                   <AvatarFallback className="text-xs font-medium">
                     {initials(m.email)}
                   </AvatarFallback>

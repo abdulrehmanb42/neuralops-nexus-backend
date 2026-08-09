@@ -20,58 +20,55 @@ Full REST endpoint reference: see `neuralops-backend-api-catalog.md` if present 
 
 ---
 
-## 1. Install — Docker Compose
+## 1. Install — Docker Compose (dev profile)
 
 **Prerequisites:** Docker & Docker Compose, Git.
 
 ```bash
 git clone git@github.com:mapax-io/neuralops-nexus-backend.git
 cd neuralops-nexus-backend
-git checkout dev   # active development branch
+git checkout staging   # branch with the current dev-profile compose setup
 
-cp sample-example.env .env
+cp .env.example .env
 ```
 
-Edit `.env` and fill in at minimum:
+`.env` is gitignored on purpose — `.env.example` is the git-tracked template every fresh clone starts from. `COMPOSE_PROFILES=dev` is already set in it, so a bare `docker compose up` selects the right profile with no `--profile`/`-f` flags needed. Edit `.env` and fill in the blank `DEV_*` values — `.env.example` documents each one inline, but at minimum:
 
 | Variable | Purpose |
 |---|---|
-| `POSTGRES_USER` / `POSTGRES_PASSWORD` / `POSTGRES_DB` | Database credentials |
-| `POSTGRES_URL` | Full asyncpg URL used by nucleus |
-| `CENTRIFUGO_API_KEY` / `CENTRIFUGO_HMAC_SECRET` | Real-time transport secrets — any random strings |
-| `OPENAI_API_KEY` / `ANTHROPIC_API_KEY` | At least one, for your first AI model |
-| `NEXUS_AI_URL` | Internal URL nucleus uses to reach nexus-ai (`http://nexus-ai:8000` by default) |
-| `INTERNAL_API_KEY` | Shared secret between nucleus and nexus-ai — any random string |
-| `FIELD_ENCRYPTION_KEY` | Encrypts stored model API keys — generate with `python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"` |
-| `SUPABASE_URL` / `SUPABASE_ANON_KEY` / `SUPABASE_SERVICE_KEY` | Auth — NeuralOps uses Supabase for identity |
-| `NEURALOPS_SERVER_URL` | The URL *other people* will use to reach your server (see §3) |
+| `DEV_POSTGRES_USER` / `DEV_POSTGRES_PASSWORD` / `DEV_POSTGRES_DB` / `DEV_POSTGRES_URL` | Database credentials |
+| `DEV_FIELD_ENCRYPTION_KEY` | Encrypts stored model API keys — generate with `python3 -c "import base64, os; print(base64.urlsafe_b64encode(os.urandom(32)).decode())"` |
+| `DEV_INTERNAL_API_KEY` / `DEV_CENTRIFUGO_API_KEY` / `DEV_CENTRIFUGO_HMAC_SECRET` / `DEV_NEURALOPS_INSTALL_TOKEN` | Shared secrets — any random string, e.g. `python3 -c "import secrets; print(secrets.token_hex(32))"` |
+| `DEV_OPENAI_API_KEY` / `DEV_ANTHROPIC_API_KEY` | At least one, for your first AI model |
+| `DEV_SUPABASE_SERVICE_KEY` | From your Supabase project settings → API (service_role key). `DEV_SUPABASE_URL`/`DEV_SUPABASE_ANON_KEY` are already filled in for you — those are public by design, safe to ship in a frontend bundle |
+| `DEV_NEURALOPS_SERVER_URL` | The URL *other people* will use to reach your server, e.g. `http://192.168.1.90:8081` — defaults to `http://localhost:8081`, which only works for you locally |
 
-`SERPAPI_KEY`, `ERP_*`, `SSH_*` are only needed if you're using the matching MCP tool server (§6).
-
-Build and run:
+Verify nothing required is still blank, then bring the stack up:
 
 ```bash
-# Apple Silicon (M-series)
-ARCH=arm64 docker compose build --no-cache
-docker compose up -d
-
-# x86 / AMD64
-docker compose build
+docker compose config      # confirm no ${DEV_...} shows up empty
 docker compose up -d
 ```
 
-`docker compose ps` should show `nucleus`, `nucleus-celery`, `redis`, `nexus-ai`, `realtime`, `nginx`, `chromadb`, `postgres` (and `neuralops-react-app` if you're running the frontend locally — see §4). Data persists in `./data/postgres_data` and `./data/chroma_data`.
+`docker compose ps` should show all 9 `dev-*` containers up: `dev-nucleus`, `dev-celery`, `dev-redis`, `dev-nexus-ai`, `dev-transport`, `dev-nginx`, `dev-chroma`, `dev-postgres`, `dev-react-app`. Data persists in `./data/dev/`.
 
-## 2. First-run setup — create the owner
+## 2. First-run setup
 
-Migrate the database and create the first user (the "owner" of this server):
+Run these once, in order, against a fresh database:
 
 ```bash
-docker compose exec nucleus python manage.py migrate
-docker compose exec nucleus python manage.py create_owner
+docker compose exec nucleus-dev python manage.py migrate
+docker compose exec nucleus-dev python manage.py create_owner
+docker compose exec nucleus-dev python manage.py seed_permissions
+docker compose exec nucleus-dev python manage.py seed_avatars     # optional — populates the avatar pool (#148)
 ```
 
-`create_owner` is interactive. It needs a **Supabase account already created at the NeuralOps sign-up page** — if you don't have one yet it'll tell you to sign up first, then run the command again. Once verified, it creates your workspace and grants you the Owner role (full permissions; Admin/Member/Viewer groups are also created automatically for inviting others later).
+- `migrate` creates the schema.
+- `create_owner` is interactive. It needs a **Supabase account already created at the NeuralOps sign-up page** — if you don't have one yet it'll tell you to sign up first, then run the command again. Once verified, it creates your workspace and grants you the Owner role (full permissions; Admin/Member/Viewer groups are also created automatically for inviting others later).
+- `seed_permissions` seeds the RBAC right codes (`project.list`, `project.create`, etc.). Skip this and every permission check 500s with `Unknown right code`.
+- `seed_avatars` fetches a pool of DiceBear avatar images so new users/personas get one assigned automatically on creation.
+
+Then open `http://<your-server-ip>:3003` in a browser. Both port 3003 (frontend) and whatever `DEV_NGINX_HOST_PORT` is set to (default `8081`, the API) need to be reachable from wherever your browser is — same LAN, or whatever router/firewall/VPN rule you use for the rest of this server.
 
 ## 3. Exposing your server
 
@@ -86,30 +83,42 @@ If you want to connect a browser-based frontend (like a Vercel-hosted deploy of 
 curl -fsSL https://tailscale.com/install.sh | sh
 sudo tailscale up
 
-# Expose nginx (port 80) publicly over HTTPS via Tailscale Funnel
-sudo tailscale funnel --bg 80
+# Expose nginx-dev (host port from DEV_NGINX_HOST_PORT, default 8081) publicly over HTTPS via Tailscale Funnel
+sudo tailscale funnel --bg 8081
 ```
 
-This gives you a public `https://<machine-name>.<your-tailnet>.ts.net` URL that proxies straight to nginx → nucleus. Set that as `NEURALOPS_SERVER_URL` in `.env` and restart `nucleus` so `GET /api/v1/auth/config/` reports it correctly, then:
+This gives you a public `https://<machine-name>.<your-tailnet>.ts.net` URL that proxies straight to `nginx-dev` → `nucleus-dev`. Set that as `DEV_NEURALOPS_SERVER_URL` in `.env`, then restart both `nucleus-dev` and `realtime-dev` — Centrifugo's allowed-origins check also reads this value — so `GET /api/v1/auth/config/` reports it correctly:
+
+```bash
+docker compose restart nucleus-dev realtime-dev
+```
+
+Then:
 
 1. Open the frontend (e.g. wherever your `neuralops-nexus-demo...` deployment lives).
 2. Sign in with your Supabase account.
 3. Use the "add server" / connect flow and paste your Tailscale Funnel URL.
 4. The frontend calls `GET /api/v1/auth/verify/` against that URL to confirm access.
 
-`tailscale funnel status` shows the active funnel; `tailscale funnel --bg 80 off` (or `tailscale funnel reset`) tears it down.
+`tailscale funnel status` shows the active funnel; `tailscale funnel --bg 8081 off` (or `tailscale funnel reset`) tears it down.
 
 ### Option B — Fully local, no Tailscale (run backend + frontend together)
 
-If you just want everything running on your own machine, `neuralops-react-app` is already a normal service in `docker-compose.yaml` — no separate setup needed:
+`react-app-dev` is already part of the `dev` profile — it comes up automatically with `docker compose up -d`, no separate command needed. If you only want to rebuild it after a dependency change:
 
 ```bash
-docker compose up -d --build neuralops-react-app
+docker compose up -d --build react-app-dev
 ```
 
-Then set `NEURALOPS_SERVER_URL=http://localhost` (or your machine's LAN IP if you want other devices on your network to reach it, e.g. `http://192.168.1.90`) in `.env`, restart `nucleus`, and open the React app's port directly in the browser. Nothing leaves your machine/network — no Tailscale, no public exposure.
+Set `DEV_NEURALOPS_SERVER_URL=http://localhost:8081` (or your machine's LAN IP if you want other devices on your network to reach it, e.g. `http://192.168.1.90:8081`) in `.env`, then:
 
-If you're running the backend and frontend on different ports on the same box (e.g. testing a second instance alongside a production one), just remap the host-side ports in `docker-compose.yaml` and update `NEURALOPS_SERVER_URL` to match.
+```bash
+docker compose restart nucleus-dev realtime-dev
+```
+
+Open `http://<host>:3003` (or whatever `DEV_REACT_HOST_PORT` is set to) directly in the browser. Nothing leaves your machine/network — no Tailscale, no public exposure. Both the frontend port (3003 by default) and the API port (8081 by default) need to be reachable from wherever your browser actually is.
+
+To remap any host-side port, change the matching `DEV_*_HOST_PORT` variable in `.env` (e.g. `DEV_NGINX_HOST_PORT`, `DEV_REACT_HOST_PORT`) rather than editing `docker-compose.yaml` directly.
 
 ---
 

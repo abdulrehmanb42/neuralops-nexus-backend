@@ -14,9 +14,9 @@ def get_company():
 
 # ── AIModel ───────────────────────────────────────────────────────────────────
 
-def list_ai_models(company):
-    from nucleus.models import AIModel
-    return AIModel.objects.filter(company=company, is_active=True).order_by("name")
+def list_ai_models(company, user):
+    from authn.permissions.row_rules import visible_ai_models
+    return visible_ai_models(user, company)
 
 
 def get_ai_model(company, model_id: str):
@@ -34,6 +34,25 @@ def create_ai_model(company, user, data: dict) -> "AIModel":
     return model
 
 
+def attach_ai_model_to_project(company, model_id: str, project_id: str) -> bool:
+    from nucleus.models import AIModel, Project
+    model = AIModel.objects.filter(company=company, id=model_id, is_active=True).first()
+    project = Project.objects.filter(company=company, id=project_id, is_active=True).first()
+    if not model or not project:
+        return False
+    model.projects.add(project)
+    return True
+
+
+def detach_ai_model_from_project(company, model_id: str, project_id: str) -> bool:
+    from nucleus.models import AIModel
+    model = AIModel.objects.filter(company=company, id=model_id, is_active=True).first()
+    if not model:
+        return False
+    model.projects.remove(project_id)
+    return True
+
+
 def delete_ai_model(company, model_id: str) -> bool:
     from nucleus.models import AIModel
     model = AIModel.objects.filter(company=company, id=model_id, is_active=True).first()
@@ -45,16 +64,52 @@ def delete_ai_model(company, model_id: str) -> bool:
 
 # ── MCPServer ─────────────────────────────────────────────────────────────────
 
-def list_mcp_servers_all(company):
-    """List all MCP servers for the company (flat, not filtered by model)."""
-    from nucleus.models import MCPServer
-    return MCPServer.objects.filter(company=company, is_active=True).order_by("name")
+def list_mcp_servers_all(company, user):
+    """List all MCP servers visible to this user (flat, not filtered by model)."""
+    from authn.permissions.row_rules import visible_mcp_servers
+    return visible_mcp_servers(user, company)
 
 
 def create_mcp_server_standalone(company, data: dict):
-    """Create a standalone MCP server without tying it to a specific model."""
+    """
+    Create a standalone MCP server, not tied to a specific model.
+
+    MCP servers are project-owned, same pattern as AIAgent: the `projects`
+    M2M is kept structurally, but only ever gets exactly one entry (the
+    project in data['project_id']) -- no attach-to-another-project endpoint
+    exists, so in practice a server never belongs to more than one project.
+    """
+    from nucleus.models import MCPServer, Project
+    project_id = data.pop("project_id")
+    project = Project.objects.filter(company=company, id=project_id, is_active=True).first()
+    if not project:
+        raise ValueError("Project not found")
+
+    # No DB-level per-project uniqueness (see Meta.constraints NOTE on
+    # MCPServer) -- checked here instead.
+    if MCPServer.objects.filter(company=company, name=data.get("name"), projects=project, is_active=True).exists():
+        raise ValueError(f"An MCP server named '{data.get('name')}' already exists in this project.")
+
+    server = MCPServer.objects.create(company=company, **data)
+    server.projects.add(project)
+    return server
+
+
+def get_mcp_server_standalone(company, server_id: str):
+    """Fetch a single MCP server, for permission checks (obj=server) and PATCH."""
     from nucleus.models import MCPServer
-    return MCPServer.objects.create(company=company, **data)
+    return MCPServer.objects.filter(company=company, id=server_id, is_active=True).first()
+
+
+def update_mcp_server_standalone(company, server_id: str, data: dict):
+    server = get_mcp_server_standalone(company, server_id)
+    if not server:
+        return None
+    for field, value in data.items():
+        if value is not None:
+            setattr(server, field, value)
+    server.save()
+    return server
 
 
 def delete_mcp_server_standalone(company, server_id: str) -> bool:
@@ -66,24 +121,57 @@ def delete_mcp_server_standalone(company, server_id: str) -> bool:
     return True
 
 
-def list_agents(company):
-    from nucleus.models import AIAgent
-    return (
-        AIAgent.objects.filter(company=company, is_active=True)
-        .select_related("model", "mcp_server")
-        .order_by("name")
-    )
+def list_agents(company, user):
+    from authn.permissions.row_rules import visible_agents
+    return visible_agents(user, company).select_related("model", "mcp_server")
 
 
 def create_agent(company, data: dict):
-    from nucleus.models import AIAgent, AIModel, MCPServer
+    """
+    Agents are project-owned (see nucleus/models/intelligence.py). The
+    `projects` M2M is kept structurally (not converted to a FK), but only
+    ever gets exactly one entry -- the project passed in `data['project_id']`
+    -- and there's no attach-to-another-project endpoint, so in practice an
+    agent never belongs to more than one project.
+    """
+    from nucleus.models import AIAgent, AIModel, MCPServer, Project
+    project_id = data.pop("project_id")
     model_id = data.pop("model_id", None)
     mcp_server_id = data.pop("mcp_server_id", None)
+
+    project = Project.objects.filter(company=company, id=project_id, is_active=True).first()
+    if not project:
+        raise ValueError("Project not found")
     model = AIModel.objects.filter(company=company, id=model_id, is_active=True).first() if model_id else None
     mcp_server = MCPServer.objects.filter(company=company, id=mcp_server_id, is_active=True).first() if mcp_server_id else None
     if not model:
         raise ValueError("AIModel not found")
-    return AIAgent.objects.create(company=company, model=model, mcp_server=mcp_server, **data)
+
+    # No DB-level per-project uniqueness (see Meta.constraints NOTE on
+    # AIAgent) -- checked here instead.
+    if AIAgent.objects.filter(company=company, name=data.get("name"), projects=project, is_active=True).exists():
+        raise ValueError(f"An agent named '{data.get('name')}' already exists in this project.")
+
+    agent = AIAgent.objects.create(company=company, model=model, mcp_server=mcp_server, **data)
+    agent.projects.add(project)
+    return agent
+
+
+def get_agent(company, agent_id: str):
+    """Fetch a single agent, for permission checks (obj=agent) and PATCH."""
+    from nucleus.models import AIAgent
+    return AIAgent.objects.filter(company=company, id=agent_id, is_active=True).first()
+
+
+def update_agent(company, agent_id: str, data: dict):
+    agent = get_agent(company, agent_id)
+    if not agent:
+        return None
+    for field, value in data.items():
+        if value is not None:
+            setattr(agent, field, value)
+    agent.save()
+    return agent
 
 
 def delete_agent(company, agent_id: str) -> bool:
@@ -140,15 +228,16 @@ def delete_mcp_server(company, ai_model_id: str, server_id: str) -> bool:
 
 # ── Persona ───────────────────────────────────────────────────────────────────
 
-def get_persona_by_mention(company, mention_name: str):
+def get_persona_by_mention(project, mention_name: str):
     """
-    Look up a Persona by @mention name (case-insensitive).
-    Used by chat_api to detect @PersonaName in messages.
+    Look up a Persona by @mention name (case-insensitive), scoped to a single
+    project -- personas are project-owned and not visible/mentionable from
+    any other project. Used by chat/api.py to detect @PersonaName in messages.
     Returns the Persona with related model and prompt, or None.
     """
     from nucleus.models import Persona
     return (
-        Persona.objects.filter(company=company, is_active=True)
+        Persona.objects.filter(project=project, is_active=True)
         .select_related(
             "prompt",
             "model",
@@ -161,11 +250,15 @@ def get_persona_by_mention(company, mention_name: str):
     )
 
 
-def list_personas(company):
-    from nucleus.models import Persona
-    return Persona.objects.filter(
-        company=company, is_active=True
-    ).select_related("prompt", "model", "agent").order_by("name")
+def list_personas(project, user):
+    """
+    Personas are project-owned -- list is always scoped to one project,
+    never the whole company. Visibility (who gets to see this project's
+    list at all) is handled by visible_personas(), same broad/narrow
+    pattern as visible_ai_models/visible_agents/visible_mcp_servers.
+    """
+    from authn.permissions.row_rules import visible_personas
+    return visible_personas(user, project).select_related("prompt", "model", "agent")
 
 
 def get_persona(company, persona_id: str):
@@ -176,16 +269,24 @@ def get_persona(company, persona_id: str):
 
 
 def create_persona(company, user, data: dict) -> "Persona":
-    from nucleus.models import Persona, AIModel, AIAgent
+    from nucleus.models import Persona, AIModel, AIAgent, Project
     from nucleus.models import Prompt, PromptTemplate
 
     prompt_data = data.pop("prompt")
+    project_id = data.pop("project_id")
     model_id = data.pop("model_id", None)
     agent_id = data.pop("agent_id", None)
+
+    project = Project.objects.filter(company=company, id=project_id, is_active=True).first()
+    if not project:
+        raise ValueError("Project not found")
 
     # Resolve model or agent
     model = AIModel.objects.filter(company=company, id=model_id, is_active=True).first() if model_id else None
     agent = AIAgent.objects.filter(company=company, id=agent_id, is_active=True).first() if agent_id else None
+
+    if Persona.objects.filter(project=project, name=data.get("name"), is_active=True).exists():
+        raise ValueError(f"A persona named '{data.get('name')}' already exists in this project.")
 
     # Create shadow user for the persona (ensure unique username)
     base_username = f"persona_{data['name'].lower().replace(' ', '_')}"
@@ -198,9 +299,14 @@ def create_persona(company, user, data: dict) -> "Persona":
         user_type="persona",
         is_active=True,
     )
+    # Same identity-level helper real users get on join -- a persona is
+    # "the same as a User, just model-backed" (see #148 discussion).
+    from authn.services import assign_avatar
+    assign_avatar(shadow_user)
 
     persona = Persona.objects.create(
         company=company,
+        project=project,
         created_by=user,
         identity_user=shadow_user,
         model=model,

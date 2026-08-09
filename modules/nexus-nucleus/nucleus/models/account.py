@@ -34,6 +34,17 @@ class User(AbstractUser):
         db_index=True,
     )
 
+    avatar = models.ImageField(
+        upload_to="avatars/%Y/%m/",
+        null=True,
+        blank=True,
+        help_text=(
+            "Shared avatar for both human users and personas (personas via their "
+            "identity_user shadow user). Auto-assigned at random from a preset pool "
+            "on creation; editable later. See #148."
+        ),
+    )
+
     current_company = models.ForeignKey(
         "nucleus.Company",
         on_delete=models.SET_NULL,
@@ -54,6 +65,19 @@ class User(AbstractUser):
         if self.display_name:
             return self.display_name
         return (self.email or self.username or "").split("@")[0]
+
+    def get_avatar_url(self) -> str | None:
+        """
+        Absolute avatar URL (NEURALOPS_SERVER_URL + MEDIA_URL + path), or
+        None if unset. Absolute (not MEDIA_URL-relative) on purpose -- the
+        frontend renders this directly as an <img src>, with no serverUrl
+        prefixing of its own (see #148).
+        """
+        if not self.avatar:
+            return None
+        from django.conf import settings
+        base = (settings.NEURALOPS_SERVER_URL or "").rstrip("/")
+        return f"{base}{self.avatar.url}"
 
     def __str__(self):
         return self.get_display_name()

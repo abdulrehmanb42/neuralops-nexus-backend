@@ -40,6 +40,17 @@ _SESSION_RE = re.compile(r'@session(?:\s+(?:close|end))?\b', re.IGNORECASE)
 _SESSION_CLOSE_RE = re.compile(r'@session\s+(?:close|end)\b', re.IGNORECASE)
 
 
+# ── @mentions ─────────────────────────────────────────────────────────────────
+
+# Matches @Word — finds ALL @mentions in a message.
+_MENTION_RE = re.compile(r'@([\w]+)')
+
+# Reserved keywords that are never persona names — everything else this
+# module already parses as its own directive (@session/@session close,
+# plus every output-type keyword above).
+_RESERVED_MENTIONS = frozenset({"session", "close"}) | _OUTPUT_TYPE_KEYWORDS
+
+
 def extract_session_directive(message: str) -> tuple[bool, bool, str]:
     """
     Detect @session / @session close / @session end in the user message.
@@ -168,6 +179,53 @@ def extract_output_type(message: str) -> tuple[str, str]:
     # Strip the @directive from the message text sent to the LLM
     clean = message[:m.start()] + message[m.end():]
     return output_type, clean.strip()
+
+
+# ── Every @directive, parsed once, up front ─────────────────────────────────
+
+class MessageDirectives:
+    """
+    Every @directive a chat message can contain, parsed once, in one
+    place. chat/api.py:send_message() reads the fields below to decide
+    what to do -- it never parses text itself. This is what used to be
+    a handful of separate extraction calls (extract_session_directive,
+    extract_output_type, a regex for @mentions) interleaved with the
+    actual dispatch logic; now "understand what the user typed" and
+    "act on it" are two separate, easy-to-follow steps.
+
+    Directives, checked/stripped in this order:
+        @session            -- open a session with whoever gets @mentioned
+        @session close/end  -- close the active session, no AI trigger
+        @output_type        -- e.g. @chart, @html -- how the AI should
+                                format its reply
+        @PersonaName         -- one or more persona mentions (anything
+                                left over that isn't a reserved keyword)
+
+    Usage:
+        directives = MessageDirectives(payload.content.strip())
+        if directives.is_session_close:
+            ...
+        elif directives.has_mentions and directives.has_session_open:
+            ...
+    """
+
+    def __init__(self, raw: str):
+        self.raw = raw
+        self.has_session_open, self.is_session_close, after_session = extract_session_directive(raw)
+        self.output_type, self.clean_message = extract_output_type(after_session)
+
+        names = _MENTION_RE.findall(self.clean_message)
+        self.mention_names = [n for n in names if n.lower() not in _RESERVED_MENTIONS]
+
+    @property
+    def has_mentions(self) -> bool:
+        return bool(self.mention_names)
+
+    def message_without_mentions(self) -> str:
+        """clean_message with every @mention stripped too -- used to check
+        whether there's any actual content left to send to the AI once
+        the @PersonaName addressing is removed."""
+        return _MENTION_RE.sub("", self.clean_message).strip()
 
 
 # ── Centrifugo publish ─────────────────────────────────────────────────────────
@@ -348,6 +406,35 @@ def update_ai_message(
     )
 
 
+def fail_ai_message(message_id: str, error: str) -> None:
+    """
+    Mark the AI placeholder message FAILED instead of COMPLETED -- called
+    when nexus-ai reports an AgentEvent(type="message_error") (see
+    apps/routers/trigger.py on the nexus-ai side). Without this, a failed
+    trigger used to fall through to update_ai_message() anyway and land
+    on "completed" with blank content -- indistinguishable from the AI
+    genuinely replying with nothing.
+
+    content is a friendly placeholder, not the raw exception text -- the
+    real error is kept in metadata.error_detail for debugging, not shown
+    to users in the chat itself.
+    """
+    from nucleus.models import ChatMessage
+
+    msg = ChatMessage.objects.filter(id=message_id).first()
+    if not msg:
+        return
+
+    metadata = dict(msg.metadata or {})
+    metadata["error_detail"] = error
+
+    ChatMessage.objects.filter(id=message_id).update(
+        content="Something went wrong generating this response.",
+        status=ChatMessage.Status.FAILED,
+        metadata=metadata,
+    )
+
+
 async def trigger_ai_response_async(
     *,
     company,
@@ -355,12 +442,22 @@ async def trigger_ai_response_async(
     topic,
     persona,
     user_message: str,
-    history: list[dict],
+    user_message_id: str,
     topic_id: str,
     output_type: str = "auto",
 ) -> None:
     """
     Fire-and-forget: trigger nexus-ai to generate a persona response.
+
+    nexus-nucleus's job here is orchestration only -- create the placeholder
+    message, tell nexus-ai which persona + topic + message to respond to,
+    relay the stream, save the result. It does NOT resolve the persona's
+    model/API key/system prompt, and does NOT fetch or filter conversation
+    history -- nexus-ai pulls both of those itself, right before it builds
+    the prompt (see nexus-ai: apps/managers/nucleus_client.py + agentic_manager.py).
+    That's a deliberate move: how much history to include and which past
+    replies are "good enough" to show the model are prompt-quality calls,
+    not chat-orchestration ones.
 
     M7 additions:
     - Passes output_type to nexus-ai TriggerJob
@@ -371,7 +468,9 @@ async def trigger_ai_response_async(
     Flow:
         1. Pre-create AI message in DB (status=PENDING)
         2. Publish message_start to Centrifugo
-        3. Call nexus-ai POST /api/v1/trigger/ — SSE stream
+        3. Call nexus-ai POST /api/v1/trigger/ with a minimal job
+           (job_id, msg_id, persona_id, topic_id, user_message_id, message,
+           output_type) — SSE stream
         4. For each message_delta: publish token to Centrifugo
         5. On message_done: update DB message, publish message_done + output_type + render_as
 
@@ -392,6 +491,7 @@ async def trigger_ai_response_async(
     # 1. Pre-create AI message in DB
     _create_ai_message = sync_to_async(create_ai_message)
     _update_ai_message = sync_to_async(update_ai_message)
+    _fail_ai_message = sync_to_async(fail_ai_message)
 
     try:
         ai_msg = await _create_ai_message(company, project, topic, persona)
@@ -409,39 +509,21 @@ async def trigger_ai_response_async(
         "id": msg_id,
         "sender_id": ai_msg["sender_id"],
         "sender_name": ai_msg["sender_name"],
+        "sender_avatar": ai_msg["sender_avatar"],  # #148 -- already in _serialise()'s dict
         "sequence": ai_msg["sequence"],
         "created_at": now,
     })
 
-    # 3. Build TriggerJob payload — M8: handle agent personas
+    # 3. Build the minimal TriggerJob payload -- nexus-ai resolves persona/
+    #    model config and history itself via its own internal calls back
+    #    into nucleus (see nucleus_client.py). context_sources is the one
+    #    exception, still built and pushed here for now -- there's an
+    #    existing but UNVERIFIED nexus-ai-side endpoint for topic contexts
+    #    that queries a different model (TopicContext) than this function
+    #    actually uses (ContextSource); switching to it without confirming
+    #    they're equivalent risks silently breaking RAG/attached-file search.
+    #    Left as a separate, explicitly flagged follow-up -- see #131.
     import asyncio
-    source_type = getattr(persona, "source_type", "model")
-    mcp_servers_payload: list[dict] = []
-
-    if source_type == "agent" and getattr(persona, "agent", None):
-        agent = persona.agent
-        model = agent.model  # agent personas: model lives on agent, not persona
-        if getattr(agent, "mcp_server", None):
-            s = agent.mcp_server
-            mcp_servers_payload.append({
-                "id": str(s.id),
-                "name": s.name,
-                "transport": s.transport,
-                "url": s.url,
-                "command": s.command,
-                "config": s.config or {},
-                "timeout_seconds": 60,
-                "is_first_party": getattr(s, "is_first_party", False),
-                "embed_output": getattr(s, "embed_output", False),
-            })
-    else:
-        model = persona.model
-
-    api_key = model.get_api_key() if model else None
-
-    system_prompt = ""
-    if hasattr(persona, "prompt") and persona.prompt:
-        system_prompt = persona.prompt.system_prompt or ""
 
     # _build_context_sources does sync ORM queries — must be wrapped for async context
     context_sources = await sync_to_async(_build_context_sources)(topic, company)
@@ -449,21 +531,10 @@ async def trigger_ai_response_async(
     job_payload = {
         "job_id": str(uuid.uuid4()),
         "msg_id": msg_id,
-        "persona": {
-            "id": str(persona.id),
-            "name": persona.name,
-            "system_prompt": system_prompt,
-            "model": {
-                "provider": model.provider if model else "litellm",
-                "model_id": model.model_id if model else getattr(settings, "LLM_MODEL", ""),
-                "api_key": api_key,
-                "max_tokens": model.max_tokens if model else 4096,
-                "temperature": model.temperature if model else 0.7,
-            },
-            "mcp_servers": mcp_servers_payload,  # M8: empty = plain LLM, non-empty = agent
-        },
+        "persona_id": str(persona.id),
+        "topic_id": topic_id,
+        "user_message_id": user_message_id,
         "message": user_message,
-        "history": history,
         "context_sources": context_sources,
         "output_type": output_type,  # M7: "auto" | "chart" | "code" | "terminal" | ...
     }
@@ -474,6 +545,7 @@ async def trigger_ai_response_async(
     final_render_as = "text"
     final_clean_content: str | None = None
     embed_description: str | None = None
+    ai_error: str | None = None
 
     try:
         async with httpx.AsyncClient(timeout=120) as client:
@@ -522,6 +594,16 @@ async def trigger_ai_response_async(
                             embed_description = event.get("embed_description")
                             break
 
+                        elif event_type == "message_error":
+                            # nexus-ai's pipeline raised before/during generation --
+                            # see apps/routers/trigger.py:_event_stream on that side.
+                            ai_error = event.get("error") or "Unknown error"
+                            logger.warning(
+                                "[trigger] nexus-ai reported error for msg %s: %s",
+                                msg_id, ai_error,
+                            )
+                            break
+
                     except (json.JSONDecodeError, KeyError):
                         continue
 
@@ -535,34 +617,43 @@ async def trigger_ai_response_async(
         else "".join(streamed_content)
     )
 
-    # 5. Save full content to DB + publish message_done
+    # 5. Save full content to DB + publish message_done (or FAILED + message_error)
     try:
-        await _update_ai_message(
-            msg_id,
-            save_content,
-            render_as=final_render_as,
-            output_type=final_output_type,
-        )
+        if ai_error:
+            await _fail_ai_message(msg_id, ai_error)
+        else:
+            await _update_ai_message(
+                msg_id,
+                save_content,
+                render_as=final_render_as,
+                output_type=final_output_type,
+            )
     except Exception as exc:
         logger.warning("[trigger] failed to update AI message %s: %s", msg_id, exc)
 
     await publish_async(channel, {
-        "type": "message_done",
+        "type": "message_error" if ai_error else "message_done",
         "id": msg_id,
-        "content": save_content,
+        # Same friendly copy as fail_ai_message()'s DB write -- the raw
+        # exception text (ai_error) stays server-side only (logged above +
+        # stored in ChatMessage.metadata.error_detail), never shipped to
+        # the browser over Centrifugo.
+        "content": "Something went wrong generating this response." if ai_error else save_content,
         "output_type": final_output_type,   # M7: e.g. "chart"
         "render_as": final_render_as,        # M7: e.g. "html"
     })
 
     # M8: Embed AI response — smart content selection
     # text/code → embed full response; html/form/terminal → embed description only
+    # Skipped entirely on error -- nothing real was generated to embed.
     _TEXT_EMBEDDABLE = {"text", "code", "auto"}
     _DESC_EMBEDDABLE = {"html", "form", "terminal"}
     embed_content: str | None = None
-    if final_output_type in _TEXT_EMBEDDABLE and save_content:
-        embed_content = save_content
-    elif final_output_type in _DESC_EMBEDDABLE and embed_description:
-        embed_content = embed_description
+    if not ai_error:
+        if final_output_type in _TEXT_EMBEDDABLE and save_content:
+            embed_content = save_content
+        elif final_output_type in _DESC_EMBEDDABLE and embed_description:
+            embed_content = embed_description
 
     if embed_content:
         asyncio.create_task(embed_message_async(
@@ -582,15 +673,25 @@ async def trigger_ai_response_async(
 
 # ── Read messages ──────────────────────────────────────────────────────────────
 
-def list_messages(topic_id: str, limit: int = 100) -> list[dict]:
-    """Return the last *limit* messages in a topic, oldest first."""
+def list_messages(topic_id: str, limit: int = 100, before_sequence: int = None) -> list[dict]:
+    """
+    Return up to `limit` messages in a topic, oldest first.
+
+    Pass `before_sequence` (the `sequence` of the oldest message already
+    loaded on screen) to page further back in history -- React calls this
+    again with that value on scroll-to-top to load older messages, instead
+    of being capped at whatever the first `limit` happened to return.
+    `sequence` is used as the paging cursor rather than `created_at`
+    because it's a strictly increasing per-topic integer (see save_user_message
+    etc. below) -- no risk of two messages tying on the same timestamp.
+    """
     from nucleus.models import ChatMessage
 
-    qs = (
-        ChatMessage.objects.filter(topic_id=topic_id, is_active=True)
-        .select_related("sender")
-        .order_by("-created_at")[:limit]
-    )
+    qs = ChatMessage.objects.filter(topic_id=topic_id, is_active=True)
+    if before_sequence is not None:
+        qs = qs.filter(sequence__lt=before_sequence)
+
+    qs = qs.select_related("sender").order_by("-sequence")[:limit]
     return [_serialise(m) for m in reversed(list(qs))]
 
 
@@ -700,7 +801,13 @@ def _serialise(msg) -> dict:
         "output_type": metadata.get("output_type", "text"), # M7: semantic type name
         "sender_name": sender_name,
         "sender_id": str(msg.sender_id) if msg.sender_id else None,
+        "sender_avatar": msg.sender.get_avatar_url() if msg.sender else None,  # #148
         "sender_type": getattr(msg.sender, "user_type", "human") if msg.sender else "system",
+        # Frozen at send-time (see create_ai_message) -- None for human/system
+        # messages. Lets two personas that have shared the same display name
+        # over time (e.g. a deleted-and-recreated "Nova") be told apart, even
+        # though sender_name alone can't distinguish them.
+        "persona_id": metadata.get("persona_id"),
         "sequence": msg.sequence,
         "created_at": msg.created_at.isoformat(),
     }

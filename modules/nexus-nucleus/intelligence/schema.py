@@ -52,6 +52,7 @@ class AIModelOut(Schema):
 class MCPServerIn(Schema):
     name: str
     description: Optional[str] = None
+    project_id: str  # MCP servers are project-owned -- see nucleus/models/intelligence.py
     server_type: str = "remote"
     transport: str = "http"
     url: Optional[str] = None
@@ -67,10 +68,25 @@ class MCPServerIn(Schema):
     embed_output: bool = False
 
 
+class MCPServerPatchIn(Schema):
+    name: Optional[str] = None
+    description: Optional[str] = None
+    url: Optional[str] = None
+    command: Optional[str] = None
+    docker_image: Optional[str] = None
+    docker_command: Optional[str] = None
+    kubernetes_service: Optional[str] = None
+    config: Optional[dict] = None
+    timeout_seconds: Optional[int] = None
+    max_retries: Optional[int] = None
+    embed_output: Optional[bool] = None
+
+
 class MCPServerOut(Schema):
     id: str
     name: str
     description: Optional[str] = None
+    project_id: Optional[str] = None
     server_type: str
     transport: str
     url: Optional[str] = None
@@ -89,6 +105,7 @@ class MCPServerOut(Schema):
 class AIAgentIn(Schema):
     name: str
     description: Optional[str] = None
+    project_id: str  # Agents are project-owned -- see nucleus/models/intelligence.py
     model_id: str
     mcp_server_id: Optional[str] = None
     system_prompt: Optional[str] = None
@@ -97,10 +114,21 @@ class AIAgentIn(Schema):
     max_steps: int = 5
 
 
+class AIAgentPatchIn(Schema):
+    name: Optional[str] = None
+    description: Optional[str] = None
+    model_id: Optional[str] = None
+    mcp_server_id: Optional[str] = None
+    system_prompt: Optional[str] = None
+    safety_mode: Optional[bool] = None
+    max_steps: Optional[int] = None
+
+
 class AIAgentOut(Schema):
     id: str
     name: str
     description: Optional[str] = None
+    project_id: Optional[str] = None
     agent_type: str
     model_id: Optional[str] = None
     model_name: Optional[str] = None
@@ -134,6 +162,7 @@ class PromptOut(Schema):
 class PersonaIn(Schema):
     name: str
     description: Optional[str] = None
+    project_id: str  # Personas are project-owned -- see nucleus/models/intelligence.py
     source_type: str
     model_id: Optional[str] = None
     agent_id: Optional[str] = None
@@ -150,6 +179,7 @@ class PersonaOut(Schema):
     id: str
     name: str
     description: Optional[str] = None
+    project_id: Optional[str] = None
     source_type: str
     model_id: Optional[str] = None
     agent_id: Optional[str] = None

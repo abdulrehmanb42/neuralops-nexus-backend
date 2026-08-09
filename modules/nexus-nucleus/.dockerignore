@@ -1,0 +1,20 @@
+# Used when building modules/nexus-nucleus/docker/fat/Dockerfile.nexus-nucleus
+# (context = this directory). The dev build never needed this — dev bind-mounts
+# source at runtime instead of COPYing it at build time — but fat bakes source
+# into the image, so this keeps runtime/local junk out of that image. See #170.
+
+__pycache__/
+*.pyc
+*.pyo
+.venv/
+env/
+.git/
+.vscode/
+db.sqlite3
+
+# Exclude runtime/user media (uploads, etc.) but keep the pre-generated
+# avatar pool (#148/#170) so it ships baked into the fat image -- avoids a
+# runtime dependency on the DiceBear API for self-hosters.
+media/*
+!media/avatars
+!media/avatars/**

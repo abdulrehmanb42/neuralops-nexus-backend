@@ -14,7 +14,7 @@ export function ChatArea() {
   const activeChannelId = useUIStore((s) => s.activeChannelId);
   const activeTopicId = useUIStore((s) => s.activeTopicId);
 
-  const { messages, loading, send } = useTopicMessages(
+  const { messages, loading, send, typingActors } = useTopicMessages(
     activeProjectId,
     activeChannelId,
     activeTopicId,
@@ -57,11 +57,12 @@ export function ChatArea() {
               )}
             </div>
 
-            <TypingIndicator actors={[]} />
+            <TypingIndicator actors={typingActors} />
 
             <MessageInput
               onSend={send}
               projectId={activeProjectId}
+              channelId={activeChannelId}
               topicId={activeTopicId}
               disabled={!activeTopicId}
               placeholder={

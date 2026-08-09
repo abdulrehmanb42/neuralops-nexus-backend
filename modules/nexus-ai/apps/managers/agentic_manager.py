@@ -43,9 +43,19 @@ class AgenticManager:
 
     async def run(self, job: TriggerJob) -> AsyncIterator[AgentEvent]:
         """
-        Full pipeline: resolve output type → retrieve context → build prompt
-                       → run agent → yield events.
+        Full pipeline: resolve persona + history → resolve output type →
+                       retrieve context → build prompt → run agent → yield events.
         """
+        # 0. Resolve persona config + conversation history ourselves (#131) --
+        #    job only carries persona_id/topic_id/user_message_id. This is
+        #    where prompt-quality decisions (how much history, which past
+        #    replies are worth showing the model) live now, not nexus-nucleus.
+        from apps.managers import nucleus_client
+        persona = await nucleus_client.resolve_persona(job.persona_id)
+        history = await nucleus_client.fetch_history(
+            job.topic_id, exclude_message_id=job.user_message_id,
+        )
+
         # 1. Resolve output type
         resolved_type = await self._resolve_output_type(job)
 
@@ -81,6 +91,8 @@ class AgenticManager:
         # 4. Build the messages array
         messages = self.prompt_builder.build(
             job=job,
+            persona=persona,
+            history=history,
             context_chunks=chunks,
             output_type_instruction=output_instruction,
         )
@@ -94,7 +106,7 @@ class AgenticManager:
 
         # 6. Stream from agent runner (raw — may contain markers)
         full_content: list[str] = []
-        async for event in self.runner.run_stream(job, messages):
+        async for event in self.runner.run_stream(job, messages, persona):
             if event.type == "message_delta" and event.delta:
                 full_content.append(event.delta)
             yield event

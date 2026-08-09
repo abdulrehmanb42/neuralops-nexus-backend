@@ -5,17 +5,20 @@ Returns an SSE stream of AgentEvents (message_start, message_delta, message_done
 nexus-nucleus consumes the stream and relays to Centrifugo + DB.
 """
 import json
+import logging
 
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import StreamingResponse
 from fastapi.security.api_key import APIKeyHeader
 
 from apps.core.config import settings
-from apps.schemas.trigger import TriggerJob
+from apps.schemas.trigger import AgentEvent, TriggerJob
 from apps.managers.agentic_manager import AgenticManager
 from apps.factories.agent import AgentFactory
 from apps.factories.embedding import EmbeddingFactory
 from apps.factories.vectorstore import VectorStoreFactory
+
+log = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/v1", tags=["trigger"])
 
@@ -29,14 +32,31 @@ def _verify_key(key: str = Depends(_api_key_header)):
 
 
 async def _event_stream(job: TriggerJob):
-    """Generate SSE events from the agentic pipeline."""
+    """
+    Generate SSE events from the agentic pipeline.
+
+    Wrapped in try/except -- without this, any failure anywhere in
+    manager.run() (persona resolve, history fetch, the LLM call itself,
+    ...) propagates straight out of this generator. StreamingResponse
+    already sent its 200 headers by the time that happens, so the
+    connection just dies mid-body instead of returning a clean error --
+    nucleus sees "peer closed connection" with nothing useful to act on.
+    Catching it here and yielding one message_error event instead means
+    nucleus can mark the message FAILED with the real error text. See
+    the #131 test-run incident this came from.
+    """
     manager = AgenticManager(
         runner=AgentFactory.get(),
         embedder=EmbeddingFactory.get(),
         store=VectorStoreFactory.get(),
     )
-    async for event in manager.run(job):
-        yield f"data: {event.model_dump_json()}\n\n"
+    try:
+        async for event in manager.run(job):
+            yield f"data: {event.model_dump_json()}\n\n"
+    except Exception as exc:
+        log.exception("[trigger] job %s failed: %s", job.job_id, exc)
+        error_event = AgentEvent(type="message_error", id=job.msg_id, error=str(exc))
+        yield f"data: {error_event.model_dump_json()}\n\n"
 
 
 @router.post("/trigger/")

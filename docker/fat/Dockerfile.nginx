@@ -1,0 +1,20 @@
+# Fat profile nginx image (#170) — bakes nginx.conf into the image at build
+# time, since the fat bundle ships no source tree to bind-mount it from the
+# way dev does (dev-nginx mounts ./nginx.conf directly).
+#
+# Uses docker/fat/nginx.conf, NOT the repo-root nginx.conf. The root file's
+# upstream names (nucleus-dev:8000, realtime-dev:8000) only resolve on
+# dev-network; fat-network's services are nucleus-fat/realtime-fat. Baking
+# the wrong file in here silently breaks every request through nginx-fat
+# (nginx can't resolve the upstream — looks like "can't connect to server"
+# from the frontend, found and fixed during #170 end-to-end testing).
+#
+# Build context is the repo root — see docker-compose.yaml.
+#
+# Build + push (until a CI pipeline exists, run by hand):
+#   docker build -t noamanfaisal/neuralops-nginx:<version> \
+#     -f docker/fat/Dockerfile.nginx .
+#   docker push noamanfaisal/neuralops-nginx:<version>
+
+FROM nginx:alpine
+COPY docker/fat/nginx.conf /etc/nginx/nginx.conf

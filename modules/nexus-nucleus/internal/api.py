@@ -98,6 +98,23 @@ class AIConfigInternal(Schema):
     default_llm_model: str
 
 
+class HistoryMessageInternal(Schema):
+    """
+    Raw message data -- deliberately NOT role-mapped or filtered here.
+    Deciding "is this human/persona/system", "does this look like valid
+    rendered HTML", "should a visual-type-rendered-as-text reply be shown
+    as history" are all prompt-quality judgment calls, not chat-orchestration
+    ones -- nexus-ai makes them (see apps/managers/nucleus_client.py).
+    """
+    id: str
+    sender_type: str        # "human" | "persona" | "system"
+    sender_name: Optional[str] = None
+    content: str
+    render_as: str = "text"
+    output_type: str = "text"
+    sequence: int
+
+
 # ── Endpoints ─────────────────────────────────────────────────────────────────
 
 
@@ -247,6 +264,52 @@ def create_ai_request_log(request, payload: AIRequestLogIn):
         error=payload.error,
     )
     return 201, {"ok": True}
+
+
+@router.get("/topics/{topic_id}/history/", response=list[HistoryMessageInternal])
+def get_topic_history_internal(
+    request, topic_id: str,
+    limit: int = 20,
+    exclude_message_id: Optional[str] = None,
+):
+    """
+    Raw recent message history for a topic -- called by nexus-ai itself
+    (apps/managers/nucleus_client.py:fetch_history) right before it builds
+    a prompt. `limit` is nexus-ai's own call, not something nucleus decides.
+
+    exclude_message_id -- the human message that triggered this particular
+    AI run is already saved in the DB by the time this gets called (send_message
+    saves it before firing the trigger task), so it would otherwise show up as
+    the newest row in its own history. Pass its id here to drop it -- it's
+    sent separately as TriggerJob.message, not meant to appear twice.
+    """
+    from nucleus.models import ChatMessage
+
+    qs = ChatMessage.objects.filter(topic_id=topic_id, is_active=True)
+    if exclude_message_id:
+        qs = qs.exclude(id=exclude_message_id)
+
+    messages = list(
+        qs.select_related("sender").order_by("-sequence")[:limit]
+    )
+
+    result = []
+    for m in reversed(messages):
+        metadata = m.metadata or {}
+        sender_type = getattr(m.sender, "user_type", "human") if m.sender else "system"
+        sender_name = None
+        if m.sender:
+            sender_name = metadata.get("persona_name") or m.sender.get_display_name()
+        result.append(HistoryMessageInternal(
+            id=str(m.id),
+            sender_type=sender_type,
+            sender_name=sender_name,
+            content=m.content or "",
+            render_as=metadata.get("render_as", "text"),
+            output_type=metadata.get("output_type", "text"),
+            sequence=m.sequence,
+        ))
+    return result
 
 
 @router.get("/companies/{company_id}/ai-config/", response=AIConfigInternal)

@@ -58,7 +58,11 @@ class InviteResponse(Schema):
     message: str
     email: str
     role: str
-    expires_at: str
+    # Optional now that invite_to_system() has two non-pending outcomes
+    # (already a member / granted immediately) with no Invitation row,
+    # hence no expiry -- only the "brand new person, pending invite"
+    # outcome sets this. See #120.
+    expires_at: Optional[str] = None
 
 
 class MemberOut(Schema):
@@ -67,6 +71,7 @@ class MemberOut(Schema):
     role: str
     invited_by: Optional[str] = None
     joined_at: str
+    avatar: Optional[str] = None  # #148
 
 
 class RemoveMemberResponse(Schema):

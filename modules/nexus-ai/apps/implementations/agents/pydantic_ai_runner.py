@@ -50,15 +50,16 @@ class PydanticAIRunner(AgentRunner):
         self,
         job: TriggerJob,
         messages: list[dict],
+        persona: "PersonaConfig",
     ) -> AsyncIterator[AgentEvent]:
         # M8: persona has MCP servers — delegate to pydantic-ai agent runner
-        if job.persona.mcp_servers:
-            async for event in self._run_with_mcp(job, messages):
+        if persona.mcp_servers:
+            async for event in self._run_with_mcp(job, messages, persona):
                 yield event
             return
 
         # Default: LiteLLM direct streaming (unchanged from pre-M8)
-        model_config = job.persona.model
+        model_config = persona.model
         kwargs = _build_litellm_kwargs(model_config, messages)
 
         full_response = ""
@@ -94,6 +95,7 @@ class PydanticAIRunner(AgentRunner):
             latency_ms = int((time.monotonic() - t0) * 1000)
             await _post_ai_request_log(
                 job=job,
+                persona=persona,
                 messages=messages,
                 response=full_response,
                 prompt_tokens=prompt_tokens,
@@ -107,6 +109,7 @@ class PydanticAIRunner(AgentRunner):
         self,
         job: TriggerJob,
         messages: list[dict],
+        persona: "PersonaConfig",
     ) -> AsyncIterator[AgentEvent]:
         """
         Run the persona via litellm + FastMCPClient tool loop.
@@ -119,7 +122,7 @@ class PydanticAIRunner(AgentRunner):
               → final answer → yield as message_delta.
         """
 
-        model_config = job.persona.model
+        model_config = persona.model
         current_messages = list(messages)
         full_response = ""
         t0 = time.monotonic()
@@ -128,7 +131,7 @@ class PydanticAIRunner(AgentRunner):
 
         # Build MCP transport configs
         client_configs = []
-        for s in job.persona.mcp_servers:
+        for s in persona.mcp_servers:
             if s.transport == "stdio":
                 cmd_parts = (s.command or "").split()
                 if cmd_parts:
@@ -246,6 +249,7 @@ class PydanticAIRunner(AgentRunner):
             latency_ms = int((time.monotonic() - t0) * 1000)
             await _post_ai_request_log(
                 job=job,
+                persona=persona,
                 messages=messages,
                 response=full_response,
                 prompt_tokens=0,
@@ -310,6 +314,7 @@ def _build_pydantic_model(model_config, settings):
 async def _post_ai_request_log(
     *,
     job: TriggerJob,
+    persona: "PersonaConfig",
     messages: list[dict],
     response: str,
     prompt_tokens: int,
@@ -318,14 +323,23 @@ async def _post_ai_request_log(
     status: str,
     error: str | None,
 ) -> None:
-    """Fire-and-forget POST to nucleus internal API to persist the AI request log."""
+    """
+    Fire-and-forget POST to nucleus internal API to persist the AI request log.
+
+    persona is now passed explicitly (#131) since job only carries persona_id.
+    Also fixed here: this call was missing its auth header entirely -- nucleus's
+    internal router requires X-Internal-API-Key on every request, so every one
+    of these posts was silently getting a 401 and never actually logging
+    anything (silently swallowed by the except below, since httpx doesn't
+    raise on non-2xx responses unless .raise_for_status() is called).
+    """
     url = f"{settings.NEXUS_NUCLEUS_URL}/api/v1/internal/ai-request-logs/"
     payload = {
         "job_id": job.job_id,
         "msg_id": job.msg_id,
-        "persona_id": str(job.persona.id) if job.persona else None,
-        "model_id": job.persona.model.model_id if job.persona else "",
-        "provider": job.persona.model.provider if job.persona else "",
+        "persona_id": persona.id,
+        "model_id": persona.model.model_id,
+        "provider": persona.model.provider,
         "prompt": messages,
         "response": response,
         "prompt_tokens": prompt_tokens,
@@ -336,7 +350,10 @@ async def _post_ai_request_log(
     }
     try:
         async with httpx.AsyncClient(timeout=5.0) as client:
-            await client.post(url, json=payload)
+            await client.post(
+                url, json=payload,
+                headers={"X-Internal-API-Key": settings.INTERNAL_API_KEY},
+            )
     except Exception as exc:
         log.warning("[runner] failed to post AI request log: %s", exc)
 

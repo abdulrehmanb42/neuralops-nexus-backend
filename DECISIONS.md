@@ -342,7 +342,174 @@ Do NOT assume API compatibility across major versions without checking.
 
 ---
 
-## 20. Before Starting Any Task
+## 20. Self-Host Distribution (#170) — Fat Docker Profile + Installer
+
+**Status:** Verified end-to-end (2026-08-08) — `fat` profile in
+`docker-compose.yaml`, `docker/fat/Dockerfile.nginx` + `docker/fat/nginx.conf`,
+`modules/nexus-nucleus/docker/fat/Dockerfile.nexus-nucleus`,
+`modules/nexus-ai/docker/fat/Dockerfile.nexus-ai`, `.env.example` FAT_* section,
+`install.sh`, `SELF-HOST.md`, `VERSION`. All three custom images
+(`noamanfaisal/neuralops-{nucleus,nexus-ai,nginx}:0.1.0`) built and pushed to
+Docker Hub by the owner. Full first-run sequence (`migrate`/`seed_permissions`/
+`create_owner`) run successfully; the hosted frontend's "Connect" flow
+succeeds against the Tailscale Funnel URL; avatars and typing-status render
+correctly through the self-hosted backend, confirming end-to-end parity with
+the `dev` profile.
+
+**Distribution address (2026-08-08):** `install.sh`'s `REPO_RAW_BASE`/`REF`
+and `SELF-HOST.md`'s curl examples now point at `mapax-io/neuralops-nexus`
+on branch `dev` (the canonical/upstream repo, since the fat profile is a
+user-facing feature and belongs at the public address, not the personal fork
+used during development). **This is forward-looking** — the fat-profile
+files only exist on the fork (`noamanfaisal/neuralops-nexus-backend`,
+branch `staging`) as of this note. Owner is merging to the fork's `main`
+first, then opening a PR from fork `main` → `mapax-io/neuralops-nexus`
+`dev`. Until that PR merges, `install.sh`/`SELF-HOST.md` in this repo will
+404 against the real `mapax-io` URLs — that's expected and resolves itself
+once the PR lands. Update `REF` to a real git tag once one is cut, same as
+before.
+
+**Bugs found during end-to-end testing on node-3 (all fixed):**
+1. `install.sh` used `mapax-io` GitHub org (copied from `readme.md`'s unrelated
+   upstream-fork clone instructions) instead of the real push target
+   `noamanfaisal` — fixed in `install.sh` and `SELF-HOST.md`.
+2. `curl | bash` consumes stdin for the script body itself, so any `read`
+   inside had no terminal to read from — under `set -u` this threw "unbound
+   variable" and killed the script. Fixed by dropping the optional
+   `OPENAI_API_KEY`/`ANTHROPIC_API_KEY`/`SUPABASE_SERVICE_KEY` prompts
+   entirely (left blank in `.env` by design — end users fill these in later,
+   no `.env` authoring expected of them) and redirecting the remaining
+   genuinely-interactive prompts (Docker install confirm, Tailscale yes/no,
+   `create_owner`) from `< /dev/tty`.
+3. `install.sh` installed into `$(pwd)/neuralops`, creating a confusing extra
+   nested folder. Fixed to install directly into `$(pwd)`.
+4. `pg_isready -U neuralops` with no `-d` flag checks a database matching the
+   *username*, not `FAT_POSTGRES_DB` (`neuralops_fat`) — looped forever on a
+   false negative even though Postgres was fully healthy (confirmed via raw
+   `docker compose logs postgres-fat`). Root cause of the broader redesign
+   below rather than a targeted `-d` fix.
+5. **`nginx.conf`'s upstream service names are dev-network only**
+   (`nucleus-dev:8000`, `realtime-dev:8000`) but `docker/fat/Dockerfile.nginx`
+   was baking that exact file into the fat nginx image — on `fat-network`
+   those names don't resolve, so every request through `nginx-fat` failed
+   (surfaced as "could not connect to server" from the hosted frontend's
+   connect flow, containers otherwise healthy). Fixed by adding a dedicated
+   `docker/fat/nginx.conf` (upstreams `nucleus-fat:8000`/`realtime-fat:8000`)
+   and pointing `docker/fat/Dockerfile.nginx` at it instead of the repo-root
+   file. **Requires rebuilding + re-pushing `noamanfaisal/neuralops-nginx`
+   and re-pulling on the test host** — not yet done as of this note.
+6. **Chrome Private Network Access (PNA) silently blocks the connect fetch.**
+   After fix #5, `curl` proved nginx/CORS/Django were all working correctly
+   (`GET /api/v1/auth/verify/` → 401 as expected, `OPTIONS` preflight → 200
+   with correct `access-control-allow-*` headers) but the hosted frontend
+   still showed "Could not connect to server" (the exact string
+   `ServerList.tsx` shows only when `verifyServerAccess()`'s `fetch()` throws
+   — status `0`, never a real HTTP response). Root cause: Tailscale addresses
+   fall in `100.64.0.0/10` (CGNAT), which Chrome classifies as a "private"
+   network target. A public-origin page (the Vercel-hosted frontend) fetching
+   a private-range target needs `Access-Control-Allow-Private-Network: true`
+   on the preflight response or Chrome blocks the request client-side before
+   it ever shows up as a real HTTP error — curl has no such check, which is
+   why it looked server-side-healthy while the browser still failed. Fixed by
+   adding `add_header 'Access-Control-Allow-Private-Network' 'true' always;`
+   to the `/api/` location in both `docker/fat/nginx.conf` and the root
+   (dev) `nginx.conf`. Same rebuild/push/re-pull requirement as #5 applies to
+   the fat image.
+
+**Design change:** `install.sh` originally automated the full first-run
+sequence (including a Postgres-readiness wait-loop). After bug #4 made this
+opaque to debug, redesigned per owner's instruction: the script now stops
+right after `docker compose up -d` and prints `migrate`/`seed_permissions`/
+`create_owner`/Tailscale as explicit commands for the user to run one at a
+time — trading full automation for visibility.
+
+**Decision:** Fat distribution uses MULTIPLE pre-built Docker Hub images
+orchestrated by a `fat` Compose profile added to the same `docker-compose.yaml`
+(alongside `dev`) — NOT a single merged/supervisord image. A merged image was
+seriously considered (real precedent: GitLab Omnibus) but rejected for now —
+it trades a small UX win (`docker run` vs `docker compose up`) for real costs
+(Postgres data-safety risk unless volumes are very carefully externalized, a
+full-image rebuild+re-pull on every single-service fix instead of just that
+service's image, no per-service restart/log isolation). Multiple pre-built
+images keep those benefits while still being effectively "pull and go."
+
+**Services in the `fat` profile:** nucleus, nucleus-celery (reuses the nucleus
+image, different `command:` — same pattern as `dev`), postgres, redis,
+chromadb, realtime (centrifugo), nginx.
+
+**No frontend service — explicit decision.** Self-hosters connect the
+already-hosted frontend to their server instead of running a local UI. Removes
+one container, one port to expose, and means frontend fixes only ever ship in
+one place. Pairs with Tailscale Funnel exposure (README §3 Option A).
+
+**Images:**
+- Reuse as-is: `postgres:17-alpine`, `redis:7-alpine`, `chromadb/chroma:latest`
+  (pin to a specific tag, not `latest`), `noamanfaisal/nexus-transport:6.0`.
+- Build + push new: `noamanfaisal/neuralops-nucleus:<version>` and
+  `noamanfaisal/neuralops-nexus-ai:<version>`, each from a NEW
+  `docker/fat/Dockerfile.*` (source baked in, no bind mount, no `--reload`,
+  fixed worker count — do NOT reuse the dev Dockerfiles). Also
+  `noamanfaisal/neuralops-nginx:<version>` — thin custom image, `FROM
+  nginx:alpine` + `COPY nginx.conf` baked in, since the fat bundle ships no
+  source tree to bind-mount `nginx.conf` from the way `dev` does.
+
+**Data:** Postgres/Redis/Chroma on host-mounted volumes under their own
+`./data/fat/` tree — same pattern as `dev`'s `./data/dev/` — so pulling a new
+image version never touches existing data.
+
+**Versioning:** One semver version per release (e.g. `v1.0.0`) covers all
+three custom images together, even if only one actually changed — keeps
+"which version am I on" simple for the user. The compose file always pins
+exact tags, never `:latest`, so updates only happen when deliberately
+triggered via the installer, not silently.
+
+**First-run sequence:** `migrate` → `create_owner` → `seed_permissions` →
+optional `seed_avatars`. Order between `create_owner` and `seed_permissions`
+does NOT actually matter — both do `get_or_create` on the same Owner `Role`
+row (confirmed by reading `create_owner.py`'s `_grant_owner_role()` docstring
+directly); whichever runs second just populates the `RoleRight` links on the
+row the other already created.
+
+**Distribution:** Stays in this same repo — not a separate repo, to avoid a
+permanent two-repo sync burden. Git-tagged releases (`v1.0.0`, etc.) make a
+specific version's compose file fetchable without a full clone. A dedicated
+`SELF-HOST.md` (not the dev-focused `readme.md`) will hold only the
+fat-docker install instructions.
+
+**Installer (`install.sh`):** A plain shell script — NOT a Docker-socket-
+mounting "installer container" (that pattern, like Watchtower, needs
+root-equivalent Docker socket access just to check for updates; a script
+achieves the same using whatever Docker permissions the user already has).
+Flow: check/install Docker → download the pinned compose file + `.env.example`
+→ prompt for required secrets → `docker compose pull && up -d` → run the
+first-run sequence → check/install Tailscale → `tailscale up` (plain, **no
+auth-key requirement** — the one unavoidable manual step is a single browser
+login click, by design; do not build an auth-key path into the default flow)
+→ `tailscale funnel --bg <nginx port>` → write the resulting URL into `.env`
+as `NEURALOPS_SERVER_URL` → restart `nucleus`/`realtime` → print the connect
+URL for the hosted frontend's "add server" flow. Also supports `install.sh
+update`: compares a local version marker against the latest published
+version, re-pulls if newer. The Tailscale step should be skippable via a flag
+for anyone who wants LAN-only access or their own router/port-forward setup.
+
+**RAM budget:** ~2GB total if `nexus-ai` uses an API-based embedding provider;
+~3–4GB if it keeps local `fastembed` inference (the single biggest lever on
+memory footprint — a local embedding model gets fully loaded into RAM).
+Document a 4GB minimum host spec for the fat profile.
+
+**Considered and rejected:**
+- **Snap** — real daemon-service support + a close precedent (Nextcloud's
+  official snap bundles Apache/PHP/MySQL/Redis into one package), but
+  Ubuntu-only reach in practice and throws away today's working Docker
+  investment.
+- **Flatpak / AppImage** — built around single-window GUI desktop apps, no
+  real background-daemon model, no reuse of existing work, more effort for a
+  worse fit than either Docker or Snap.
+- **Single merged supervisord image** — see main decision above.
+
+---
+
+## 21. Before Starting Any Task
 
 1. Read this file (`DECISIONS.md`)
 2. Read the specific files you intend to edit — do not assume their contents

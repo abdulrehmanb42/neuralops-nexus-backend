@@ -198,6 +198,19 @@ class AIModel(TenantBaseModel):
         help_text="Additional provider-specific runtime configuration.",
     )
 
+    # -- Project attachment (visibility) ---------------------------------------
+    # Unattached by default -- a newly-created model is invisible to every
+    # project until a company admin explicitly attaches it. Company-wide
+    # visibility (ai_model.list right) still sees everything regardless of
+    # this field; this only governs the narrow/project-scoped fallback in
+    # authn/permissions/row_rules.py:visible_ai_models().
+    projects = models.ManyToManyField(
+        "nucleus.Project",
+        blank=True,
+        related_name="ai_models",
+        help_text="Projects this model is attached to / visible from.",
+    )
+
     class Meta:
         db_table = "intelligence_ai_model"
 
@@ -281,13 +294,24 @@ class AIAgent(TenantBaseModel):
     max_steps = models.PositiveIntegerField(default=5)
     allow_parallel_tools = models.BooleanField(default=False)
 
+    # -- Project attachment (visibility) -- see AIModel.projects for rationale.
+    projects = models.ManyToManyField(
+        "nucleus.Project",
+        blank=True,
+        related_name="agents",
+        help_text="Projects this agent is attached to / visible from.",
+    )
+
     class Meta:
         db_table = "intelligence_ai_agent"
+        # NOTE: no per-company name-uniqueness constraint anymore. Agents are
+        # restricted to exactly one project via the `projects` M2M (kept as
+        # M2M rather than converted to a FK -- see create_agent() in
+        # intelligence/services.py), and Django can't express a uniqueness
+        # constraint across an M2M's through-table in Meta.constraints. Two
+        # different projects are free to have same-named agents; per-project
+        # collision is checked in application code (create_agent) instead.
         constraints = [
-            models.UniqueConstraint(
-                fields=["company", "name"],
-                name="uniq_ai_agent_name_per_company",
-            ),
             models.CheckConstraint(
                 name="internal_agent_requires_model",
                 check=(
@@ -390,6 +414,18 @@ class Persona(TenantBaseModel):
         related_name="persona_profile",
     )
 
+    # -- Project ownership -----------------------------------------------------
+    # Personas are exclusive to one project -- not shared, not visible, not
+    # usable from any other project. A real FK (not M2M like AIAgent) because
+    # ownership here is meant to be strictly single-valued and DB-enforced,
+    # not just app-restricted.
+    project = models.ForeignKey(
+        "nucleus.Project",
+        on_delete=models.CASCADE,
+        related_name="personas",
+        help_text="The single project this persona belongs to.",
+    )
+
     created_by = models.ForeignKey(
         settings.AUTH_USER_MODEL,
         on_delete=models.SET_NULL,
@@ -437,8 +473,8 @@ class Persona(TenantBaseModel):
         db_table = "intelligence_persona"
         constraints = [
             models.UniqueConstraint(
-                fields=["company", "name"],
-                name="uniq_persona_name_per_company",
+                fields=["project", "name"],
+                name="uniq_persona_name_per_project",
             ),
             models.CheckConstraint(
                 name="persona_model_or_agent_required",
@@ -460,6 +496,7 @@ class Persona(TenantBaseModel):
         indexes = [
             models.Index(fields=["company", "source_type"]),
             models.Index(fields=["company", "is_active"]),
+            models.Index(fields=["project"]),
         ]
 
     def __str__(self):
@@ -575,13 +612,26 @@ class MCPServer(TenantBaseModel):
                   "Only meaningful when is_first_party=True.",
     )
 
+    # -- Project ownership (single project, same pattern as AIAgent) ---------
+    # Kept as M2M (not a FK) for structural consistency with AIModel/AIAgent,
+    # but restricted to exactly one entry by application code (see
+    # create_mcp_server_standalone() in intelligence/services.py) -- no
+    # attach-to-another-project endpoint exists, so in practice an MCP
+    # server never belongs to more than one project.
+    projects = models.ManyToManyField(
+        "nucleus.Project",
+        blank=True,
+        related_name="mcp_servers",
+        help_text="The single project this MCP server belongs to.",
+    )
+
     class Meta:
         db_table = "intelligence_mcp_server"
+        # NOTE: no per-company name-uniqueness constraint -- same reasoning as
+        # AIAgent.Meta (Django can't express uniqueness across an M2M's
+        # through-table). Per-project collision is checked in application
+        # code (create_mcp_server_standalone) instead.
         constraints = [
-            models.UniqueConstraint(
-                fields=["company", "name"],
-                name="uniq_mcp_server_name_per_company",
-            ),
             models.CheckConstraint(
                 name="mcp_stdio_requires_command",
                 check=(
