@@ -26,7 +26,8 @@ import { listAIModels, createAIModel, deleteAIModel } from "@/services/ai-models
 import { listMCPServers, createMCPServer, deleteMCPServer } from "@/services/mcp-servers.service";
 import { listAgents, createAgent, deleteAgent } from "@/services/agents.service";
 import { listPersonas, createPersona, patchPersona, deletePersona } from "@/services/personas.service";
-import type { AIModel, MCPServer, Agent, Persona } from "@/types";
+import { listProjects } from "@/services/projects.service";
+import type { AIModel, MCPServer, Agent, Persona, Project } from "@/types";
 
 export const Route = createFileRoute("/app/agents")({
   validateSearch: (s: Record<string, unknown>) => ({ tab: (s.tab as string) || "mcps" }),
@@ -502,6 +503,11 @@ function PersonasTab() {
   const [personas, setPersonas] = useState<Persona[]>([]);
   const [models, setModels] = useState<AIModel[]>([]);
   const [agents, setAgents] = useState<Agent[]>([]);
+  // Personas are project-owned (DECISIONS.md #1, #92) -- unlike
+  // models/mcps/agents, they're not company-wide, so this tab needs its own
+  // project selector to know which project's personas to list/create.
+  const [projects, setProjects] = useState<Project[]>([]);
+  const [projectId, setProjectId] = useState<string>("");
   const [open, setOpen] = useState(false);
   const [saving, setSaving] = useState(false);
   const [form, setForm] = useState({
@@ -549,18 +555,29 @@ function PersonasTab() {
   }
 
   useEffect(() => {
-    Promise.all([listPersonas(), listAIModels(), listAgents()])
-      .then(([p, m, a]) => { setPersonas(p); setModels(m); setAgents(a); })
+    Promise.all([listProjects(), listAIModels(), listAgents()])
+      .then(([pr, m, a]) => {
+        setProjects(pr);
+        setModels(m);
+        setAgents(a);
+        if (pr.length > 0) setProjectId((prev) => prev || pr[0].id);
+      })
       .catch(() => {});
   }, []);
 
+  useEffect(() => {
+    if (!projectId) { setPersonas([]); return; }
+    listPersonas(projectId).then(setPersonas).catch(() => {});
+  }, [projectId]);
+
   async function handleCreate() {
+    if (!projectId) { toast.error("Select a project first."); return; }
     if (!form.name) { toast.error("Name is required."); return; }
     if (form.source_type === "model" && !form.model_id) { toast.error("Select a model."); return; }
     if (form.source_type === "agent" && !form.agent_id) { toast.error("Select an agent."); return; }
     setSaving(true);
     try {
-      const p = await createPersona({
+      const p = await createPersona(projectId, {
         name: form.name,
         description: form.description || undefined,
         source_type: form.source_type,
@@ -594,13 +611,25 @@ function PersonasTab() {
 
   return (
     <div className="space-y-3">
-      <div className="flex justify-end">
-        <Button size="sm" onClick={() => setOpen(true)}>
+      <div className="flex items-center justify-between gap-3">
+        <div className="w-56">
+          <Select value={projectId} onValueChange={setProjectId}>
+            <SelectTrigger><SelectValue placeholder="Select a project..." /></SelectTrigger>
+            <SelectContent>
+              {projects.map((pr) => (
+                <SelectItem key={pr.id} value={pr.id}>{pr.name}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+        <Button size="sm" onClick={() => setOpen(true)} disabled={!projectId}>
           <Plus className="h-4 w-4 mr-1" /> Add Persona
         </Button>
       </div>
 
-      {personas.length === 0 ? (
+      {!projectId ? (
+        <EmptyState icon={User} label="projects -- create one first" />
+      ) : personas.length === 0 ? (
         <EmptyState icon={User} label="personas" />
       ) : (
         <div className="space-y-2">
