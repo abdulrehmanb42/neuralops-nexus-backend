@@ -14,4 +14,4 @@ export const APP_NAME = "NeuralOps";
 // telling the self-hoster to run `./install.sh update`. Doesn't block the
 // connection; just makes drift visible instead of silently failing in
 // confusing ways (e.g. missing fields, stale assets baked into an old image).
-export const COMPATIBLE_SERVER_VERSION = "0.1.0";
+export const COMPATIBLE_SERVER_VERSION = "0.1.1";

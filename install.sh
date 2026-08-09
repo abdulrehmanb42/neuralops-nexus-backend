@@ -40,6 +40,13 @@ if [ "${1:-}" = "update" ]; then
   echo "Updating $local_version -> $latest_version"
   curl -fsSL "$REPO_RAW_BASE/$REF/docker-compose.yaml" -o docker-compose.yaml
   echo "$latest_version" > "$VERSION_MARKER"
+  # Image tags come from .env's FAT_VERSION, not the VERSION marker above --
+  # without this, docker-compose.yaml gets updated but `docker compose pull`
+  # keeps pulling the OLD image tag forever, silently. Found while bumping
+  # 0.1.0 -> 0.1.1 for the version-check feature itself (#170).
+  if [ -f .env ] && grep -q '^FAT_VERSION=' .env; then
+    sed -i.bak "s/^FAT_VERSION=.*/FAT_VERSION=$latest_version/" .env && rm -f .env.bak
+  fi
   docker compose pull
   docker compose up -d
   echo "Updated. Run 'docker compose logs -f nucleus-fat' to confirm it's healthy."

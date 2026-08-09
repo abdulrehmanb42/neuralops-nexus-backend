@@ -442,6 +442,18 @@ check entirely. Files: `authn/schema.py` (`AuthVerifyResponse.server_version`),
 `auth.service.ts` (`VerifyResult.serverVersion`), `ServerList.tsx` +
 `ServerCard.tsx` (the banner), `lib/version.ts` (`COMPATIBLE_SERVER_VERSION`).
 
+**Real version bump to test it (2026-08-08): `0.1.0` → `0.1.1`.** Reusing the
+same `0.1.0` tag for the rebuilt-with-avatars image would have made "did the
+rebuild actually take" impossible to verify by tag alone, and there was
+nothing to trigger the mismatch banner against. While bumping, found a real
+bug in `install.sh update`: it downloads the new `docker-compose.yaml` and
+writes the new version to `.neuralops-version`, but never updates `.env`'s
+`FAT_VERSION=` line — since image tags come from `FAT_VERSION`, not the
+version marker file, `docker compose pull` would keep silently pulling the
+OLD image forever after every future `update`. Fixed with a `sed` on `.env`
+right after the marker write. `COMPATIBLE_SERVER_VERSION` bumped to `0.1.1`
+to match.
+
 **Decision:** Fat distribution uses MULTIPLE pre-built Docker Hub images
 orchestrated by a `fat` Compose profile added to the same `docker-compose.yaml`
 (alongside `dev`) — NOT a single merged/supervisord image. A merged image was
