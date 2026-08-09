@@ -277,9 +277,9 @@ export function MessageInput({
     <>
       <AddModelForm    open={activeForm === "add-model"}     onClose={() => setActiveForm(null)} />
       <ListModelsDialog open={activeForm === "list-models"}  onClose={() => setActiveForm(null)} />
-      <AddMCPForm      open={activeForm === "add-mcp"}       onClose={() => setActiveForm(null)} />
+      <AddMCPForm      open={activeForm === "add-mcp"}       onClose={() => setActiveForm(null)} projectId={projectId} />
       <ListMCPsDialog  open={activeForm === "list-mcps"}     onClose={() => setActiveForm(null)} />
-      <AddAgentForm    open={activeForm === "add-agent"}     onClose={() => setActiveForm(null)} />
+      <AddAgentForm    open={activeForm === "add-agent"}     onClose={() => setActiveForm(null)} projectId={projectId} />
       <ListAgentsDialog open={activeForm === "list-agents"}  onClose={() => setActiveForm(null)} />
       <AddPersonaForm  open={activeForm === "add-persona"}   onClose={() => setActiveForm(null)} projectId={projectId} />
       <ListPersonasDialog open={activeForm === "list-personas"} onClose={() => setActiveForm(null)} projectId={projectId} />

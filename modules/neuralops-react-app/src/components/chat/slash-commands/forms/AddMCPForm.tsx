@@ -32,9 +32,11 @@ const EMPTY: FormState = {
 export function AddMCPForm({
   open,
   onClose,
+  projectId,
 }: {
   open: boolean;
   onClose: () => void;
+  projectId?: string | null;
 }) {
   const [form, setForm] = useState<FormState>(EMPTY);
   const [saving, setSaving] = useState(false);
@@ -51,9 +53,13 @@ export function AddMCPForm({
   async function submit(e: React.FormEvent) {
     e.preventDefault();
     if (!form.name || !form.url) return;
+    if (!projectId) {
+      toast.error("Open a project first -- MCP servers belong to a project.");
+      return;
+    }
     setSaving(true);
     try {
-      await createMCPServer({ ...form });
+      await createMCPServer(projectId, { ...form });
       toast.success(`MCP server "${form.name}" registered`);
       setForm(EMPTY);
       onClose();

@@ -39,9 +39,11 @@ const EMPTY: FormState = {
 export function AddAgentForm({
   open,
   onClose,
+  projectId,
 }: {
   open: boolean;
   onClose: () => void;
+  projectId?: string | null;
 }) {
   const [models, setModels] = useState<AIModel[]>([]);
   const [mcps, setMcps] = useState<MCPServer[]>([]);
@@ -66,9 +68,13 @@ export function AddAgentForm({
   async function submit(e: React.FormEvent) {
     e.preventDefault();
     if (!form.name || !form.model_id) return;
+    if (!projectId) {
+      toast.error("Open a project first -- agents belong to a project.");
+      return;
+    }
     setSaving(true);
     try {
-      await createAgent({
+      await createAgent(projectId, {
         name: form.name,
         description: form.description || undefined,
         model_id: form.model_id,
