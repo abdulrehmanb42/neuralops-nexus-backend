@@ -7,6 +7,7 @@ import { ServerCard } from "./ServerCard";
 import { useServers } from "./use-servers";
 import { useAuthStore } from "@/store/auth.store";
 import { verifyServerAccess } from "@/services/auth.service";
+import { COMPATIBLE_SERVER_VERSION } from "@/lib/version";
 import type { ServerEntry } from "@/types";
 import { Plus, Server } from "lucide-react";
 
@@ -22,6 +23,7 @@ export function ServerList() {
   const [connectingId, setConnectingId] = useState<string | null>(null);
   const [connectedId, setConnectedId] = useState<string | null>(null);
   const [errors, setErrors] = useState<Record<string, string>>({});
+  const [versionWarnings, setVersionWarnings] = useState<Record<string, string>>({});
 
   async function handleConnect(server: ServerEntry) {
     if (!supabaseToken) {
@@ -44,7 +46,24 @@ export function ServerList() {
         companyName: result.companyName,
         isOwner: result.isOwner,
       });
-      setTimeout(() => navigate({ to: "/app" }), 500);
+
+      // #170 -- self-host version check. "dev"/unknown servers skip the
+      // check (not a real self-host version to compare against). Doesn't
+      // block the connection, just surfaces drift instead of letting it
+      // fail silently in confusing ways later.
+      const hasVersionDrift =
+        result.serverVersion &&
+        result.serverVersion !== "dev" &&
+        result.serverVersion !== "unknown" &&
+        result.serverVersion !== COMPATIBLE_SERVER_VERSION;
+      if (hasVersionDrift) {
+        setVersionWarnings((w) => ({
+          ...w,
+          [server.id]: `Server is on v${result.serverVersion}, this app expects v${COMPATIBLE_SERVER_VERSION}. Run './install.sh update' on the server to update it.`,
+        }));
+      }
+
+      setTimeout(() => navigate({ to: "/app" }), hasVersionDrift ? 2200 : 500);
     } else {
       const msg =
         result.status === 403
@@ -99,6 +118,7 @@ export function ServerList() {
             connecting={connectingId === s.id}
             connected={connectedId === s.id}
             error={errors[s.id] || null}
+            warning={versionWarnings[s.id] || null}
           />
         ))}
       </div>

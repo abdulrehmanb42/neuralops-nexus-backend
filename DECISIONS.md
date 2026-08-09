@@ -423,6 +423,25 @@ right after `docker compose up -d` and prints `migrate`/`seed_permissions`/
 `create_owner`/Tailscale as explicit commands for the user to run one at a
 time — trading full automation for visibility.
 
+**Server/frontend version check (2026-08-08):** The hosted frontend always
+runs the newest code, but a self-hosted `fat` server can be pinned to any
+older `FAT_VERSION` (exactly what caused the avatar bug above — an image
+built before the avatar pool existed). Without a check, a stale server just
+fails in confusing ways instead of surfacing the real cause. Fix: `FAT_VERSION`
+(`"dev"` for the dev profile) is now passed into `nucleus-fat`/`nucleus-dev`
+as `NEURALOPS_VERSION`, exposed as `server_version` in the existing
+`GET /api/v1/auth/verify/` response (no new endpoint), and compared by the
+frontend against `COMPATIBLE_SERVER_VERSION` (`modules/neuralops-react-app/
+src/lib/version.ts`) on every connect. On any mismatch (server older or
+newer), `ServerList.tsx` shows a non-blocking banner telling the self-hoster
+to run `./install.sh update` — doesn't refuse the connection, just makes
+version drift visible instead of silent. `"dev"`/`"unknown"` servers skip the
+check entirely. Files: `authn/schema.py` (`AuthVerifyResponse.server_version`),
+`authn/services.py` (`auth_verify()`), `core/settings.py`
+(`NEURALOPS_VERSION`), `docker-compose.yaml` (env var wiring),
+`auth.service.ts` (`VerifyResult.serverVersion`), `ServerList.tsx` +
+`ServerCard.tsx` (the banner), `lib/version.ts` (`COMPATIBLE_SERVER_VERSION`).
+
 **Decision:** Fat distribution uses MULTIPLE pre-built Docker Hub images
 orchestrated by a `fat` Compose profile added to the same `docker-compose.yaml`
 (alongside `dev`) — NOT a single merged/supervisord image. A merged image was

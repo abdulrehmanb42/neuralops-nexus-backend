@@ -64,6 +64,7 @@ services:
       - NEURALOPS_INSTALL_TOKEN=${DEV_NEURALOPS_INSTALL_TOKEN}
       - NEURALOPS_PORTAL_URL=${DEV_NEURALOPS_PORTAL_URL:-https://neuralops-nexus-auth.mapax.io}
       - NEURALOPS_SERVER_URL=${DEV_NEURALOPS_SERVER_URL}
+      - NEURALOPS_VERSION=dev
       - PYTHONPATH=/nexus-nucleus
     networks:
       - dev-network
@@ -259,6 +260,7 @@ services:
       - NEURALOPS_INSTALL_TOKEN=${FAT_NEURALOPS_INSTALL_TOKEN}
       - NEURALOPS_PORTAL_URL=${FAT_NEURALOPS_PORTAL_URL:-https://neuralops-nexus-auth.mapax.io}
       - NEURALOPS_SERVER_URL=${FAT_NEURALOPS_SERVER_URL}
+      - NEURALOPS_VERSION=${FAT_VERSION:-0.1.0}
     networks:
       - fat-network
     depends_on:

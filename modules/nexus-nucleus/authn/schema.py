@@ -39,3 +39,8 @@ class AuthVerifyResponse(Schema):
     is_owner: bool
     role: Optional[str] = None
     company_name: Optional[str] = None
+    # Self-host version check (#170) -- FAT_VERSION for the fat profile,
+    # "dev" for the dev profile. Frontend compares this against
+    # COMPATIBLE_SERVER_VERSION (lib/version.ts) and prompts an update if
+    # they differ -- see ServerList.tsx.
+    server_version: Optional[str] = None

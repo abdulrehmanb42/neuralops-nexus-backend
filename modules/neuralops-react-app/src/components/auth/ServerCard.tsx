@@ -10,6 +10,7 @@ interface Props {
   connecting?: boolean;
   connected?: boolean;
   error?: string | null;
+  warning?: string | null;
 }
 
 function formatLastConnected(ts?: number): string | null {
@@ -31,6 +32,7 @@ export function ServerCard({
   connecting,
   connected,
   error,
+  warning,
 }: Props) {
   const last = formatLastConnected(server.lastConnected);
 
@@ -92,6 +94,11 @@ export function ServerCard({
       {error && (
         <p className="rounded-md border border-destructive/30 bg-destructive/5 px-3 py-2 text-xs text-destructive">
           {error}
+        </p>
+      )}
+      {!error && warning && (
+        <p className="rounded-md border border-amber-500/30 bg-amber-500/5 px-3 py-2 text-xs text-amber-600">
+          {warning}
         </p>
       )}
     </Card>

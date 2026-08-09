@@ -119,6 +119,10 @@ SUPABASE_SERVICE_KEY = os.getenv("SUPABASE_SERVICE_KEY", "")
 
 NEURALOPS_INSTALL_TOKEN = os.getenv("NEURALOPS_INSTALL_TOKEN", "")
 NEURALOPS_SERVER_URL = os.getenv("NEURALOPS_SERVER_URL", "")  # public URL of this server
+# Self-host version check (#170) -- FAT_VERSION for the fat profile, "dev"
+# for the dev profile (set in docker-compose.yaml). Surfaced in
+# GET /api/v1/auth/verify/ so the frontend can flag an out-of-date server.
+NEURALOPS_VERSION = os.getenv("NEURALOPS_VERSION", "unknown")
 SUPABASE_DEVICE_REQUEST_URL = os.getenv(
     "SUPABASE_DEVICE_REQUEST_URL",
     "https://xgfsxikypxjhqlutiepw.supabase.co/functions/v1/device-request",
