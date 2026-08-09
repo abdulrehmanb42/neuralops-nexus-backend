@@ -148,10 +148,18 @@ export function useTopicMessages(
 ) {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [loading, setLoading] = useState(false);
-  const [autoRenamed, setAutoRenamed] = useState(false);
   const [typingActors, setTypingActors] = useState<PendingActor[]>([]);
   const { subscribe } = useCentrifugo();
   const currentUserId = useAuthStore((s) => s.userId);
+
+  // NOT useState -- read/written from inside the Centrifugo subscribe
+  // callback below, whose owning effect doesn't depend on this value (same
+  // stale-closure trap typingActorsRef exists to avoid, see below). With
+  // useState, setAutoRenamed(true) never actually took effect from the
+  // callback's point of view -- it kept reading the value frozen at
+  // whatever it was when the subscription was created, so the rename kept
+  // re-firing on every single AI response instead of just the first.
+  const autoRenamedRef = useRef(false);
 
   // Read inside the Centrifugo subscribe callback below -- that effect's
   // dependency array doesn't include typingActors, so the state itself
@@ -165,7 +173,7 @@ export function useTopicMessages(
 
   // Reset auto-rename flag + any stuck typing indicators when topic changes
   useEffect(() => {
-    setAutoRenamed(false);
+    autoRenamedRef.current = false;
     setTypingActors([]);
     typingTimersRef.current.forEach((t) => clearTimeout(t));
     typingTimersRef.current.clear();
@@ -383,7 +391,7 @@ export function useTopicMessages(
           // which could be unrelated small talk before anyone ever
           // @mentioned a persona.
           if (
-            !autoRenamed && projectId && channelId && topicId &&
+            !autoRenamedRef.current && projectId && channelId && topicId &&
             updated.some((m) => m.sender.type === "agent" && m.id === event.id)
           ) {
             const aiIndex = updated.findIndex((m) => m.id === event.id);
@@ -398,7 +406,7 @@ export function useTopicMessages(
                 .replace(/@output_type:\w+/g, "")
                 .trim()
                 .slice(0, 60) || "chat";
-              setAutoRenamed(true);
+              autoRenamedRef.current = true;
               renameTopic(projectId, channelId, topicId, title).catch(() => {});
             }
           }
