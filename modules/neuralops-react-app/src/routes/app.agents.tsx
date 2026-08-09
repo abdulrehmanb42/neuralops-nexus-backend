@@ -219,6 +219,11 @@ function ModelsTab() {
 
 function MCPServersTab() {
   const [servers, setServers] = useState<MCPServer[]>([]);
+  // MCP servers are project-owned at creation (same pattern as Personas/
+  // Agents) -- listing is company-wide, but creating requires project_id
+  // or the backend 422s.
+  const [projects, setProjects] = useState<Project[]>([]);
+  const [projectId, setProjectId] = useState<string>("");
   const [open, setOpen] = useState(false);
   const [saving, setSaving] = useState(false);
   const [form, setForm] = useState({
@@ -232,16 +237,21 @@ function MCPServersTab() {
 
   useEffect(() => {
     listMCPServers().then(setServers).catch(() => {});
+    listProjects().then((pr) => {
+      setProjects(pr);
+      if (pr.length > 0) setProjectId((prev) => prev || pr[0].id);
+    }).catch(() => {});
   }, []);
 
   async function handleCreate() {
+    if (!projectId) { toast.error("Select a project first."); return; }
     if (!form.name || !form.url) {
       toast.error("Name and URL are required.");
       return;
     }
     setSaving(true);
     try {
-      const s = await createMCPServer({
+      const s = await createMCPServer(projectId, {
         name: form.name,
         description: form.description || undefined,
         server_type: "remote",
@@ -276,8 +286,18 @@ function MCPServersTab() {
 
   return (
     <div className="space-y-3">
-      <div className="flex justify-end">
-        <Button size="sm" onClick={() => setOpen(true)}>
+      <div className="flex items-center justify-between gap-3">
+        <div className="w-56">
+          <Select value={projectId} onValueChange={setProjectId}>
+            <SelectTrigger><SelectValue placeholder="Select a project..." /></SelectTrigger>
+            <SelectContent>
+              {projects.map((pr) => (
+                <SelectItem key={pr.id} value={pr.id}>{pr.name}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+        <Button size="sm" onClick={() => setOpen(true)} disabled={!projectId}>
           <Plus className="h-4 w-4 mr-1" /> Add MCP Server
         </Button>
       </div>
@@ -359,6 +379,11 @@ function AgentsTab() {
   const [agents, setAgents] = useState<Agent[]>([]);
   const [models, setModels] = useState<AIModel[]>([]);
   const [mcps, setMcps] = useState<MCPServer[]>([]);
+  // Agents are project-owned at creation (same pattern as Personas/MCP
+  // servers) -- listing is company-wide, but creating requires project_id
+  // or the backend 422s.
+  const [projects, setProjects] = useState<Project[]>([]);
+  const [projectId, setProjectId] = useState<string>("");
   const [open, setOpen] = useState(false);
   const [saving, setSaving] = useState(false);
   const [form, setForm] = useState({
@@ -370,19 +395,23 @@ function AgentsTab() {
   });
 
   useEffect(() => {
-    Promise.all([listAgents(), listAIModels(), listMCPServers()])
-      .then(([a, m, s]) => { setAgents(a); setModels(m); setMcps(s); })
+    Promise.all([listAgents(), listAIModels(), listMCPServers(), listProjects()])
+      .then(([a, m, s, pr]) => {
+        setAgents(a); setModels(m); setMcps(s); setProjects(pr);
+        if (pr.length > 0) setProjectId((prev) => prev || pr[0].id);
+      })
       .catch(() => {});
   }, []);
 
   async function handleCreate() {
+    if (!projectId) { toast.error("Select a project first."); return; }
     if (!form.name || !form.model_id) {
       toast.error("Name and Model are required.");
       return;
     }
     setSaving(true);
     try {
-      const a = await createAgent({
+      const a = await createAgent(projectId, {
         name: form.name,
         description: form.description || undefined,
         model_id: form.model_id,
@@ -413,8 +442,18 @@ function AgentsTab() {
 
   return (
     <div className="space-y-3">
-      <div className="flex justify-end">
-        <Button size="sm" onClick={() => setOpen(true)}>
+      <div className="flex items-center justify-between gap-3">
+        <div className="w-56">
+          <Select value={projectId} onValueChange={setProjectId}>
+            <SelectTrigger><SelectValue placeholder="Select a project..." /></SelectTrigger>
+            <SelectContent>
+              {projects.map((pr) => (
+                <SelectItem key={pr.id} value={pr.id}>{pr.name}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+        <Button size="sm" onClick={() => setOpen(true)} disabled={!projectId}>
           <Plus className="h-4 w-4 mr-1" /> Add Agent
         </Button>
       </div>

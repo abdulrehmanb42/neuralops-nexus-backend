@@ -1,16 +1,20 @@
 import { apiJson } from "./api-client";
 import type { MCPServer } from "@/types";
 
+// GET is company-wide (row-visibility), no project_id needed. POST is
+// project-owned at creation -- same pattern as Persona/Agent -- and
+// requires project_id or the backend 422s ("Field required").
 export async function listMCPServers(): Promise<MCPServer[]> {
   return apiJson<MCPServer[]>("/api/v1/mcp-servers/");
 }
 
 export async function createMCPServer(
+  projectId: string,
   input: Partial<MCPServer>,
 ): Promise<MCPServer> {
   return apiJson<MCPServer>("/api/v1/mcp-servers/", {
     method: "POST",
-    body: JSON.stringify(input),
+    body: JSON.stringify({ ...input, project_id: projectId }),
   });
 }
 
