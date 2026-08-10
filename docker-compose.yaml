@@ -208,6 +208,32 @@ services:
     networks:
       - dev-network
 
+  nexus-mcp-dev:
+    build:
+      context: ./modules/nexus-mcp
+      dockerfile: ./Dockerfile
+    profiles: ["dev"]
+    container_name: dev-nexus-mcp
+    volumes:
+      - ./modules/nexus-mcp:/app
+    ports:
+      - "${DEV_NEXUS_MCP_HOST_PORT:-8020}:8000"
+    environment:
+      - SERPAPI_KEY=${DEV_SERPAPI_KEY:-}
+      - ERP_TYPE=${DEV_ERP_TYPE:-odoo}
+      - ERP_URL=${DEV_ERP_URL:-}
+      - ERP_DB=${DEV_ERP_DB:-odoo}
+      - ERP_USERNAME=${DEV_ERP_USERNAME:-admin}
+      - ERP_PASSWORD=${DEV_ERP_PASSWORD:-admin}
+      - SSH_DEFAULT_HOST=${DEV_SSH_DEFAULT_HOST:-}
+      - SSH_DEFAULT_PORT=${DEV_SSH_DEFAULT_PORT:-22}
+      - SSH_DEFAULT_USER=${DEV_SSH_DEFAULT_USER:-}
+      - SSH_DEFAULT_PASSWORD=${DEV_SSH_DEFAULT_PASSWORD:-}
+      - SSH_DEFAULT_KEY_PATH=${DEV_SSH_DEFAULT_KEY_PATH:-}
+    networks:
+      - dev-network
+    restart: unless-stopped
+
   react-app-dev:
     build:
       context: ./modules/neuralops-react-app
