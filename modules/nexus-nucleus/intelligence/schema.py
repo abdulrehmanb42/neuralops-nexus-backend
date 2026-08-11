@@ -156,6 +156,11 @@ class PromptOut(Schema):
     context_scope: Optional[list] = None
     template_id: Optional[str] = None
 
+class ListTemplatePrompts(Schema):
+    prompts: dict[str, str]
+
+class TemplatePromptContent(Schema):
+    content: str
 
 # ── Persona ───────────────────────────────────────────────────────────────────
 

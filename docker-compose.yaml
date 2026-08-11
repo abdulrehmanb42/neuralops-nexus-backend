@@ -34,8 +34,8 @@ services:
   nucleus-dev:
     image: nexus-backend:5.0
     build:
-      context: ./modules/nexus-nucleus
-      dockerfile: ./docker/dev/Dockerfile.nexus-nucleus
+      context: .
+      dockerfile: modules/nexus-nucleus/docker/dev/Dockerfile.nexus-nucleus
     profiles: ["dev"]
     container_name: dev-nucleus
     volumes:
@@ -76,8 +76,8 @@ services:
   nucleus-celery-dev:
     image: nexus-backend:5.0
     build:
-      context: ./modules/nexus-nucleus
-      dockerfile: ./docker/dev/Dockerfile.nexus-nucleus
+      context: .
+      dockerfile: modules/nexus-nucleus/docker/dev/Dockerfile.nexus-nucleus
     profiles: ["dev"]
     container_name: dev-celery
     volumes:
@@ -116,8 +116,8 @@ services:
   nexus-ai-dev:
     image: nexus-ai:2.0
     build:
-      context: ./modules/nexus-ai
-      dockerfile: ./docker/dev/Dockerfile.nexus-ai
+      context: .
+      dockerfile: modules/nexus-ai/docker/dev/Dockerfile.nexus-ai
     profiles: ["dev"]
     container_name: dev-nexus-ai
     ports:
