@@ -5,6 +5,9 @@ All endpoints require Supabase JWT auth and are company-scoped.
 from typing import List
 from ninja import Router
 from ninja.errors import HttpError
+from pathlib import Path
+import base64
+import binascii
 
 from authn.auth import SupabaseBearer
 from authn.permissions.checker import PermissionChecker
@@ -16,11 +19,14 @@ from .schema import (
     PromptTemplateOut,
     CompanyAIConfigIn, CompanyAIConfigOut,
     AIRequestLogOut,
+    ListTemplatePrompts,
+    TemplatePromptContent,
 )
 from . import services as svc
 
 router = Router(tags=["Intelligence"], auth=SupabaseBearer())
 
+PROMPTS_DIR = (Path(__file__).resolve().parent / 'prompts').resolve()
 
 def _company(request):
     company = svc.get_company()
@@ -397,21 +403,35 @@ def delete_persona(request, persona_id: str):
 
 # ── PromptTemplate endpoints ──────────────────────────────────────────────────
 
-@router.get("/prompt-templates/", response=List[PromptTemplateOut])
-def list_prompt_templates(request):
-    company = _company(request)
-    return [
-        PromptTemplateOut(
-            id=str(t.id),
-            title=t.title,
-            description=t.description,
-            system_prompt=t.system_prompt,
-            output_type=t.output_type,
-            tags=t.tags,
-            is_featured=t.is_featured,
-        )
-        for t in svc.list_prompt_templates(company)
-    ]
+
+@router.get("/prompt-templates", response=ListTemplatePrompts)
+def get_prompts(request):
+    
+    files = {
+        base64.urlsafe_b64encode(rel_path.encode()).decode().rstrip('='): rel_path
+        for f in PROMPTS_DIR.rglob('*') if f.is_file()
+        for rel_path in [str(f.relative_to(PROMPTS_DIR))]
+    }
+    return ListTemplatePrompts(prompts=files)
+
+@router.get("/prompt-templates/{id}", response=TemplatePromptContent)
+def get_prompt(request, id: str):
+    try:
+        padding_needed = 4 - (len(id) % 4)
+        padded_id = id + ("=" * padding_needed)
+
+        rel_path_str = base64.urlsafe_b64decode(padded_id).decode()
+
+        target_path = (PROMPTS_DIR / rel_path_str).resolve()
+
+        if not target_path.is_relative_to(PROMPTS_DIR) or not target_path.is_file():
+            raise HttpError(404, "File not found")
+
+        return TemplatePromptContent(content=target_path.read_text(encoding="utf-8"))
+    
+    except (ValueError, binascii.Error, UnicodeDecodeError):
+        raise HttpError(400, "Invalid file ID format")
+
 
 
 # ── CompanyAIConfig endpoints ─────────────────────────────────────────────────
@@ -490,3 +510,9 @@ def list_output_types(request):
         {"name": "html",     "label": "HTML Page", "icon": "globe",         "render_as": "html"},
         {"name": "terminal", "label": "Terminal",  "icon": "terminal",      "render_as": "terminal"},
     ]
+
+# Default system prompt endpoints
+
+
+
+

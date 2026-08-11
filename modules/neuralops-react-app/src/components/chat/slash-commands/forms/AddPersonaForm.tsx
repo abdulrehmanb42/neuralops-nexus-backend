@@ -3,6 +3,7 @@ import { toast } from "sonner";
 import { createPersona } from "@/services/personas.service";
 import { listAIModels } from "@/services/ai-models.service";
 import { listAgents } from "@/services/agents.service";
+import { listPrompts, getPromptContent } from "@/services/prompts.service";
 import { FormDialog, Field } from "./shared";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -47,11 +48,22 @@ export function AddPersonaForm({
   const [agents, setAgents] = useState<Agent[]>([]);
   const [form, setForm] = useState<FormState>(EMPTY);
   const [saving, setSaving] = useState(false);
+  const [prompts, setPrompts] = useState<{ id: string; name: string }[]>([]);
+  const [loadingPrompt, setLoadingPrompt] = useState(false);
 
   useEffect(() => {
     if (!open) return;
     listAIModels().then(setModels).catch(() => {});
     listAgents().then(setAgents).catch(() => {});
+    listPrompts()
+      .then((res) => {
+        const arr = Object.entries(res.prompts).map(([id, path]) => {
+          const name = path.split('/').pop()?.replace(/\.[^/.]+$/, "") || path;
+          return { id, name: name.replace(/_/g, " ") };
+        });
+        setPrompts(arr);
+      })
+      .catch(() => {});
   }, [open]);
 
   function set(key: keyof FormState) {
@@ -61,6 +73,19 @@ export function AddPersonaForm({
 
   function setSel(key: keyof FormState) {
     return (v: string) => setForm((f) => ({ ...f, [key]: v }));
+  }
+
+  async function loadPromptTemplate(id: string) {
+    if (!id) return;
+    setLoadingPrompt(true);
+    try {
+      const res = await getPromptContent(id);
+      setForm((f) => ({ ...f, system_prompt: res.content }));
+    } catch (err) {
+      toast.error("Failed to load prompt template");
+    } finally {
+      setLoadingPrompt(false);
+    }
   }
 
   async function submit(e: React.FormEvent) {
@@ -167,6 +192,21 @@ export function AddPersonaForm({
             </Select>
           </Field>
         )}
+
+        <Field label="Load from Template (Optional)">
+          <Select onValueChange={loadPromptTemplate} disabled={loadingPrompt}>
+            <SelectTrigger>
+              <SelectValue placeholder={loadingPrompt ? "Loading..." : "Select a template..."} />
+            </SelectTrigger>
+            <SelectContent>
+              {prompts.map((p) => (
+                <SelectItem key={p.id} value={p.id}>
+                  {p.name}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </Field>
 
         <Field label="System Prompt">
           <Textarea
