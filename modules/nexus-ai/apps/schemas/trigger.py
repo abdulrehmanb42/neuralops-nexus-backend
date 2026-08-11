@@ -24,6 +24,10 @@ class MCPServerConfig(BaseModel):
     url: str | None = None  # for http/sse/websocket
     command: str | None = None  # for stdio
     config: dict = Field(default_factory=dict)
+    # Decrypted secret env vars (e.g. GITHUB_PERSONAL_ACCESS_TOKEN). Forwarded
+    # as subprocess env when spawning a stdio server -- never into `command`,
+    # which is plain text end to end (DB, UI, this payload).
+    secrets: dict = Field(default_factory=dict)
     timeout_seconds: int = 60
     is_first_party: bool = False
     embed_output: bool = False

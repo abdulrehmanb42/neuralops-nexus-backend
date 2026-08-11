@@ -24,6 +24,12 @@ RUN set -eux; \
     apt-get update && apt-get install -y --no-install-recommends \
     sudo \
     libpq-dev \
+    # openssh-client -- stdio MCP servers are spawned as direct subprocesses
+    # of THIS process (see _run_with_mcp() / StdioTransport in
+    # pydantic_ai_runner.py), so anything a registered MCPServer.command
+    # shells out to (e.g. Filesystem's `ssh ... npx @modelcontextprotocol/
+    # server-filesystem`) has to be runnable from inside this container.
+    openssh-client \
     # Dev binaries go here, NOT in requirements.txt
     micro \
     tmux \

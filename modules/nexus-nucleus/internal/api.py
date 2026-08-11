@@ -36,6 +36,11 @@ class MCPServerInternal(Schema):
     url: Optional[str] = None
     command: Optional[str] = None
     config: dict
+    # Decrypted secret env vars (e.g. GITHUB_PERSONAL_ACCESS_TOKEN) -- same
+    # trust boundary as ModelInternal.api_key above: only ever sent over the
+    # internal network to nexus-ai, which forwards them as subprocess env
+    # vars when spawning a stdio MCP server, never into the command string.
+    secrets: dict = Field(default_factory=dict)
     is_first_party: bool = False
     embed_output: bool = False
 
@@ -188,6 +193,7 @@ def get_persona_internal(request, persona_id: str):
                     url=s.url,
                     command=s.command,
                     config=s.config,
+                    secrets=s.get_secrets(),
                     is_first_party=s.is_first_party,
                     embed_output=s.embed_output,
                 )

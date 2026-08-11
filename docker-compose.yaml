@@ -208,31 +208,50 @@ services:
     networks:
       - dev-network
 
-  nexus-mcp-dev:
+  # -- First-party MCP addons (#150) -- each is its own real MCP server:
+  # own process, own container, own <container-name>:8000/mcp endpoint.
+  # Not mounted together under one shared server -- see modules/nexus-mcp/
+  # server.py's docstring for why.
+  #
+  # Scope trimmed to just Filesystem + GitHub for now to test that pair
+  # cleanly end-to-end (2026-08-10). mcp-shopping-dev/mcp-erp-dev/mcp-ssh-dev
+  # are NOT deleted -- server_shopping.py/server_erp.py/server_ssh.py and
+  # their tools/*.py still exist in modules/nexus-mcp/, just not wired into
+  # this compose file right now. Re-add the same service blocks (removed
+  # from here, still in git history) when it's their turn -- see TASKS.md #150.
+
+  mcp-github-dev:
+    # GitHub gets its own addon container (unlike Filesystem below) because
+    # its official open-source server is a compiled Go binary, not something
+    # reachable via a plain npx/ssh one-liner. Building that binary lives in
+    # THIS image's Dockerfile only -- nexus-ai never needs a Go toolchain,
+    # it just connects to this container's :8000/mcp like any other
+    # HTTP-transport MCP server. See modules/nexus-mcp/server_github.py and
+    # TASKS.md #150/#182.
     build:
       context: ./modules/nexus-mcp
       dockerfile: ./Dockerfile
     profiles: ["dev"]
-    container_name: dev-nexus-mcp
-    volumes:
-      - ./modules/nexus-mcp:/app
+    container_name: dev-mcp-github
+    command: ["python", "server_github.py"]
+    # No source bind mount here on purpose -- the compiled github-mcp-server
+    # binary lives at /usr/local/bin, outside /app, but re-mounting /app
+    # over the built image would still be pointless for this addon (no
+    # local Python tool code to hot-reload, it's a pure proxy).
     ports:
-      - "${DEV_NEXUS_MCP_HOST_PORT:-8020}:8000"
+      - "${DEV_MCP_GITHUB_HOST_PORT:-8024}:8000"
     environment:
-      - SERPAPI_KEY=${DEV_SERPAPI_KEY:-}
-      - ERP_TYPE=${DEV_ERP_TYPE:-odoo}
-      - ERP_URL=${DEV_ERP_URL:-}
-      - ERP_DB=${DEV_ERP_DB:-odoo}
-      - ERP_USERNAME=${DEV_ERP_USERNAME:-admin}
-      - ERP_PASSWORD=${DEV_ERP_PASSWORD:-admin}
-      - SSH_DEFAULT_HOST=${DEV_SSH_DEFAULT_HOST:-}
-      - SSH_DEFAULT_PORT=${DEV_SSH_DEFAULT_PORT:-22}
-      - SSH_DEFAULT_USER=${DEV_SSH_DEFAULT_USER:-}
-      - SSH_DEFAULT_PASSWORD=${DEV_SSH_DEFAULT_PASSWORD:-}
-      - SSH_DEFAULT_KEY_PATH=${DEV_SSH_DEFAULT_KEY_PATH:-}
+      - GITHUB_PERSONAL_ACCESS_TOKEN=${DEV_GITHUB_PERSONAL_ACCESS_TOKEN:-}
     networks:
       - dev-network
     restart: unless-stopped
+
+  # No mcp-filesystem-dev service -- Filesystem access doesn't need its own
+  # server/container. nexus-ai's existing stdio transport path already
+  # spawns an arbitrary command directly (see pydantic_ai_runner.py); a
+  # Filesystem MCP server is just an MCPServer row with transport=stdio and
+  # command="ssh -i <key> <user>@<host> 'npx @modelcontextprotocol/server-filesystem <path>'",
+  # registered the same way as any other MCP server. See TASKS.md #150.
 
   react-app-dev:
     build:

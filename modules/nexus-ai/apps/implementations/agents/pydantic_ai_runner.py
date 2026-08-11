@@ -23,6 +23,7 @@ from typing import AsyncIterator
 
 import httpx
 import litellm
+from fastmcp.client.transports import StdioTransport
 from pydantic_ai.mcp import FastMCPClient
 
 from apps.interfaces.agent import AgentRunner
@@ -133,10 +134,29 @@ class PydanticAIRunner(AgentRunner):
         client_configs = []
         for s in persona.mcp_servers:
             if s.transport == "stdio":
-                cmd_parts = (s.command or "").split()
+                # shlex.split (not str.split) so quoted args survive intact --
+                # e.g. a command like
+                #   ssh -i ~/.ssh/key user@host "bash -c 'PATH=... npx ...'"
+                # needs the quoted bash -c argument kept as ONE arg, not blown
+                # apart on every space inside it. A naive .split() would mangle
+                # exactly this shape, which is the standard way to reach a
+                # remote stdio MCP server (e.g. npx @modelcontextprotocol/
+                # server-filesystem) over SSH.
+                import shlex
+                cmd_parts = shlex.split(s.command or "")
                 if cmd_parts:
+                    # Built explicitly (not a bare {command, args} dict) so
+                    # s.secrets (e.g. GITHUB_PERSONAL_ACCESS_TOKEN, decrypted
+                    # by nucleus from MCPServer.secrets_encrypted) can be
+                    # passed as subprocess env -- the token never touches the
+                    # plain-text `command` string, and stdio servers don't
+                    # inherit this process's shell environment by default.
                     client_configs.append(
-                        {"command": cmd_parts[0], "args": cmd_parts[1:]}
+                        StdioTransport(
+                            command=cmd_parts[0],
+                            args=cmd_parts[1:],
+                            env=s.secrets or None,
+                        )
                     )
             else:  # http | sse | streamable-http
                 if s.url:

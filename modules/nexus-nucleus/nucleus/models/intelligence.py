@@ -595,6 +595,21 @@ class MCPServer(TenantBaseModel):
         help_text="Secret manager reference. Do not store raw credentials.",
     )
 
+    # -- Secrets (encrypted at rest) -------------------------------------------
+    # Same pattern as AIModel.api_key_encrypted (see _fernet() above). Stored
+    # as a Fernet-encrypted JSON dict rather than a single string because
+    # stdio addons commonly need more than one env var at spawn time --
+    # e.g. {"GITHUB_PERSONAL_ACCESS_TOKEN": "..."} for GitHub,
+    # {"AWS_ACCESS_KEY_ID": "...", "AWS_SECRET_ACCESS_KEY": "..."} for AWS.
+    # Use set_secrets()/get_secrets(). For production, prefer secret_ref +
+    # an actual secrets manager -- this is the same interim approach already
+    # used for AIModel.api_key_encrypted.
+    secrets_encrypted = models.TextField(
+        null=True,
+        blank=True,
+        help_text="Fernet-encrypted JSON dict of secret env vars. Do not set directly — use set_secrets().",
+    )
+
     timeout_seconds = models.PositiveIntegerField(default=60)
 
     max_retries = models.PositiveIntegerField(default=3)
@@ -652,6 +667,18 @@ class MCPServer(TenantBaseModel):
             models.Index(fields=["company", "transport"]),
             models.Index(fields=["company", "is_active"]),
         ]
+
+    def set_secrets(self, secrets: dict) -> None:
+        """Encrypt and store a dict of secret env vars (e.g. GITHUB_PERSONAL_ACCESS_TOKEN)."""
+        import json
+        self.secrets_encrypted = _fernet().encrypt(json.dumps(secrets).encode()).decode()
+
+    def get_secrets(self) -> dict:
+        """Decrypt and return the secret env vars dict, or {} if not set."""
+        import json
+        if not self.secrets_encrypted:
+            return {}
+        return json.loads(_fernet().decrypt(self.secrets_encrypted.encode()).decode())
 
     def __str__(self):
         return self.name

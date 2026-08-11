@@ -60,6 +60,7 @@ async def resolve_persona(persona_id: str) -> PersonaConfig:
             url=s.get("url"),
             command=s.get("command"),
             config=s.get("config") or {},
+            secrets=s.get("secrets") or {},
             is_first_party=s.get("is_first_party", False),
             embed_output=s.get("embed_output", False),
         )
