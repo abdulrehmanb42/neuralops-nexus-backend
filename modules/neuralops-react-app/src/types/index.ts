@@ -88,12 +88,12 @@ export interface Agent {
   id: string;
   name: string;
   description?: string;
+  project_id?: string;
   agent_type: string;
   model_id?: string;
   model_name?: string;
   mcp_server_id?: string;
   mcp_server_name?: string;
-  system_prompt?: string;
   safety_mode: boolean;
   max_steps: number;
   is_active: boolean;

@@ -284,11 +284,6 @@ class AIAgent(TenantBaseModel):
         help_text="Secret manager reference for external agent credentials.",
     )
 
-    system_prompt = models.TextField(
-        null=True,
-        blank=True,
-        help_text="Internal agent execution rules. External agents may ignore this.",
-    )
 
     safety_mode = models.BooleanField(default=True)
     max_steps = models.PositiveIntegerField(default=5)

@@ -458,13 +458,12 @@ function AgentsTab() {
     description: "",
     model_id: "",
     mcp_server_id: "",
-    system_prompt: "",
   });
 
   // Edit state
   const [editTarget, setEditTarget] = useState<Agent | null>(null);
   const [editForm, setEditForm] = useState({
-    name: "", description: "", model_id: "", mcp_server_id: "", system_prompt: "",
+    name: "", description: "", model_id: "", mcp_server_id: "",
   });
   const [editSaving, setEditSaving] = useState(false);
 
@@ -475,7 +474,6 @@ function AgentsTab() {
       description: a.description ?? "",
       model_id: a.model_id ?? "",
       mcp_server_id: a.mcp_server_id ?? "",
-      system_prompt: a.system_prompt ?? "",
     });
   }
 
@@ -488,7 +486,6 @@ function AgentsTab() {
         description: editForm.description || undefined,
         model_id: editForm.model_id || undefined,
         mcp_server_id: editForm.mcp_server_id || undefined,
-        system_prompt: editForm.system_prompt || undefined,
       });
       setAgents((prev) => prev.map((a) => a.id === updated.id ? updated : a));
       setEditTarget(null);
@@ -522,12 +519,11 @@ function AgentsTab() {
         description: form.description || undefined,
         model_id: form.model_id,
         mcp_server_id: form.mcp_server_id || undefined,
-        system_prompt: form.system_prompt || undefined,
         agent_type: "internal",
       } as Partial<Agent>);
       setAgents((prev) => [...prev, a]);
       setOpen(false);
-      setForm({ name: "", description: "", model_id: "", mcp_server_id: "", system_prompt: "" });
+      setForm({ name: "", description: "", model_id: "", mcp_server_id: "" });
       toast.success(`Agent "${a.name}" created.`);
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Failed to create agent.");
@@ -631,14 +627,6 @@ function AgentsTab() {
                 </SelectContent>
               </Select>
             </div>
-            <div>
-              <Label>System Prompt <span className="text-foreground-muted">(optional)</span></Label>
-              <Textarea
-                value={editForm.system_prompt}
-                onChange={(e) => setEditForm({ ...editForm, system_prompt: e.target.value })}
-                className="mt-1 min-h-[80px]"
-              />
-            </div>
           </div>
           <DialogFooter>
             <Button variant="ghost" onClick={() => setEditTarget(null)}>Cancel</Button>
@@ -683,15 +671,6 @@ function AgentsTab() {
                   ))}
                 </SelectContent>
               </Select>
-            </div>
-            <div>
-              <Label>System Prompt <span className="text-foreground-muted">(optional)</span></Label>
-              <Textarea
-                value={form.system_prompt}
-                onChange={(e) => setForm({ ...form, system_prompt: e.target.value })}
-                placeholder="You are an ERP assistant with access to Odoo..."
-                className="mt-1 min-h-[80px]"
-              />
             </div>
           </div>
           <DialogFooter>
