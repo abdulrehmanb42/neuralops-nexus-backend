@@ -27,6 +27,7 @@ centrifuge-python
 # Async Task Queue
 celery[redis]
 redis
+django-celery-beat
 
 # File Handling
 pillow

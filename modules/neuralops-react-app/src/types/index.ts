@@ -118,6 +118,28 @@ export interface Persona {
   is_active: boolean;
 }
 
+// ── Scheduling ────────────────────────────────────────────────────────────────
+
+export interface PersonaSchedule {
+  id: string;
+  topic_id: string;
+  persona_id: string;
+  persona_name: string;
+  query_text: string;
+  label: string;
+  schedule_kind: "interval" | "crontab" | "clocked";
+  schedule_summary: string;
+  timezone: string;
+  trigger_visible: boolean;
+  catch_up_missed: boolean;
+  is_paused: boolean;
+  created_by_id?: string | null;
+  last_run_at?: string | null;
+  last_status: "never_run" | "success" | "failed";
+  last_error?: string | null;
+  created_at: string;
+}
+
 // ── Other ──────────────────────────────────────────────────────────────────────
 
 export interface KnowledgeItem {

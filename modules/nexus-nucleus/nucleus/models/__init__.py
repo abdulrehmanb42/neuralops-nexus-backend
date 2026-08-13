@@ -48,6 +48,10 @@ from .context import (
     ContextSource,
 )
 
+from .scheduling import (
+    PersonaSchedule,
+)
+
 from .extended import (
     Invitation,
     ProjectMember,

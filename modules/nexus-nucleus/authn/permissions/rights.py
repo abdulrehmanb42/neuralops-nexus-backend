@@ -125,6 +125,20 @@ REGISTRY = [
     ("ai_model.list", ObjectType.AI_MODEL, ScopeType.COMPANY, "List AI models."),
     ("ai_model.create", ObjectType.AI_MODEL, ScopeType.COMPANY, "Register a new AI model."),
     ("ai_model.delete", ObjectType.AI_MODEL, ScopeType.COMPANY, "Delete an AI model."),
+
+    # ── Persona Schedule (#189) — TOPIC scope, same tier as session.create/
+    # persona.mention: any Member with access to a topic can automate a
+    # persona there, no elevated role needed. schedule.manage is separate
+    # from schedule.create on purpose -- a Member who created a schedule can
+    # always pause/delete THEIR OWN one via an ownership check in
+    # scheduling/services.py (PersonaSchedule.created_by == user), independent
+    # of holding this right. schedule.manage is what lets someone act on a
+    # schedule they did NOT create (e.g. an Admin cleaning up after someone
+    # who left) -- same shape as topic.archive being separate from topic.create.
+    ("schedule.create", ObjectType.SCHEDULE, ScopeType.TOPIC,
+     "Create a recurring or one-time automated persona query in a topic."),
+    ("schedule.manage", ObjectType.SCHEDULE, ScopeType.TOPIC,
+     "Pause, resume, or delete any schedule in a topic, including ones you did not create."),
 ]
 
 
@@ -154,6 +168,7 @@ DEFAULT_ROLE_RIGHTS = {
         "agent.list", "agent.create", "agent.update", "agent.delete",
         "mcp_server.list", "mcp_server.create", "mcp_server.update", "mcp_server.delete",
         "ai_model.list", "ai_model.create", "ai_model.delete", "ai_model.attach",
+        "schedule.create", "schedule.manage",
         # project.archive/channel.archive/topic.archive are now included --
         # this reverses the old project.delete-was-Owner-only policy. Archiving
         # is reversible (soft-delete + unused Model.restore()) so it's no
@@ -176,6 +191,10 @@ DEFAULT_ROLE_RIGHTS = {
         "session.create", "session.close",
         "persona.mention",
         "persona.list", "agent.list", "mcp_server.list", "ai_model.list",
+        "schedule.create",
+        # Deliberately no schedule.manage -- a Member can still pause/delete
+        # a schedule THEY created via the ownership check in
+        # scheduling/services.py, just not one someone else created.
     ],
 
     "Viewer": [

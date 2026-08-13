@@ -19,6 +19,7 @@ INSTALLED_APPS = [
     'django.contrib.staticfiles',
     'corsheaders',
     'ninja',
+    'django_celery_beat',
     'nucleus',
     'authn',
     'chat',
@@ -26,6 +27,7 @@ INSTALLED_APPS = [
     'workspace',
     'internal',
     'context',
+    'scheduling',
     'guardian',
 ]
 
@@ -173,3 +175,8 @@ CELERY_TASK_TRACK_STARTED = True
 CELERY_TASK_TIME_LIMIT = 60 * 35
 CELERY_TASK_SOFT_TIME_LIMIT = 60 * 31
 CELERY_TASK_DEFAULT_QUEUE = "neuralops"
+
+# django-celery-beat -- lets PersonaSchedule rows (via services.py) create/edit
+# PeriodicTask rows at runtime and have Celery Beat actually pick them up from
+# the DB, instead of Celery's default static file-based schedule.
+CELERY_BEAT_SCHEDULER = "django_celery_beat.schedulers:DatabaseScheduler"

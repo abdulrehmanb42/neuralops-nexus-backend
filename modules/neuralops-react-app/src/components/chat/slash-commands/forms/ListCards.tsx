@@ -5,10 +5,12 @@ import { listAIModels, deleteAIModel } from "@/services/ai-models.service";
 import { listAgents, deleteAgent } from "@/services/agents.service";
 import { listPersonas, deletePersona } from "@/services/personas.service";
 import { listMCPServers, deleteMCPServer } from "@/services/mcp-servers.service";
+import { listSchedules, updateSchedule, deleteSchedule } from "@/services/schedules.service";
 import { FormDialog } from "./shared";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import type { AIModel, Agent, Persona, MCPServer } from "@/types";
+import { Switch } from "@/components/ui/switch";
+import type { AIModel, Agent, Persona, MCPServer, PersonaSchedule } from "@/types";
 
 // ── Generic delete button ─────────────────────────────────────────────────────
 
@@ -207,6 +209,94 @@ export function ListPersonasDialog({ open, onClose, projectId }: { open: boolean
                 {p.prompt.system_prompt}
               </div>
             )}
+          </div>
+        ))}
+      </div>
+    </FormDialog>
+  );
+}
+
+// ── Schedules ─────────────────────────────────────────────────────────────────
+
+export function ListSchedulesDialog({
+  open,
+  onClose,
+  projectId,
+  channelId,
+  topicId,
+}: {
+  open: boolean;
+  onClose: () => void;
+  projectId?: string | null;
+  channelId?: string | null;
+  topicId?: string | null;
+}) {
+  const [items, setItems] = useState<PersonaSchedule[]>([]);
+  const [loading, setLoading] = useState(false);
+
+  function reload() {
+    if (!projectId || !channelId || !topicId) return;
+    setLoading(true);
+    listSchedules(projectId, channelId, topicId)
+      .then(setItems)
+      .catch(() => {})
+      .finally(() => setLoading(false));
+  }
+
+  useEffect(() => {
+    if (!open) return;
+    reload();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, projectId, channelId, topicId]);
+
+  async function togglePause(s: PersonaSchedule) {
+    if (!projectId || !channelId || !topicId) return;
+    try {
+      const updated = await updateSchedule(projectId, channelId, topicId, s.id, { is_paused: !s.is_paused });
+      setItems((prev) => prev.map((x) => (x.id === s.id ? updated : x)));
+    } catch (e) {
+      toast.error("Failed to update schedule: " + (e instanceof Error ? e.message : String(e)));
+    }
+  }
+
+  async function remove(id: string, label: string) {
+    if (!projectId || !channelId || !topicId) return;
+    await deleteSchedule(projectId, channelId, topicId, id);
+    setItems((prev) => prev.filter((x) => x.id !== id));
+    toast.success(`Schedule "${label}" removed`);
+  }
+
+  const statusVariant = (s: PersonaSchedule) =>
+    s.last_status === "failed" ? "destructive" : s.last_status === "success" ? "secondary" : "outline";
+
+  return (
+    <FormDialog title="Schedules" open={open} onClose={onClose}>
+      <div className="mt-2 flex flex-col gap-2 max-h-80 overflow-y-auto pr-1">
+        {loading && <p className="text-sm text-muted-foreground">Loading…</p>}
+        {!loading && items.length === 0 && (
+          <p className="text-sm text-muted-foreground">No schedules yet in this topic. Use <code>/schedule</code>.</p>
+        )}
+        {items.map((s) => (
+          <div key={s.id} className="rounded-md border border-border bg-card p-3">
+            <div className="flex items-center justify-between gap-2">
+              <span className="text-sm font-medium truncate">
+                @{s.persona_name}{s.label ? ` — ${s.label}` : ""}
+              </span>
+              <div className="flex items-center gap-2 shrink-0">
+                <Switch checked={!s.is_paused} onCheckedChange={() => togglePause(s)} />
+                <DeleteBtn onDelete={() => remove(s.id, s.label || s.persona_name)} />
+              </div>
+            </div>
+            <div className="mt-1 text-xs text-muted-foreground">{s.schedule_summary}</div>
+            <div className="mt-1.5 text-xs text-muted-foreground line-clamp-2">{s.query_text}</div>
+            <div className="mt-2 flex items-center gap-1.5">
+              <Badge variant={s.is_paused ? "outline" : "secondary"}>{s.is_paused ? "Paused" : "Active"}</Badge>
+              {s.last_status !== "never_run" && (
+                <Badge variant={statusVariant(s)}>
+                  {s.last_status === "success" ? "Last run OK" : "Last run failed"}
+                </Badge>
+              )}
+            </div>
           </div>
         ))}
       </div>

@@ -60,6 +60,7 @@ class ObjectType(models.TextChoices):
     MCP_SERVER = "mcp_server", "MCP Server"
     AI_MODEL = "ai_model", "AI Model"
     COMPANY = "company", "Company"
+    SCHEDULE = "schedule", "Persona Schedule"
 
 
 class Right(models.Model):
