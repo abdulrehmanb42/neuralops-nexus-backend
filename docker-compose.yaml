@@ -122,9 +122,22 @@ services:
     container_name: dev-nexus-ai
     ports:
       - "${DEV_NEXUS_AI_HOST_PORT:-8000}:8000"
+    # host.docker.internal -- stdio MCP servers (Filesystem, git) are spawned
+    # as subprocesses of THIS container, and their `ssh ... host ...` target
+    # is often the same physical machine this whole stack runs on. A bare
+    # hostname like "node-3" doesn't reliably resolve to the real host from
+    # inside a container's own network namespace; host.docker.internal +
+    # this extra_hosts entry is the standard way to reach it on Linux.
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     volumes:
       - ./modules/nexus-ai:/nexus-ai
       - ./data/dev/fastembed_cache:/root/.cache/fastembed
+      # No separate key mount -- ./modules/nexus-ai:/nexus-ai above already
+      # bind-mounts this whole folder, so an SSH key placed in
+      # modules/nexus-ai/.secrets/ (gitignored -- see .gitignore) shows up
+      # inside the container at /nexus-ai/.secrets/ for free. Point stdio
+      # MCPServer commands' -i flag at that path.
     working_dir: /nexus-ai
     command: >
       sh -c "export PYTHONPATH=$PYTHONPATH:/nexus-ai &&
@@ -213,44 +226,21 @@ services:
   # Not mounted together under one shared server -- see modules/nexus-mcp/
   # server.py's docstring for why.
   #
-  # Scope trimmed to just Filesystem + GitHub for now to test that pair
-  # cleanly end-to-end (2026-08-10). mcp-shopping-dev/mcp-erp-dev/mcp-ssh-dev
-  # are NOT deleted -- server_shopping.py/server_erp.py/server_ssh.py and
-  # their tools/*.py still exist in modules/nexus-mcp/, just not wired into
-  # this compose file right now. Re-add the same service blocks (removed
-  # from here, still in git history) when it's their turn -- see TASKS.md #150.
+  # Scope trimmed to just Filesystem + plain git for now (2026-08-10) --
+  # NOT GitHub. GitHub's official server needs a Go build (see
+  # modules/nexus-mcp/server_github.py / Dockerfile, still in the repo,
+  # just not wired into this compose file), which is exactly what we're
+  # avoiding right now. mcp-shopping-dev/mcp-erp-dev/mcp-ssh-dev are also
+  # NOT deleted, same story -- code still exists, just not wired in.
+  # Re-add whichever's service block (removed from here, still in git
+  # history) when it's that addon's turn -- see TASKS.md #150.
 
-  mcp-github-dev:
-    # GitHub gets its own addon container (unlike Filesystem below) because
-    # its official open-source server is a compiled Go binary, not something
-    # reachable via a plain npx/ssh one-liner. Building that binary lives in
-    # THIS image's Dockerfile only -- nexus-ai never needs a Go toolchain,
-    # it just connects to this container's :8000/mcp like any other
-    # HTTP-transport MCP server. See modules/nexus-mcp/server_github.py and
-    # TASKS.md #150/#182.
-    build:
-      context: ./modules/nexus-mcp
-      dockerfile: ./Dockerfile
-    profiles: ["dev"]
-    container_name: dev-mcp-github
-    command: ["python", "server_github.py"]
-    # No source bind mount here on purpose -- the compiled github-mcp-server
-    # binary lives at /usr/local/bin, outside /app, but re-mounting /app
-    # over the built image would still be pointless for this addon (no
-    # local Python tool code to hot-reload, it's a pure proxy).
-    ports:
-      - "${DEV_MCP_GITHUB_HOST_PORT:-8024}:8000"
-    environment:
-      - GITHUB_PERSONAL_ACCESS_TOKEN=${DEV_GITHUB_PERSONAL_ACCESS_TOKEN:-}
-    networks:
-      - dev-network
-    restart: unless-stopped
-
-  # No mcp-filesystem-dev service -- Filesystem access doesn't need its own
-  # server/container. nexus-ai's existing stdio transport path already
-  # spawns an arbitrary command directly (see pydantic_ai_runner.py); a
-  # Filesystem MCP server is just an MCPServer row with transport=stdio and
-  # command="ssh -i <key> <user>@<host> 'npx @modelcontextprotocol/server-filesystem <path>'",
+  # No mcp-filesystem-dev / mcp-git-dev services -- neither needs its own
+  # container. nexus-ai's existing stdio transport path already spawns an
+  # arbitrary command directly (see pydantic_ai_runner.py); both are just
+  # MCPServer rows with transport=stdio:
+  #   Filesystem: command="ssh -i <key> <user>@<host> 'npx @modelcontextprotocol/server-filesystem <path>'"
+  #   git:        command="ssh -i <key> <user>@<host> 'uvx mcp-server-git --repository <path>'"
   # registered the same way as any other MCP server. See TASKS.md #150.
 
   react-app-dev:

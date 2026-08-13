@@ -17,6 +17,7 @@ interface FormState {
   name: string;
   description: string;
   url: string;
+  command: string;
   transport: string;
   server_type: string;
 }
@@ -25,9 +26,17 @@ const EMPTY: FormState = {
   name: "",
   description: "",
   url: "",
+  command: "",
   transport: "streamable-http",
   server_type: "remote",
 };
+
+// Mirrors the backend's CHECK constraints on MCPServer (mcp_stdio_requires_command
+// / mcp_http_sse_ws_requires_url) -- which field is actually required depends on
+// transport, not "always url" like the form used to assume.
+function isStdio(transport: string) {
+  return transport === "stdio";
+}
 
 export function AddMCPForm({
   open,
@@ -52,14 +61,21 @@ export function AddMCPForm({
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
-    if (!form.name || !form.url) return;
+    const stdio = isStdio(form.transport);
+    if (!form.name || (stdio ? !form.command : !form.url)) return;
     if (!projectId) {
       toast.error("Open a project first -- MCP servers belong to a project.");
       return;
     }
     setSaving(true);
     try {
-      await createMCPServer(projectId, { ...form });
+      // Only send the field this transport actually uses -- avoid sending an
+      // empty string for the other one, which would fail the backend's
+      // CHECK constraint (it wants NULL, not "").
+      const payload = stdio
+        ? { ...form, url: null }
+        : { ...form, command: null };
+      await createMCPServer(projectId, payload);
       toast.success(`MCP server "${form.name}" registered`);
       setForm(EMPTY);
       onClose();
@@ -84,13 +100,24 @@ export function AddMCPForm({
           />
         </Field>
 
-        <Field label="URL *">
-          <Input
-            value={form.url}
-            onChange={set("url")}
-            placeholder="http://nexus-erp-mcp:8000/mcp"
-          />
-        </Field>
+        {isStdio(form.transport) ? (
+          <Field label="Command *">
+            <Input
+              value={form.command}
+              onChange={set("command")}
+              placeholder={`ssh -i ~/.ssh/key user@host "bash -c '...'"`}
+              className="font-mono text-xs"
+            />
+          </Field>
+        ) : (
+          <Field label="URL *">
+            <Input
+              value={form.url}
+              onChange={set("url")}
+              placeholder="http://nexus-erp-mcp:8000/mcp"
+            />
+          </Field>
+        )}
 
         <Field label="Transport">
           <Select value={form.transport} onValueChange={setSel("transport")}>
@@ -133,7 +160,14 @@ export function AddMCPForm({
           <Button type="button" variant="outline" onClick={onClose}>
             Cancel
           </Button>
-          <Button type="submit" disabled={saving || !form.name || !form.url}>
+          <Button
+            type="submit"
+            disabled={
+              saving ||
+              !form.name ||
+              (isStdio(form.transport) ? !form.command : !form.url)
+            }
+          >
             {saving ? "Saving…" : "Register"}
           </Button>
         </div>

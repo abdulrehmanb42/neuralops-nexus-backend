@@ -280,3 +280,6 @@ modules/nexus-nucleus/media/*
 !modules/nexus-nucleus/media/avatars/**
 node-3.tail9ed39a.ts.net.crt
 node-3.tail9ed39a.ts.net.key
+modules/nexus-ai/.secrets/
+modules/nexus-ai/.secrets/
+modules/nexus-ai/.secrets/

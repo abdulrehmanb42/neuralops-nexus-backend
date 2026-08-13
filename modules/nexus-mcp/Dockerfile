@@ -3,8 +3,14 @@
 # image specifically so nexus-ai and the other addons never need a Go
 # toolchain. Only the compiled binary is copied into the final stage below;
 # the Go compiler itself never ends up in the image that actually ships.
-FROM golang:1.23-bookworm AS github-mcp-builder
+FROM golang:1.25-bookworm AS github-mcp-builder
 WORKDIR /src
+# GOTOOLCHAIN=auto -- github-mcp-server's go.mod pins a minimum Go version
+# that moves forward over time (hit go>=1.25.12 needed vs 1.23 pinned here
+# on 2026-08-10). auto lets Go itself fetch whatever patch/minor go.mod
+# actually demands instead of hard-failing when this base image's Go
+# version eventually falls behind again.
+ENV GOTOOLCHAIN=auto
 RUN git clone --depth 1 https://github.com/github/github-mcp-server.git . \
     && go build -o /out/github-mcp-server ./cmd/github-mcp-server
 
