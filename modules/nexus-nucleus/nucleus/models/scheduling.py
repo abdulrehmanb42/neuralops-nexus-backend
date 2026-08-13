@@ -1,0 +1,187 @@
+from django.conf import settings
+from django.db import models
+
+from .base import ProjectBaseModel
+
+
+class PersonaSchedule(ProjectBaseModel):
+    """
+    A recurring or one-off automated query against an existing Persona,
+    fired inside an existing ChatTopic without any user present.
+
+    This model holds the business data (who, what, where, how often) --
+    it does NOT do any scheduling math itself. The actual "when does this
+    next fire" mechanics are delegated to django-celery-beat's own models
+    (IntervalSchedule / CrontabSchedule / ClockedSchedule), one of which
+    this row points at via periodic_task. django-celery-beat is the timing
+    engine; PersonaSchedule is the domain layer on top -- same separation
+    already used everywhere else in this codebase (e.g. MCPServer holds
+    config, pydantic_ai_runner.py does the actual subprocess mechanics).
+
+    Non-repeating "a few specific dates" is intentionally NOT its own
+    schedule_kind -- it's just multiple schedule_kind=clocked rows, one per
+    date. Keeps the one-row-to-one-PeriodicTask pairing simple; the UI can
+    offer "add another date" as a convenience that creates several rows in
+    one action.
+
+    When periodic_task fires, scheduling/tasks.py's Celery task runs,
+    posts a visible "Scheduled: <query_text>" ChatMessage (if
+    trigger_visible=True) into `topic`, then calls the exact same
+    trigger_ai_response_async() pipeline a live @mention uses -- so a
+    scheduled run is indistinguishable from a normal one from nexus-ai's
+    point of view.
+    """
+
+    class ScheduleKind(models.TextChoices):
+        INTERVAL = "interval", "Interval (every N hours/minutes)"
+        CRONTAB  = "crontab",  "Crontab (daily/weekly/monthly/specific weekdays)"
+        CLOCKED  = "clocked",  "Clocked (one-time, a single specific date)"
+
+    class RunStatus(models.TextChoices):
+        NEVER_RUN = "never_run", "Never run"
+        SUCCESS   = "success",   "Success"
+        FAILED    = "failed",    "Failed"
+
+    # -- What to run, and where -------------------------------------------
+    topic = models.ForeignKey(
+        "nucleus.ChatTopic",
+        on_delete=models.CASCADE,
+        related_name="persona_schedules",
+        help_text="The chat topic this scheduled query fires into.",
+    )
+
+    persona = models.ForeignKey(
+        "nucleus.Persona",
+        on_delete=models.CASCADE,
+        related_name="schedules",
+        help_text="Existing persona to run the query against -- old or new, no restriction.",
+    )
+
+    query_text = models.TextField(
+        help_text="The prompt sent to the persona each time this schedule fires.",
+    )
+
+    label = models.CharField(
+        max_length=255,
+        blank=True,
+        help_text="Optional short display name for this schedule. Falls back to a "
+                   "truncated query_text in the UI if left blank.",
+    )
+
+    created_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="created_schedules",
+    )
+
+    # -- Timing (mirrors django-celery-beat's schedule types) ---------------
+    schedule_kind = models.CharField(
+        max_length=20,
+        choices=ScheduleKind.choices,
+        db_index=True,
+    )
+
+    # ScheduleKind.INTERVAL -- e.g. "every 2 hours"
+    interval_every = models.PositiveIntegerField(
+        null=True, blank=True,
+        help_text="e.g. 1 for 'every 1 hour'. Only used when schedule_kind=interval.",
+    )
+    interval_period = models.CharField(
+        max_length=20,
+        null=True, blank=True,
+        help_text="django_celery_beat.IntervalSchedule.PERIOD_CHOICES value, "
+                   "e.g. 'hours', 'minutes'. Only used when schedule_kind=interval.",
+    )
+
+    # ScheduleKind.CRONTAB -- daily/weekly/monthly, or specific weekdays via
+    # comma-list day_of_week (e.g. "1,4" = every Monday and Thursday).
+    crontab_minute        = models.CharField(max_length=64, default="0", blank=True)
+    crontab_hour          = models.CharField(max_length=64, default="*", blank=True)
+    crontab_day_of_week   = models.CharField(max_length=64, default="*", blank=True)
+    crontab_day_of_month  = models.CharField(max_length=64, default="*", blank=True)
+    crontab_month_of_year = models.CharField(max_length=64, default="*", blank=True)
+
+    # ScheduleKind.CLOCKED -- exactly one non-repeating date. Several
+    # specific dates = several rows with this kind, not a list on one row.
+    clocked_time = models.DateTimeField(
+        null=True, blank=True,
+        help_text="Exact one-time fire datetime (UTC). Only used when schedule_kind=clocked.",
+    )
+
+    timezone = models.CharField(
+        max_length=64,
+        default="UTC",
+        help_text="IANA timezone name the schedule's times are interpreted in, "
+                   "e.g. 'America/Edmonton'.",
+    )
+
+    # -- Behavior ------------------------------------------------------------
+    trigger_visible = models.BooleanField(
+        default=True,
+        help_text="If True, post a visible 'Scheduled: <query>' message before the "
+                   "persona replies, same as a normal @mention. If False, only the "
+                   "persona's reply appears.",
+    )
+
+    catch_up_missed = models.BooleanField(
+        default=True,
+        help_text="If True, a run missed while the server was down fires once on "
+                   "restart. If False, missed runs are skipped -- only the next "
+                   "regularly scheduled occurrence fires.",
+    )
+
+    is_paused = models.BooleanField(
+        default=False,
+        help_text="User-facing pause switch, distinct from is_active (soft delete). "
+                   "A paused schedule's periodic_task.enabled is kept in sync to False.",
+    )
+
+    # -- Link to the django-celery-beat row that actually drives timing -----
+    periodic_task = models.OneToOneField(
+        "django_celery_beat.PeriodicTask",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="persona_schedule",
+        help_text="The PeriodicTask row whose schedule + enabled flag this row keeps "
+                   "in sync with. Created/updated/deleted by scheduling/services.py, "
+                   "never edited directly.",
+    )
+
+    # -- Bookkeeping ----------------------------------------------------------
+    last_run_at = models.DateTimeField(null=True, blank=True)
+    last_status = models.CharField(
+        max_length=20,
+        choices=RunStatus.choices,
+        default=RunStatus.NEVER_RUN,
+    )
+    last_error = models.TextField(null=True, blank=True)
+
+    class Meta:
+        db_table = "workspace_persona_schedule"
+        indexes = [
+            models.Index(fields=["company", "project", "topic"]),
+            models.Index(fields=["persona"]),
+            models.Index(fields=["is_active", "is_paused"]),
+        ]
+        constraints = [
+            models.CheckConstraint(
+                name="schedule_interval_requires_fields",
+                check=(
+                    ~models.Q(schedule_kind="interval")
+                    | (models.Q(interval_every__isnull=False) & models.Q(interval_period__isnull=False))
+                ),
+            ),
+            models.CheckConstraint(
+                name="schedule_clocked_requires_time",
+                check=(
+                    ~models.Q(schedule_kind="clocked")
+                    | models.Q(clocked_time__isnull=False)
+                ),
+            ),
+        ]
+
+    def __str__(self):
+        return f"{self.persona.name} @ {self.topic.title} ({self.schedule_kind})"

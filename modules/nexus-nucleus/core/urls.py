@@ -10,6 +10,7 @@ from chat.api import router as chat_router
 from intelligence.api import router as intelligence_router
 from internal.api import router as internal_router
 from context.api import router as context_router
+from scheduling.api import router as scheduling_router
 
 api = NinjaAPI(
     title="NeuralOps Nucleus API",
@@ -23,6 +24,7 @@ api.add_router("/projects/", chat_router)
 api.add_router("/", intelligence_router)
 api.add_router("/internal/", internal_router)
 api.add_router("/projects/", context_router)
+api.add_router("/projects/", scheduling_router)
 
 urlpatterns = [
     path("admin/", admin.site.urls),

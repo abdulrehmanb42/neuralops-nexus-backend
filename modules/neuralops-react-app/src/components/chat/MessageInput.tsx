@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import {
   Paperclip, Send, X, UserPlus, FileText,
   BarChart2, Code, Globe, Terminal, Table2, GitBranch, ClipboardList, AlignLeft,
-  Cpu, Plug, Bot, User, List,
+  Cpu, Plug, Bot, User, List, Clock,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
@@ -15,11 +15,13 @@ import { AddModelForm } from "./slash-commands/forms/AddModelForm";
 import { AddMCPForm } from "./slash-commands/forms/AddMCPForm";
 import { AddAgentForm } from "./slash-commands/forms/AddAgentForm";
 import { AddPersonaForm } from "./slash-commands/forms/AddPersonaForm";
+import { AddScheduleForm } from "./slash-commands/forms/AddScheduleForm";
 import {
   ListModelsDialog,
   ListMCPsDialog,
   ListAgentsDialog,
   ListPersonasDialog,
+  ListSchedulesDialog,
 } from "./slash-commands/forms/ListCards";
 
 const CONTEXT_DIRECTIVES = [
@@ -48,6 +50,8 @@ const SLASH_COMMANDS = [
   { command: "/list-agents",    description: "List all agents",                        icon: List },
   { command: "/add-persona",    description: "Create a persona (@mention)",            icon: User },
   { command: "/list-personas",  description: "List and manage personas",               icon: List },
+  { command: "/schedule",       description: "Automate a persona on a schedule",       icon: Clock },
+  { command: "/list-schedules", description: "List and manage schedules in this topic", icon: List },
 ];
 
 type ActiveForm =
@@ -55,6 +59,7 @@ type ActiveForm =
   | "add-mcp"   | "list-mcps"
   | "add-agent" | "list-agents"
   | "add-persona" | "list-personas"
+  | "schedule"  | "list-schedules"
   | null;
 
 const FORM_MAP: Record<string, ActiveForm> = {
@@ -66,6 +71,8 @@ const FORM_MAP: Record<string, ActiveForm> = {
   "/list-agents":   "list-agents",
   "/add-persona":   "add-persona",
   "/list-personas": "list-personas",
+  "/schedule":       "schedule",
+  "/list-schedules": "list-schedules",
 };
 
 // Minimum gap between typing pings sent to the server -- avoids firing on
@@ -283,6 +290,10 @@ export function MessageInput({
       <ListAgentsDialog open={activeForm === "list-agents"}  onClose={() => setActiveForm(null)} />
       <AddPersonaForm  open={activeForm === "add-persona"}   onClose={() => setActiveForm(null)} projectId={projectId} />
       <ListPersonasDialog open={activeForm === "list-personas"} onClose={() => setActiveForm(null)} projectId={projectId} />
+      <AddScheduleForm open={activeForm === "schedule"} onClose={() => setActiveForm(null)}
+        projectId={projectId} channelId={channelId} topicId={topicId} />
+      <ListSchedulesDialog open={activeForm === "list-schedules"} onClose={() => setActiveForm(null)}
+        projectId={projectId} channelId={channelId} topicId={topicId} />
 
       <div className="relative border-t border-sidebar-border bg-sidebar px-3 py-3">
         {file && (

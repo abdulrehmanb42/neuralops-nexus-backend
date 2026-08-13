@@ -31,6 +31,10 @@ FROM python:3.11-slim
 RUN set -eux; \
     apt-get update && apt-get install -y --no-install-recommends \
     libpq-dev \
+    # openssh-client -- see docker/dev/Dockerfile.nexus-ai for why: stdio
+    # MCP servers (e.g. Filesystem's ssh command) are spawned as direct
+    # subprocesses of this container, not a separate one.
+    openssh-client \
     curl; \
     adduser --disabled-password --gecos '' neuralops; \
     mkdir -p /nexus-ai; \

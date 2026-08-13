@@ -101,6 +101,40 @@ services:
       - postgres-dev
       - redis-dev
 
+  # Separate from nucleus-celery-dev (the worker) -- Celery Beat is its own
+  # long-running process that reads PersonaSchedule-linked PeriodicTask rows
+  # from the DB (via CELERY_BEAT_SCHEDULER=DatabaseScheduler, core/settings.py)
+  # and enqueues tasks onto the same queue the worker consumes. Same
+  # tail-f-/dev/null placeholder pattern as nucleus-celery-dev -- exec in and
+  # run `celery -A core beat -l info` during dev.
+  nucleus-celery-beat-dev:
+    image: nexus-backend:5.0
+    build:
+      context: .
+      dockerfile: modules/nexus-nucleus/docker/dev/Dockerfile.nexus-nucleus
+    profiles: ["dev"]
+    container_name: dev-celery-beat
+    volumes:
+      - ./modules/nexus-nucleus:/nexus-nucleus
+    working_dir: /nexus-nucleus
+    command: tail -f /dev/null
+    restart: unless-stopped
+    environment:
+      - POSTGRES_USER=${DEV_POSTGRES_USER}
+      - POSTGRES_PASSWORD=${DEV_POSTGRES_PASSWORD}
+      - POSTGRES_DB=${DEV_POSTGRES_DB}
+      - POSTGRES_URL=${DEV_POSTGRES_URL}
+      - POSTGRES_HOST=postgres-dev
+      - REDIS_URL=redis://redis-dev:6379/0
+      - SUPABASE_ANON_KEY=${DEV_SUPABASE_ANON_KEY}
+      - NEURALOPS_INSTALL_TOKEN=${DEV_NEURALOPS_INSTALL_TOKEN}
+      - PYTHONPATH=/nexus-nucleus
+    networks:
+      - dev-network
+    depends_on:
+      - postgres-dev
+      - redis-dev
+
   redis-dev:
     image: redis:7-alpine
     profiles: ["dev"]
@@ -122,9 +156,22 @@ services:
     container_name: dev-nexus-ai
     ports:
       - "${DEV_NEXUS_AI_HOST_PORT:-8000}:8000"
+    # host.docker.internal -- stdio MCP servers (Filesystem, git) are spawned
+    # as subprocesses of THIS container, and their `ssh ... host ...` target
+    # is often the same physical machine this whole stack runs on. A bare
+    # hostname like "node-3" doesn't reliably resolve to the real host from
+    # inside a container's own network namespace; host.docker.internal +
+    # this extra_hosts entry is the standard way to reach it on Linux.
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     volumes:
       - ./modules/nexus-ai:/nexus-ai
       - ./data/dev/fastembed_cache:/root/.cache/fastembed
+      # No separate key mount -- ./modules/nexus-ai:/nexus-ai above already
+      # bind-mounts this whole folder, so an SSH key placed in
+      # modules/nexus-ai/.secrets/ (gitignored -- see .gitignore) shows up
+      # inside the container at /nexus-ai/.secrets/ for free. Point stdio
+      # MCPServer commands' -i flag at that path.
     working_dir: /nexus-ai
     command: >
       sh -c "export PYTHONPATH=$PYTHONPATH:/nexus-ai &&
@@ -207,6 +254,28 @@ services:
       - ./data/dev/postgres_data:/var/lib/postgresql/data
     networks:
       - dev-network
+
+  # -- First-party MCP addons (#150) -- each is its own real MCP server:
+  # own process, own container, own <container-name>:8000/mcp endpoint.
+  # Not mounted together under one shared server -- see modules/nexus-mcp/
+  # server.py's docstring for why.
+  #
+  # Scope trimmed to just Filesystem + plain git for now (2026-08-10) --
+  # NOT GitHub. GitHub's official server needs a Go build (see
+  # modules/nexus-mcp/server_github.py / Dockerfile, still in the repo,
+  # just not wired into this compose file), which is exactly what we're
+  # avoiding right now. mcp-shopping-dev/mcp-erp-dev/mcp-ssh-dev are also
+  # NOT deleted, same story -- code still exists, just not wired in.
+  # Re-add whichever's service block (removed from here, still in git
+  # history) when it's that addon's turn -- see TASKS.md #150.
+
+  # No mcp-filesystem-dev / mcp-git-dev services -- neither needs its own
+  # container. nexus-ai's existing stdio transport path already spawns an
+  # arbitrary command directly (see pydantic_ai_runner.py); both are just
+  # MCPServer rows with transport=stdio:
+  #   Filesystem: command="ssh -i <key> <user>@<host> 'npx @modelcontextprotocol/server-filesystem <path>'"
+  #   git:        command="ssh -i <key> <user>@<host> 'uvx mcp-server-git --repository <path>'"
+  # registered the same way as any other MCP server. See TASKS.md #150.
 
   react-app-dev:
     build:

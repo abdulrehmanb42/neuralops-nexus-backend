@@ -5,10 +5,26 @@
 #   cd /data/code/neuralops-staging/mcps
 #   docker compose up -d
 #
-# Add to NeuralOps via /add_mcp (transport: http):
-#   SerpAPI    → http://localhost:9043/mcp
-#   Odoo ERP   → http://localhost:9044/mcp
-#   Filesystem → http://localhost:9045/mcp
+# Networking: every service here joins BOTH mcp-network (its own isolated
+# bridge) AND fat-network (external -- the same network nucleus-fat/
+# nexus-ai-fat run on, created by the main docker-compose.yaml's fat
+# profile). Without fat-network, nexus-ai-fat cannot reach these
+# containers at all -- MCP tool calls fail with "Client failed to
+# connect: All connection attempts failed", since separate Docker
+# networks are isolated from each other by default (see DECISIONS.md).
+# fat-network must already exist (i.e. the fat profile must be up)
+# before running `docker compose up -d` here, or this will error.
+#
+# Add to NeuralOps via /add_mcp (transport: http), using the CONTAINER
+# NAME over fat-network -- not localhost, and not the host-published
+# port, which are for reaching these directly from the host, not from
+# nexus-ai-fat's container network namespace:
+#   SerpAPI    → http://serp-mcp:8000/mcp
+#   Odoo ERP   → http://odoo-mcp:8000/mcp
+#   Filesystem → http://filesystem-mcp:8000/mcp
+#
+# (The host-published ports below -- 9043/9044/9045 -- are only useful
+# for curl-testing from the host itself, e.g. `curl localhost:9045/mcp`.)
 #
 # Required env vars — create a .env file in this folder:
 #   SERPAPI_KEY
@@ -28,6 +44,7 @@ services:
       - SERPAPI_KEY=${SERPAPI_KEY:-}
     networks:
       - mcp-network
+      - fat-network
     restart: unless-stopped
 
   # ── Odoo ERP MCP ────────────────────────────────────────────────────────
@@ -44,6 +61,7 @@ services:
       - ERP_PASSWORD=${ERP_PASSWORD:-admin}
     networks:
       - mcp-network
+      - fat-network
     restart: unless-stopped
 
   # ── Filesystem MCP (official @modelcontextprotocol/server-filesystem) ──
@@ -64,8 +82,15 @@ services:
       - ${FILESYSTEM_ROOT:-/data}:/files:ro
     networks:
       - mcp-network
+      - fat-network
     restart: unless-stopped
 
 networks:
   mcp-network:
     driver: bridge
+  # External: must already exist -- created by the main docker-compose.yaml
+  # when the fat profile is brought up (`docker compose --profile fat up -d`).
+  # `external: true` makes Compose error clearly if it's missing instead of
+  # silently creating a second, disconnected network with the same name.
+  fat-network:
+    external: true
