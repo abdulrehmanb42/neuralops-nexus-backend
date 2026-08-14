@@ -83,7 +83,7 @@ services:
     volumes:
       - ./modules/nexus-nucleus:/nexus-nucleus
     working_dir: /nexus-nucleus
-    command: tail -f /dev/null
+    command: celery -A core worker -l info
     restart: unless-stopped
     environment:
       - POSTGRES_USER=${DEV_POSTGRES_USER}
@@ -95,6 +95,12 @@ services:
       - SUPABASE_ANON_KEY=${DEV_SUPABASE_ANON_KEY}
       - NEURALOPS_INSTALL_TOKEN=${DEV_NEURALOPS_INSTALL_TOKEN}
       - PYTHONPATH=/nexus-nucleus
+      - CENTRIFUGO_API_URL=http://realtime-dev:8000/api
+      - NEXUS_AI_URL=http://nexus-ai-dev:8000
+      - INTERNAL_API_KEY=${DEV_INTERNAL_API_KEY}
+      - CENTRIFUGO_API_KEY=${DEV_CENTRIFUGO_API_KEY}
+      - CENTRIFUGO_HMAC_SECRET=${DEV_CENTRIFUGO_HMAC_SECRET}
+      - FIELD_ENCRYPTION_KEY=${DEV_FIELD_ENCRYPTION_KEY}
     networks:
       - dev-network
     depends_on:
@@ -117,7 +123,7 @@ services:
     volumes:
       - ./modules/nexus-nucleus:/nexus-nucleus
     working_dir: /nexus-nucleus
-    command: tail -f /dev/null
+    command: celery -A core beat -l info
     restart: unless-stopped
     environment:
       - POSTGRES_USER=${DEV_POSTGRES_USER}
@@ -129,6 +135,12 @@ services:
       - SUPABASE_ANON_KEY=${DEV_SUPABASE_ANON_KEY}
       - NEURALOPS_INSTALL_TOKEN=${DEV_NEURALOPS_INSTALL_TOKEN}
       - PYTHONPATH=/nexus-nucleus
+      - CENTRIFUGO_API_URL=http://realtime-dev:8000/api
+      - NEXUS_AI_URL=http://nexus-ai-dev:8000
+      - INTERNAL_API_KEY=${DEV_INTERNAL_API_KEY}
+      - CENTRIFUGO_API_KEY=${DEV_CENTRIFUGO_API_KEY}
+      - CENTRIFUGO_HMAC_SECRET=${DEV_CENTRIFUGO_HMAC_SECRET}
+      - FIELD_ENCRYPTION_KEY=${DEV_FIELD_ENCRYPTION_KEY}
     networks:
       - dev-network
     depends_on:
