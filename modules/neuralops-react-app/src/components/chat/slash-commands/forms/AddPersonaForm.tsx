@@ -8,6 +8,7 @@ import { FormDialog, Field } from "./shared";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Button } from "@/components/ui/button";
+import { Star } from "lucide-react";
 import {
   Select,
   SelectContent,
@@ -48,7 +49,7 @@ export function AddPersonaForm({
   const [agents, setAgents] = useState<Agent[]>([]);
   const [form, setForm] = useState<FormState>(EMPTY);
   const [saving, setSaving] = useState(false);
-  const [prompts, setPrompts] = useState<{ id: string; name: string }[]>([]);
+  const [prompts, setPrompts] = useState<{ id: string; name: string; isFeatured?: boolean }[]>([]);
   const [loadingPrompt, setLoadingPrompt] = useState(false);
 
   useEffect(() => {
@@ -59,7 +60,12 @@ export function AddPersonaForm({
       .then((res) => {
         const arr = Object.entries(res.prompts).map(([id, path]) => {
           const name = path.split('/').pop()?.replace(/\.[^/.]+$/, "") || path;
-          return { id, name: name.replace(/_/g, " ") };
+          return { id, name: name.replace(/_/g, " "), isFeatured: path.startsWith("featured/") };
+        });
+        arr.sort((a, b) => {
+          if (a.isFeatured && !b.isFeatured) return -1;
+          if (!a.isFeatured && b.isFeatured) return 1;
+          return a.name.localeCompare(b.name);
         });
         setPrompts(arr);
       })
@@ -80,7 +86,10 @@ export function AddPersonaForm({
     setLoadingPrompt(true);
     try {
       const res = await getPromptContent(id);
-      setForm((f) => ({ ...f, system_prompt: res.content }));
+      setForm((f) => ({ 
+        ...f, 
+        system_prompt: res.content.replace(/\{PERSONA_NAME\}/g, f.name || "{PERSONA_NAME}") 
+      }));
     } catch (err) {
       toast.error("Failed to load prompt template");
     } finally {
@@ -201,7 +210,12 @@ export function AddPersonaForm({
             <SelectContent>
               {prompts.map((p) => (
                 <SelectItem key={p.id} value={p.id}>
-                  {p.name}
+                  <div className="flex items-center gap-1.5">
+                    {p.name}
+                    {p.isFeatured && (
+                      <Star className="w-3.5 h-3.5 fill-amber-400 text-amber-400" />
+                    )}
+                  </div>
                 </SelectItem>
               ))}
             </SelectContent>

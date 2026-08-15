@@ -96,7 +96,6 @@ def _agent_out(agent) -> AIAgentOut:
         model_name=agent.model.name if agent.model else None,
         mcp_server_id=str(agent.mcp_server_id) if agent.mcp_server_id else None,
         mcp_server_name=agent.mcp_server.name if agent.mcp_server else None,
-        system_prompt=agent.system_prompt,
         safety_mode=agent.safety_mode,
         max_steps=agent.max_steps,
         is_active=agent.is_active,

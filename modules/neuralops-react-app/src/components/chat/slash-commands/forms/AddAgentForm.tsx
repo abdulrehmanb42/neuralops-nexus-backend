@@ -23,7 +23,6 @@ interface FormState {
   description: string;
   model_id: string;
   mcp_server_id: string;
-  system_prompt: string;
   agent_type: string;
 }
 
@@ -32,7 +31,6 @@ const EMPTY: FormState = {
   description: "",
   model_id: "",
   mcp_server_id: NO_MCP,
-  system_prompt: "",
   agent_type: "internal",
 };
 
@@ -80,7 +78,6 @@ export function AddAgentForm({
         model_id: form.model_id,
         mcp_server_id:
           form.mcp_server_id === NO_MCP ? undefined : form.mcp_server_id,
-        system_prompt: form.system_prompt || undefined,
         agent_type: form.agent_type,
       });
       toast.success(`Agent "${form.name}" created`);
@@ -139,15 +136,6 @@ export function AddAgentForm({
               ))}
             </SelectContent>
           </Select>
-        </Field>
-
-        <Field label="System Prompt">
-          <Textarea
-            value={form.system_prompt}
-            onChange={set("system_prompt")}
-            rows={3}
-            placeholder="Optional system instructions…"
-          />
         </Field>
 
         <Field label="Description">

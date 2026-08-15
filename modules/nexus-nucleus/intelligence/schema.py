@@ -108,7 +108,6 @@ class AIAgentIn(Schema):
     project_id: str  # Agents are project-owned -- see nucleus/models/intelligence.py
     model_id: str
     mcp_server_id: Optional[str] = None
-    system_prompt: Optional[str] = None
     agent_type: str = "internal"
     safety_mode: bool = True
     max_steps: int = 5
@@ -119,7 +118,6 @@ class AIAgentPatchIn(Schema):
     description: Optional[str] = None
     model_id: Optional[str] = None
     mcp_server_id: Optional[str] = None
-    system_prompt: Optional[str] = None
     safety_mode: Optional[bool] = None
     max_steps: Optional[int] = None
 
@@ -134,7 +132,6 @@ class AIAgentOut(Schema):
     model_name: Optional[str] = None
     mcp_server_id: Optional[str] = None
     mcp_server_name: Optional[str] = None
-    system_prompt: Optional[str] = None
     safety_mode: bool
     max_steps: int
     is_active: bool
