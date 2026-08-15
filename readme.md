@@ -32,6 +32,12 @@ git checkout staging   # branch with the current dev-profile compose setup
 cp .env.example .env
 ```
 
+```
+docker build -f modules/nexus-nucleus/docker/dev/Dockerfile.nexus-nucleus . --no-cache
+docker build -t nexus-backend:5.0 -f modules/nexus-nucleus/docker/dev/Dockerfile.nexus-nucleus . --no-cache
+docker build -t nexus-ai:2.0 -f modules/nexus-ai/docker/dev/Dockerfile.nexus-ai . --no-cache
+```
+
 `.env` is gitignored on purpose — `.env.example` is the git-tracked template every fresh clone starts from. `COMPOSE_PROFILES=dev` is already set in it, so a bare `docker compose up` selects the right profile with no `--profile`/`-f` flags needed. Edit `.env` and fill in the blank `DEV_*` values — `.env.example` documents each one inline, but at minimum:
 
 | Variable | Purpose |
