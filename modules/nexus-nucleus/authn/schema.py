@@ -44,3 +44,10 @@ class AuthVerifyResponse(Schema):
     # COMPATIBLE_SERVER_VERSION (lib/version.ts) and prompts an update if
     # they differ -- see ServerList.tsx.
     server_version: Optional[str] = None
+    # Per-module versions -- informational only, NOT used in the
+    # compatibility check above (that only reads server_version, and only
+    # understands plain MAJOR.MINOR.PATCH semver). Sourced from each
+    # module's own VERSION file, see core/settings.py.
+    nucleus_version: Optional[str] = None
+    nexus_ai_version: Optional[str] = None
+    nexus_transport_version: Optional[str] = None

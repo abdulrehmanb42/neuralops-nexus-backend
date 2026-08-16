@@ -7,6 +7,7 @@ from django.db import transaction
 from django.utils import timezone
 
 from .supabase import SupabaseTokenError, verify_supabase_token
+from .versions import read_module_versions
 
 logger = logging.getLogger(__name__)
 
@@ -204,6 +205,7 @@ def auth_verify(access_token: str) -> dict:
             "role": None,
             "company_name": None,
             "server_version": dj_settings.NEURALOPS_VERSION,
+            **read_module_versions(),
         }
 
     # ── Membership check ───────────────────────────────────────────────────
@@ -292,6 +294,7 @@ def auth_verify(access_token: str) -> dict:
         "role": access.role,
         "company_name": company.name,
         "server_version": dj_settings.NEURALOPS_VERSION,
+        **read_module_versions(),
     }
 
 

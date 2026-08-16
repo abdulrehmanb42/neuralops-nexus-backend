@@ -169,14 +169,14 @@ class PersonaSchedule(ProjectBaseModel):
         constraints = [
             models.CheckConstraint(
                 name="schedule_interval_requires_fields",
-                check=(
+                condition=(
                     ~models.Q(schedule_kind="interval")
                     | (models.Q(interval_every__isnull=False) & models.Q(interval_period__isnull=False))
                 ),
             ),
             models.CheckConstraint(
                 name="schedule_clocked_requires_time",
-                check=(
+                condition=(
                     ~models.Q(schedule_kind="clocked")
                     | models.Q(clocked_time__isnull=False)
                 ),
