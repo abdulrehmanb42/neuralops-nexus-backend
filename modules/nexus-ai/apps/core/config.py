@@ -32,9 +32,26 @@ class Settings(BaseSettings):
 
     # ── Vector store ──────────────────────────────────────────────────────────
     # Options: "chroma" | "qdrant" | "pgvector"
-    VECTOR_STORE: str = "chroma"
+    # Default is now pgvector -- chromadb was removed from requirements.txt
+    # (see that file's comment) to cut image size, so "chroma" is no longer
+    # a working choice unless the package is reinstalled by hand.
+    VECTOR_STORE: str = "pgvector"
     CHROMA_HOST: str = "nexus-chroma"
     CHROMA_PORT: int = 8000
+
+    # pgvector backend -- reuses the SAME Postgres nucleus already runs
+    # (same env var names as nucleus's DATABASES config in core/settings.py)
+    # rather than a second database to configure. EMBEDDING_DIM must match
+    # whatever EMBEDDING_MODEL actually produces -- 768 is
+    # nomic-ai/nomic-embed-text-v1.5's dimension (the default above); change
+    # this if you switch EMBEDDING_MODEL to something with a different
+    # output size, or the VECTOR(N) column won't accept the embeddings.
+    POSTGRES_HOST: str = "postgres"
+    POSTGRES_PORT: int = 5432
+    POSTGRES_DB: str = ""
+    POSTGRES_USER: str = ""
+    POSTGRES_PASSWORD: str = ""
+    EMBEDDING_DIM: int = 768
 
     # ── API keys / endpoints ──────────────────────────────────────────────────
     OPENAI_API_KEY: str = ""

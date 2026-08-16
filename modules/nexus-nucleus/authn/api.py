@@ -10,6 +10,7 @@ from ninja.errors import HttpError
 from .schema import AuthVerifyResponse, SignInRequest, SignInResponse
 from .services import SignInError, auth_verify, signin_with_supabase_token
 from .supabase import SupabaseTokenError
+from .versions import read_module_versions
 from authn.auth import SupabaseBearer
 
 
@@ -26,6 +27,11 @@ class ServerConfigOut(Schema):
     # effects: creates the user record, assigns avatar/display name, etc.
     # -- not something to trigger just for a version peek).
     server_version: Optional[str] = None
+    # Per-module versions -- informational only, see AuthVerifyResponse's
+    # matching fields in schema.py for the full explanation.
+    nucleus_version: Optional[str] = None
+    nexus_ai_version: Optional[str] = None
+    nexus_transport_version: Optional[str] = None
 
 class InvitePreviewOut(Schema):
     company_name: str
@@ -54,6 +60,7 @@ def server_config(request):
     return {
         "server_url": getattr(settings, "NEURALOPS_SERVER_URL", ""),
         "server_version": getattr(settings, "NEURALOPS_VERSION", "unknown"),
+        **read_module_versions(),
     }
 
 # ── Supabase JWT sign-in ─────────────────────────────────────────────────────

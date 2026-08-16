@@ -309,14 +309,14 @@ class AIAgent(TenantBaseModel):
         constraints = [
             models.CheckConstraint(
                 name="internal_agent_requires_model",
-                check=(
+                condition=(
                     ~models.Q(agent_type="internal")
                     | models.Q(model__isnull=False)
                 ),
             ),
             models.CheckConstraint(
                 name="external_agent_requires_url",
-                check=(
+                condition=(
                     ~models.Q(agent_type="external")
                     | models.Q(external_url__isnull=False)
                 ),
@@ -473,7 +473,7 @@ class Persona(TenantBaseModel):
             ),
             models.CheckConstraint(
                 name="persona_model_or_agent_required",
-                check=(
+                condition=(
                     models.Q(
                         source_type="model",
                         model__isnull=False,
@@ -644,14 +644,14 @@ class MCPServer(TenantBaseModel):
         constraints = [
             models.CheckConstraint(
                 name="mcp_stdio_requires_command",
-                check=(
+                condition=(
                     ~models.Q(transport="stdio")
                     | models.Q(command__isnull=False)
                 ),
             ),
             models.CheckConstraint(
                 name="mcp_http_sse_ws_requires_url",
-                check=(
+                condition=(
                     ~models.Q(transport__in=["http", "sse", "websocket"])
                     | models.Q(url__isnull=False)
                 ),
