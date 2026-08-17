@@ -36,23 +36,13 @@ The Django backend never stores passwords. It receives a Supabase JWT, verifies 
 
 Decision: **Supabase for identity, Django for business logic**.
 
-### The Device Flow
+### The Device Flow (built, then abandoned)
 
-The first version of the auth flow was standard: user opens the app, types email + password, gets a JWT, done. But NeuralOps is a desktop-first, server-connection product. You don't just "log in" — you connect your client to a specific server.
+The first real design was a device activation flow inspired by OAuth device flow (like pairing a TV with your phone): `POST /auth/init/` to get a device ID and Supabase deep-link, a Celery task (`poll_device_activation`) polling Supabase every 3 seconds, a `DeviceSession` model, and `GET /auth/status/` for the client to poll until activation completed.
 
-So we built a **device activation flow** inspired by OAuth device flow (like how you pair a TV with your phone):
+It was fully built — endpoints, Celery task, model, migration — and then removed. The frontend never actually needed it: it signs in via Supabase directly in the browser and calls `POST /auth/verify/` with the resulting JWT to get server access, which is simpler and does the same job. The cleanup (removing `poll_device_activation`, the `/init/`/`/status/` endpoints, and the `DeviceSession` model) is tracked in `TASKS.md`'s "Device-auth cleanup" section. The fuller story of why it was abandoned lives in [`story/auth-architecture.md`](./story/auth-architecture.md).
 
-1. Client calls `POST /auth/init/` → gets a `device_id` and a Supabase deep-link URL
-2. A Celery task (`poll_device_activation`) starts polling Supabase every 3 seconds
-3. User clicks the link, authenticates in browser
-4. Supabase activates the device
-5. Celery task detects activation, saves user info to `DeviceSession`
-6. Client polls `GET /auth/status/?device_id=...` until it sees `active`
-7. Client calls `POST /auth/verify/` with the Supabase JWT — gets full server access
-
-This means the React app never handles passwords directly. The browser handles auth, the app handles the server connection.
-
-Decision: **Device flow over direct login** — cleaner separation between identity and server connection.
+Decision: **Direct Supabase sign-in + `/auth/verify/`** — device flow was real but unnecessary complexity; removed once we confirmed the client never needed it.
 
 ### Infrastructure: Redis, Celery, Centrifugo
 
@@ -142,7 +132,7 @@ Cannot remove yourself. Cannot remove the owner. Everything is soft-deleted — 
 |---|---|---|---|
 | API framework | Django Ninja | DRF | Pydantic schemas, OpenAPI, less boilerplate |
 | Identity | Supabase | DIY auth | Password management, OAuth, MFA — not our problem |
-| Auth flow | Device activation | Direct JWT login | Clean separation of identity from server connection |
+| Auth flow | Direct Supabase JWT + `/auth/verify/` | Device activation flow | Built the device flow first, found the client never needed it, removed it — see `story/auth-architecture.md` |
 | Async jobs | Celery + Redis | Django async views | AI calls take 10-30s — can't block HTTP |
 | Real-time | Centrifugo | Django Channels | HTTP publish API — Celery tasks can push without WebSocket |
 | Multi-tenancy | One server = one company | True multi-tenant | Self-hosted product, different threat model |
@@ -168,7 +158,7 @@ Cannot remove yourself. Cannot remove the owner. Everything is soft-deleted — 
 ## Current State (as of Phase 1)
 
 **Done:**
-- Full auth flow: device activation → Supabase → JWT verify → server connection
+- Full auth flow: Supabase sign-in → JWT → `/auth/verify/` → server connection (device-activation flow was built and then removed, see above)
 - Company + owner bootstrap
 - Projects, Channels, Topics CRUD APIs
 - Invite system (simplified, email pre-auth)
