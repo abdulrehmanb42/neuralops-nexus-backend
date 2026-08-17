@@ -17,7 +17,7 @@ Everything is private. You run it on your own server, on your own data, with you
 | `redis` | Celery broker + Centrifugo engine | Redis 7 |
 | `mcps/` | Optional first-party MCP tool servers (SerpAPI, Odoo ERP, filesystem) | FastMCP |
 
-Curious how these fit together and why each tool was chosen? See [`ARCHITECTURE.md`](./ARCHITECTURE.md).
+This image (`noamanfaisal/neuralops-fat`) bundles nucleus, nexus-ai, postgres, redis, nginx, and the real-time transport into a single container — everything above except a separate frontend, which you connect afterward.
 
 ---
 
@@ -27,12 +27,12 @@ This is the fast path: one pre-built Docker image, no source code, no local buil
 
 Estimated time: 10–15 minutes.
 
-### What you need first or Prerequisite
+### What you need first
 
 - A computer or server with **Docker** installed and running.
 - That machine reachable from the internet (or at least from wherever you'll use NeuralOps from) on **one port**. Any of the following works:
   - A domain name pointed at the machine, with a reverse proxy / TLS in front.
-  - [Tailscale Funnel](https://tailscale.com/kb/1223/funnel) — the simplest option if you already use Tailscale.
+  - Tailscale Funnel — the simplest option if you already use Tailscale.
   - A cloud provider's load balancer / public IP.
 - An existing NeuralOps account — sign up at the hosted app first — to run `create_owner` in step 6.
 
@@ -202,7 +202,7 @@ Type **`/add-model`** in any chat. You'll need:
 | Transport | `streamable-http` (default), `sse`, or `stdio` |
 | Server Type | Remote or Local |
 
-The `mcps/` folder ships three ready-to-run example servers (SerpAPI shopping, Odoo ERP, filesystem) you can spin up with `cd mcps && docker compose up -d` and then register here. **Important:** when a persona actually calls a tool, the request comes from inside the `nexus-ai` container — register the MCP server's URL using your host's real IP, not `localhost`, or tool calls will fail with connection refused. `/list-mcps` shows everything registered.
+**Important:** when a persona actually calls a tool, the request comes from inside the `nexus-ai` container — register the MCP server's URL using your host's real IP, not `localhost`, or tool calls will fail with connection refused. `/list-mcps` shows everything registered.
 
 ### Add an agent
 
@@ -270,21 +270,3 @@ Add `@session` to open a running session with whichever personas you just mentio
 ...then just type normally, no @mention needed...
 @session close        (or "@session end")
 ```
-
----
-
-## 3. Developing & contributing
-
-Want to run from source, dig into how the system is put together, or send a pull request? Start here:
-
-| Doc | What's in it |
-|---|---|
-| [`how-to-contribute.md`](./how-to-contribute.md) | Fork/branch/PR workflow, commit conventions, running a local dev build from source |
-| [`ARCHITECTURE.md`](./ARCHITECTURE.md) | System design and *why* each tool/framework was chosen |
-| [`DECISIONS.md`](./DECISIONS.md) | Product decisions, implementation rules, and constraints — read before changing behavior |
-| [`STORY.md`](./STORY.md) | The narrative version — how the architecture evolved, what was tried and abandoned, and why |
-| [`story/`](./story) | Deep-dive narratives on specific subsystems (auth architecture, permissions model, owner setup) |
-| [`TASKS.md`](./TASKS.md) | Full development task history + known gotchas |
-| [`neuralops-backend-api-catalog.md`](./neuralops-backend-api-catalog.md) | Full REST + internal API reference |
-
-> **Branch notice:** `dev` is the active development branch — clone and build from it. `master`/`main` may lag behind.

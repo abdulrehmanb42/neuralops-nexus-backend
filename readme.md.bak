@@ -27,7 +27,7 @@ This is the fast path: one pre-built Docker image, no source code, no local buil
 
 Estimated time: 10–15 minutes.
 
-### What you need first or Prerequisite
+### What you need first
 
 - A computer or server with **Docker** installed and running.
 - That machine reachable from the internet (or at least from wherever you'll use NeuralOps from) on **one port**. Any of the following works:
@@ -282,8 +282,6 @@ Want to run from source, dig into how the system is put together, or send a pull
 | [`how-to-contribute.md`](./how-to-contribute.md) | Fork/branch/PR workflow, commit conventions, running a local dev build from source |
 | [`ARCHITECTURE.md`](./ARCHITECTURE.md) | System design and *why* each tool/framework was chosen |
 | [`DECISIONS.md`](./DECISIONS.md) | Product decisions, implementation rules, and constraints — read before changing behavior |
-| [`STORY.md`](./STORY.md) | The narrative version — how the architecture evolved, what was tried and abandoned, and why |
-| [`story/`](./story) | Deep-dive narratives on specific subsystems (auth architecture, permissions model, owner setup) |
 | [`TASKS.md`](./TASKS.md) | Full development task history + known gotchas |
 | [`neuralops-backend-api-catalog.md`](./neuralops-backend-api-catalog.md) | Full REST + internal API reference |
 
