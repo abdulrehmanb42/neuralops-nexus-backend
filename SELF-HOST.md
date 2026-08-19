@@ -1,10 +1,12 @@
 # Self-Hosting NeuralOps (unified image)
 
 This is the fast path: **one pre-built Docker image**
-(`noamanfaisal/neuralops`), no source code, no local builds. If you want the
-full developer setup instead (hot-reload, local frontend, editable source),
-see `readme.md` and use the `dev` profile of the original
-`docker-compose.yaml` — that file is untouched by this guide.
+(`noamanfaisal/neuralops`), no source code, no local builds. If you want a
+developer setup instead, see `readme.md` §3 — there are two, and note that
+*this same compose file* also carries a `dev` profile (builds the image
+locally and bind-mounts source for hot-reload, but ships no frontend). The
+older `docker-compose.yaml` `dev` profile is the one with a local React app;
+that file is untouched by this guide.
 
 There is **no local frontend** in this bundle. You sign in at the hosted
 NeuralOps app and connect it to your self-hosted server's URL — see step 6.
@@ -36,7 +38,14 @@ curl -fsSL https://raw.githubusercontent.com/mapax-io/neuralops-nexus/dev/docker
 mkdir -p neuralops
 curl -fsSL https://raw.githubusercontent.com/mapax-io/neuralops-nexus/dev/neuralops/infra.env.example -o neuralops/infra.env
 curl -fsSL https://raw.githubusercontent.com/mapax-io/neuralops-nexus/dev/neuralops/app.env.example -o neuralops/app.env
+curl -fsSL https://raw.githubusercontent.com/mapax-io/neuralops-nexus/dev/neuralops/nginx.conf -o neuralops/nginx.conf
 ```
+
+> `neuralops/nginx.conf` is **required**, not optional — the `nginx` service
+> bind-mounts it (`./neuralops/nginx.conf:/etc/nginx/nginx.conf:ro`). If the
+> file isn't there, Docker silently creates a *directory* with that name and
+> nginx dies on startup with `"/etc/nginx/nginx.conf" is a directory`. Verify
+> with `test -f neuralops/nginx.conf && echo ok` before step 4.
 
 > Both `neuralops/infra.env` and `neuralops/app.env` are gitignored templates
 > you fill in locally — never commit real values. (As with the old fat
@@ -70,7 +79,15 @@ keep, not regenerate casually.
 | `COMPOSE_PROJECT_NAME` | Already set to `neuralops` — **do not remove this line.** Without it, Compose scopes containers by directory name and can collide with an existing `docker-compose.yaml` dev/fat stack in the same folder (see the comment in `infra.env.example`). |
 | `COMPOSE_PROFILES` | Already set to `production` — pulls prebuilt images, no build step. |
 | `POSTGRES_DB` / `POSTGRES_USER` / `POSTGRES_PASSWORD` | Set a real password; the other two have working defaults. |
-| `NGINX_HOST_PORT` / `POSTGRES_HOST_PORT` / `REDIS_HOST_PORT` / `NEXUS_AI_HOST_PORT` | Optional — defaults (8095/5495/6395/8020) are fine unless something else on the box already uses them. |
+| `NGINX_HOST_PORT` / `POSTGRES_HOST_PORT` / `REDIS_HOST_PORT` / `NEXUS_AI_HOST_PORT` | Optional — defaults (8095/5495/6395/8020) are fine unless something else on the box already uses them. Only `NGINX_HOST_PORT` needs to be reachable from outside; see the port note below. |
+| `NEURALOPS_IMAGE` | Optional — defaults to `noamanfaisal/neuralops:latest`. **Set it to a pinned tag** (e.g. `noamanfaisal/neuralops:0.1.1`) if you want upgrades to happen only when you choose, rather than on any `docker compose pull`. Use the same value in step 2's `init-secrets` command. |
+
+> **Only expose `NGINX_HOST_PORT`.** The compose file also publishes Postgres
+> (5495), Redis (6395), and nexus-ai (8020) to the host for debugging. Those
+> bind to all interfaces, so on a public box put them behind a firewall or set
+> them to loopback (e.g. `POSTGRES_HOST_PORT=127.0.0.1:5495`). `nexus-ai` in
+> particular exposes unauthenticated `/`, `/health`, and
+> `/api/v1/internal/providers` endpoints.
 
 `neuralops/app.env` — the one thing that's genuinely different per
 deployment:
@@ -130,13 +147,15 @@ docker compose -f docker-compose.neuralops.yaml --env-file neuralops/infra.env -
   re-run. (Order between `seed_permissions`/`create_owner` beyond `migrate`
   going first doesn't matter — both converge on the same Owner role row.)
 
-> **Not yet verified end-to-end against this exact image** (unlike the
-> `fat` profile, which `TASKS.md` #170 / `DECISIONS.md` §20 confirm was
-> tested live) — this `exec ... entrypoint.sh nucleus-env ...` invocation is
-> the correct shape based on reading `entrypoint.sh`/`neuralops/Dockerfile`
-> directly, but hasn't been run against a live container from this session.
-> If `python: command not found` or similar shows up, confirm with
-> `docker compose ... exec nucleus which python` first.
+> **Invocation confirmed against source; stack not yet run end-to-end.**
+> `neuralops/Dockerfile` installs `entrypoint.sh` to `/usr/local/bin/` and
+> sets it as the image `ENTRYPOINT`. Because `docker compose exec` bypasses
+> the entrypoint, naming `entrypoint.sh` explicitly here is required, not
+> optional — without it there's no venv on `PATH` and no `cd /nexus/nucleus`,
+> and `manage.py` won't be found. `python` (not just `python3`) resolves
+> inside the venv. What hasn't happened is a live run of the whole stack
+> against this image, unlike the `fat` profile, which `TASKS.md` #170 /
+> `DECISIONS.md` §20 confirm was tested end-to-end.
 
 ## Step 6 — Expose your server
 

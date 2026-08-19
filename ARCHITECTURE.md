@@ -96,7 +96,7 @@ This split is why `nucleus` is Django (a framework built around being the source
 
 ### 2.4 `nginx` — Reverse proxy
 
-**Why a proxy at all, rather than exposing each service's port directly:** it gives the browser exactly one origin to talk to (`/api/` → nucleus, `/connection/*` → Centrifugo), which sidesteps CORS entirely and gives a single place to terminate TLS in production (or hand off to Tailscale Funnel, see `readme.md` §3). It's also the trust boundary for the Centrifugo origin check — `nexus-transport` has no config flag for allowed origins, so `nginx.conf` deliberately strips the `Origin` header before proxying to `/connection/websocket`, which is documented inline in the config as the reason that specific line exists.
+**Why a proxy at all, rather than exposing each service's port directly:** it gives the browser exactly one origin to talk to (`/api/` → nucleus, `/connection/*` → Centrifugo), which sidesteps CORS entirely and gives a single place to terminate TLS in production (or hand off to Tailscale Funnel, see `SELF-HOST.md` step 6). It's also the trust boundary for the Centrifugo origin check — `nexus-transport` has no config flag for allowed origins, so `nginx.conf` deliberately strips the `Origin` header before proxying to `/connection/websocket`, which is documented inline in the config as the reason that specific line exists.
 
 ### 2.5 `postgres` — Relational store
 
@@ -116,7 +116,7 @@ Dual-purpose by design: Celery broker for `nucleus`'s background tasks, and the 
 
 **Why TanStack Start over plain Vite/CRA or Next.js:** the app needs file-based routing (`src/routes/`), an SSR entry it can control directly for error handling (`src/server.ts` is described in `vite.config.ts` as "our SSR error wrapper"), and to stay React-only without adopting a full Next.js-specific deployment model — since this same codebase is deployed two ways: as a Docker Compose service for self-hosted/local use, and standalone to Vercel for the hosted frontend. TanStack Start is portable across both without framework-specific hosting lock-in.
 
-**Why it talks to the backend over a configurable `NEURALOPS_SERVER_URL`, not a hardcoded API base:** this is what makes "one frontend, many backends" work — the same Vercel-hosted app can connect to anyone's self-hosted `nucleus`, verified via `GET /api/v1/auth/verify/` on connect. See `readme.md` §3 for the two ways to expose a server for this.
+**Why it talks to the backend over a configurable `NEURALOPS_SERVER_URL`, not a hardcoded API base:** this is what makes "one frontend, many backends" work — the same Vercel-hosted app can connect to anyone's self-hosted `nucleus`, verified via `GET /api/v1/auth/verify/` on connect. See `SELF-HOST.md` step 6 for the two ways to expose a server for this.
 
 ### 2.9 `mcps/` — First-party MCP tool servers
 
