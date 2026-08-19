@@ -253,3 +253,14 @@ Full step-by-step guide: **`how-to-contribute.md`**. Short version:
 6. **Post in Discord** with a link to the PR and a one-line summary. A maintainer will review, may ask questions or request changes, and — once approved — merge it into `dev`.
 
 > **Branch notice:** `dev` is the active branch — clone and build from it. `master` is legacy and pending deprecation; don't deploy from it.
+
+---
+
+## 6. License
+
+NeuralOps Nexus is licensed under the **GNU Affero General Public License v3.0**
+(AGPL-3.0). See [`LICENSE.md`](./LICENSE.md) for the full text.
+
+In short: you're free to use, modify, and self-host this software, but if you run
+a modified version as a network service, you must make your modified source
+available to that service's users. See §13 of the license for the specifics.

@@ -1,5 +1,13 @@
 # NeuralOps Backend API Catalog
 
+> **Companion doc.** `neuralops-backend-api-catalog-v2.md` covers the same API in
+> more depth — Django model reference, the AI/LLM config layer, full
+> request/response field specs, and the Scheduling API (§8), which is missing
+> here. This file remains the only place documenting the **MCP tool servers**
+> (§10), the device-activation endpoints (`/auth/init/`, `/auth/status/`),
+> `nexus-ai`'s verify surface (§9), and the permission-scope prose in §7.
+> Neither file is a superset of the other — check both.
+
 Compiled directly from source (`nexus-nucleus`, `nexus-ai`, `mcps/`) in the `staging` branch. Paths are relative to each service's base URL.
 
 - **nexus-nucleus** (Django Ninja) — base path `/api/v1/` — staging: `http://192.168.1.90:8081/api/v1/`

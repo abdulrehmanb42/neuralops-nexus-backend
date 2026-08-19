@@ -1,6 +1,6 @@
 # NeuralOps Nexus — System & Module Architecture
 
-This document explains how the system is put together, and — for each module — *why* that particular tool was chosen over the obvious alternatives. It's meant to be read alongside `readme.md` (how to run it) and `DECISIONS.md` (specific product/implementation rules).
+This document explains how the system is put together, and — for each module — *why* that particular tool was chosen over the obvious alternatives. It's meant to be read alongside `readme.md` (how to run it for development), `SELF-HOST.md` (how to run it from pre-built images, no source tree), and `DECISIONS.md` (specific product/implementation rules).
 
 ---
 
