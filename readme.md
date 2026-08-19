@@ -18,6 +18,8 @@ A self-hosted team workspace where every conversation can pull in an AI persona 
 
 Full REST endpoint reference: see `neuralops-backend-api-catalog.md` if present in your working folder, or regenerate it from the `api.py` files under `modules/nexus-nucleus/*/`.
 
+> **Just want to run a server, not develop against source?** This page covers the `dev` profile (source tree, hot-reload, local frontend). For a pre-built-image self-host with no local build, see **[`SELF-HOST.md`](./SELF-HOST.md)**.
+
 ---
 
 ## 1. Install — Docker Compose (dev profile)
