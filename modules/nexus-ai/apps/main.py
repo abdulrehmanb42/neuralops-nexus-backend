@@ -1,3 +1,7 @@
+from apps.core.logging_config import configure_logging
+
+configure_logging()  # must run before anything else logs at import time
+
 from fastapi import FastAPI, HTTPException
 from .routers import embed, trigger
 

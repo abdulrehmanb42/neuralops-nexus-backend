@@ -20,7 +20,14 @@ fastembed
 numpy                    # Used by M7 cosine similarity classifier (also a fastembed dep)
 
 # ── Vector Store ──────────────────────────────────────────────────────────────
-chromadb                 # Phase 1 — swap via VectorStoreFactory
+# chromadb intentionally NOT installed -- dropped to cut image size
+# (fastembed's onnxruntime is already the big line item; chromadb's own
+# dependency tree was adding more on top). chroma_store.py and the
+# "chroma" branch in VectorStoreFactory are still in the codebase but are
+# now dead/unreachable unless chromadb is reinstalled -- pgvector is the
+# default and only working backend as of this image.
+asyncpg                  # pgvector backend -- direct async Postgres client
+pgvector                 # registers the VECTOR column type/codec with asyncpg
 
 # ── Dev & Testing ─────────────────────────────────────────────────────────────
 rich                     # Better logging

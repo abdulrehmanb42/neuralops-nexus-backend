@@ -1,0 +1,69 @@
+
+# nexus-transport rebuilds every time, since it's your own actively-changing source
+FROM golang:1.26-alpine AS transport-builder
+RUN apk add --no-cache git
+WORKDIR /app
+COPY modules/nexus-transport/go.mod modules/nexus-transport/go.sum ./
+RUN go mod download
+COPY modules/nexus-transport/ .
+ENV CGO_ENABLED=0
+RUN go build -ldflags="-s -w -X 'github.com/centrifugal/centrifugo/v6/internal/build.Version=v6.6.2-nexus'" \
+    -o nexus-transport .
+
+# Inherit the published base -- nginx/postgres/python already installed
+FROM nexus-fat-docker-base:1.0 AS final
+
+COPY modules/nexus-nucleus/docker/dev/requirements.txt /tmp/nucleus-requirements.txt
+RUN pip install --no-cache-dir -r /tmp/nucleus-requirements.txt
+COPY modules/nexus-nucleus/ /nexus/nucleus/
+
+COPY modules/nexus-ai/docker/dev/requirements.txt /tmp/ai-requirements.txt
+RUN pip install --no-cache-dir -r /tmp/ai-requirements.txt
+COPY modules/nexus-ai/ /nexus/ai/
+
+COPY modules/nexus-mcp/requirements.txt /tmp/mcp-requirements.txt
+RUN pip install --no-cache-dir -r /tmp/mcp-requirements.txt
+COPY modules/nexus-mcp/ /nexus/mcp/
+
+COPY --from=transport-builder /app/nexus-transport /usr/local/bin/nexus-transport
+RUN chmod +x /usr/local/bin/nexus-transport
+
+# Builder stage is otherwise discarded (multi-stage build) -- pull across
+# just the VERSION file too, since nucleus reads it directly off disk to
+# report nexus-transport's version via the /auth/config/ and /auth/verify/
+# API responses (see authn/schema.py, core/settings.py).
+COPY --from=transport-builder /app/VERSION /nexus/transport-version
+
+COPY Fat-Docker/nginx-combined.conf /etc/nginx/nginx.conf
+COPY Fat-Docker/bootstrap.py /nexus/bootstrap.py
+RUN chown -R nexus:nexus /nexus
+
+# Shared logs folder -- one directory tree, one subfolder per service, so
+# a single mounted volume (/nexus/logs) at `docker run` time covers all of
+# them instead of a separate volume per service. Ownership is per-service
+# though, since nucleus/nexus-ai run as `nexus` but redis runs as its own
+# `redis` system user (created by the redis-server apt package in
+# Dockerfile.base) -- writing into a directory it doesn't own would fail.
+# Because this is baked into the image at build time, Docker will copy
+# this exact structure (with correct ownership already set) into whatever
+# named volume gets mounted at /nexus/logs on first run.
+RUN mkdir -p /nexus/logs/nucleus /nexus/logs/ai /nexus/logs/redis && \
+    chown -R nexus:nexus /nexus/logs/nucleus /nexus/logs/ai && \
+    chown -R redis:redis /nexus/logs/redis
+
+# Shared project folders -- one subfolder per project, created on demand
+# at runtime (project IDs don't exist at build time), all owned by
+# `nexus` since only the Filesystem MCP (run as nexus) touches this tree.
+# Mounted as an external volume at /nexus/projects so files survive image
+# rebuilds -- same seeding pattern as /nexus/logs above (Docker copies
+# this pre-owned empty directory into the named volume on first mount).
+RUN mkdir -p /nexus/projects && chown -R nexus:nexus /nexus/projects
+
+WORKDIR /nexus
+EXPOSE 8080
+
+# nginx auto-starts as PID 1 (root master, non-root workers). Postgres,
+# nucleus, nexus-ai, nexus-mcp, nexus-transport get started by hand,
+# e.g. `docker exec -u postgres <container> pg_ctl start -D /var/lib/postgresql/data`
+# and `docker exec -u nexus <container> <nucleus start command>`.
+CMD ["nginx", "-g", "daemon off;"]

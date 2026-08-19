@@ -180,3 +180,48 @@ CELERY_TASK_DEFAULT_QUEUE = "neuralops"
 # PeriodicTask rows at runtime and have Celery Beat actually pick them up from
 # the DB, instead of Celery's default static file-based schedule.
 CELERY_BEAT_SCHEDULER = "django_celery_beat.schedulers:DatabaseScheduler"
+
+# =========================================================
+# Logging -- console (still captured by `docker logs`/stdout redirection)
+# plus a rotating file, so logs are readable straight off disk too, e.g.
+# via a mounted volume on the FAT image (see Fat-Docker/). LOG_DIR
+# defaults to BASE_DIR/logs; the directory is created here since Django's
+# file handler doesn't create missing directories itself.
+# =========================================================
+LOG_DIR = Path(os.getenv("LOG_DIR", str(BASE_DIR / "logs")))
+LOG_DIR.mkdir(parents=True, exist_ok=True)
+
+LOGGING = {
+    "version": 1,
+    "disable_existing_loggers": False,
+    "formatters": {
+        "verbose": {
+            "format": "{asctime} {levelname} {name} — {message}",
+            "style": "{",
+        },
+    },
+    "handlers": {
+        "console": {
+            "class": "logging.StreamHandler",
+            "formatter": "verbose",
+        },
+        "file": {
+            "class": "logging.handlers.RotatingFileHandler",
+            "filename": str(LOG_DIR / "nucleus.log"),
+            "maxBytes": 10 * 1024 * 1024,  # 10MB
+            "backupCount": 5,
+            "formatter": "verbose",
+        },
+    },
+    "root": {
+        "handlers": ["console", "file"],
+        "level": os.getenv("LOG_LEVEL", "INFO"),
+    },
+    "loggers": {
+        "django": {
+            "handlers": ["console", "file"],
+            "level": os.getenv("LOG_LEVEL", "INFO"),
+            "propagate": False,
+        },
+    },
+}
