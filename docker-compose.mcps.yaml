@@ -62,7 +62,23 @@ services:
       - >
         npx -y supergateway --port 8000
         --outputTransport streamableHttp
-        --stdio "npx -y @mondaydotcomorg/monday-api-mcp -t $$MONDAY_TOKEN"
+        --stdio "npx -y @mondaydotcomorg/monday-api-mcp -t $$MONDAY_TOKEN --read-only"
+    # --read-only matters for two separate reasons, both worth keeping:
+    #
+    # 1. Safety. Without it the server exposes create_board, delete_item,
+    #    update_items, all_api_write and friends -- a persona that picks the
+    #    wrong tool can modify or destroy real board data. Nothing in
+    #    NeuralOps gates which tool an agent may call.
+    #
+    # 2. Token cost. nexus-ai's _run_with_mcp collects EVERY tool from EVERY
+    #    connected server and passes them all to the LLM on every single turn
+    #    (kwargs["tools"]). The full Monday surface is ~90 tool schemas, which
+    #    is tens of thousands of tokens of overhead per request -- well past
+    #    the AIModel default context_window of 8192, and expensive even on a
+    #    large-context model.
+    #
+    # If write access is ever needed, prefer a second, separately-registered
+    # MCP server for it rather than dropping this flag.
     environment:
       - MONDAY_TOKEN=${MONDAY_TOKEN:-}
     ports:
