@@ -86,6 +86,21 @@ services:
       - JIRA_URL=${JIRA_URL:-}
       - JIRA_USERNAME=${JIRA_USERNAME:-}
       - JIRA_API_TOKEN=${JIRA_API_TOKEN:-}
+      # Required. Over HTTP transports this image defaults to multi-user mode:
+      # every request must carry its own Authorization header, and requests
+      # without one are rejected outright -- surfacing as
+      #   {"error": "Authentication required: no Atlassian credentials were provided."}
+      # even when JIRA_* above are set correctly. This flag lets a request with
+      # no header fall back to the server-side credentials, i.e. single-user
+      # mode, which is what we want here.
+      #
+      # Not optional for NeuralOps specifically: MCPServer has no field for a
+      # per-request Authorization header on http/sse transports (see
+      # nucleus/models/intelligence.py -- only url, command, and the encrypted
+      # secrets dict, and secrets are only wired into stdio subprocesses by
+      # nexus-ai's _run_with_mcp). Without this, a persona can never
+      # authenticate against this server at all.
+      - ALLOW_GLOBAL_CRED_FALLBACK=true
     ports:
       - "127.0.0.1:9047:9000"
     networks:
