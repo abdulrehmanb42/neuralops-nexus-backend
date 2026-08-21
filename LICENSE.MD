@@ -1,3 +1,6 @@
+NeuralOps Nexus, a self-hosted team workspace with AI personas
+Copyright (C) 2026  Noaman Faisal Bin Badar
+
                     GNU AFFERO GENERAL PUBLIC LICENSE
                        Version 3, 19 November 2007
 
