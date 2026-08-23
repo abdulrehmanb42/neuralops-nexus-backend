@@ -39,11 +39,11 @@ what replaced it).
 
 ```bash
 mkdir neuralops-selfhost && cd neuralops-selfhost
-curl -fsSL https://raw.githubusercontent.com/mapax-io/neuralops-nexus/dev/docker-compose.neuralops.yaml -o docker-compose.neuralops.yaml
+curl -fsSL https://raw.githubusercontent.com/mapax-io/neuralops-nexus-backend/dev/docker-compose.neuralops.yaml -o docker-compose.neuralops.yaml
 mkdir -p neuralops
-curl -fsSL https://raw.githubusercontent.com/mapax-io/neuralops-nexus/dev/neuralops/infra.env.example -o neuralops/infra.env
-curl -fsSL https://raw.githubusercontent.com/mapax-io/neuralops-nexus/dev/neuralops/app.env.example -o neuralops/app.env
-curl -fsSL https://raw.githubusercontent.com/mapax-io/neuralops-nexus/dev/neuralops/nginx.conf -o neuralops/nginx.conf
+curl -fsSL https://raw.githubusercontent.com/mapax-io/neuralops-nexus-backend/dev/neuralops/infra.env.example -o neuralops/infra.env
+curl -fsSL https://raw.githubusercontent.com/mapax-io/neuralops-nexus-backend/dev/neuralops/app.env.example -o neuralops/app.env
+curl -fsSL https://raw.githubusercontent.com/mapax-io/neuralops-nexus-backend/dev/neuralops/nginx.conf -o neuralops/nginx.conf
 ```
 
 > `neuralops/nginx.conf` is **required**, not optional — the `nginx` service
@@ -53,10 +53,7 @@ curl -fsSL https://raw.githubusercontent.com/mapax-io/neuralops-nexus/dev/neural
 > with `test -f neuralops/nginx.conf && echo ok` before step 5.
 
 > Both `neuralops/infra.env` and `neuralops/app.env` are gitignored templates
-> you fill in locally — never commit real values. (As with the old fat
-> profile, these raw URLs depend on the fork→`mapax-io/neuralops-nexus` PR
-> having landed — see `DECISIONS.md` §20's "Distribution address" note. If it
-> hasn't yet, fetch from the fork instead.)
+> you fill in locally — never commit real values.
 
 ## Step 2 — Generate your deployment's secrets
 

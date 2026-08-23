@@ -10,12 +10,17 @@ This document outlines the standard workflow for contributing to the neuralops-n
 
 Before writing any code, you need to select an approved task.
 
-Navigate to our official **Project Task Board** ([refer to the project link provided in Discord](https://github.com/orgs/NeuralOPS-Nexus/projects/3)).
+Navigate to our official **Project Task Board**: [github.com/orgs/NeuralOPS-Nexus/projects/3](https://github.com/orgs/NeuralOPS-Nexus/projects/3).
 
 Look for tasks that are marked as **"Ready to Do"**.
 
 Ensure the task you select has **no pending dependencies**.
-Assign the task to yourself or leave a comment so others know you are working on it.
+
+**Claiming a task:** leave a comment on the issue saying you'd like to work on it. Only maintainers (accounts with write access) can actually set the "Assignees" field, so a maintainer will assign it to you once you've commented — this usually happens within a day or two. Please wait for that assignment before starting, so two people don't end up duplicating the same work.
+
+If an issue has been assigned to someone for **more than 2 weeks with no comment or draft PR**, it's considered stale — a maintainer may reopen it for someone else to claim. This isn't a penalty, it just keeps issues from sitting blocked when someone's plans changed.
+
+Once you're assigned, move the card to **"In Progress"** on the Project board if the view has a Status field — makes it easy for everyone to see what's actively being worked on at a glance.
 
 ## 🍴 Step 2: Forking the Repository
 
@@ -25,7 +30,7 @@ Go to the ([main repository](https://github.com/mapax-io/neuralops-nexus-backend
 
 Click the "Fork" button in the top right corner.
 
-**CRITICAL:** When the fork configuration screen appears, deselect the option that says "Copy only the main branch". We need you to have access to all branches (especially dev).
+**CRITICAL:** When the fork configuration screen appears, deselect the option that says "Copy only the main branch". We need you to have access to all branches (especially `dev`).
 
 Complete the fork to your personal GitHub account.
 
@@ -37,7 +42,7 @@ Open your terminal and run the following commands (replace `<your-username>` wit
 
 ```bash
 # 1. Clone your forked repository (we recommend cloning into a folder named 'neuralops')
-git clone git@github.com:<your-username>/nexus-backend.git neuralops
+git clone git@github.com:<your-username>/neuralops-nexus-backend.git neuralops
 
 # 2. Navigate into the project directory
 cd neuralops/
@@ -56,7 +61,7 @@ This builds and runs every service from source with hot-reload — what you'll w
 **Prerequisites:** Docker & Docker Compose, Git.
 
 ```bash
-git checkout staging   # branch with the current dev-profile compose setup
+git checkout dev   # branch with the current dev-profile compose setup
 cp .env.example .env
 ```
 
@@ -146,6 +151,8 @@ Beyond specific decisions, these are the standing principles the codebase is hel
 5. **One server, one company.** Don't add multi-tenancy complexity — this is a self-hosted product, not a SaaS platform.
 6. **Don't solve problems you don't have yet.** No email server configured by default? Don't design a flow that requires one.
 
+> **No automated CI yet.** There's no lint/test pipeline running on PRs today — "write tests if applicable" below is on the honor system for now. If you'd rather write infrastructure than app code, standing up a basic GitHub Actions workflow (lint + whatever test suite exists per service) is itself a genuinely useful first contribution — open it on the Project board.
+
 Commit messages follow the format in Step 6 below (feature/issue ID + descriptive summary) — that's the one commit-level convention that's enforced in review.
 
 ## 🌱 Step 5: Branching Strategy
@@ -192,7 +199,7 @@ git push -u origin feature/testchange-usman
 ```
 
 After the push is successful, your terminal will usually output a direct link to create a Pull Request. It will look something like this:
-`https://github.com/<your-username>/nexus-backend/pull/new/<your-branch-name>`
+`https://github.com/<your-username>/neuralops-nexus-backend/pull/new/<your-branch-name>`
 
 ## 📥 Step 8: Creating the Pull Request (PR)
 
@@ -209,17 +216,15 @@ Detailed Description: **Do not leave the PR description blank**. You must write 
 - Why was this approach taken?
 - Any specific areas you want the reviewer to look at closely.
 
+In the PR description, reference the issue it resolves with `Fixes #<issue-number>` or `Closes #<issue-number>` — GitHub links the two automatically, and the issue closes on merge.
+
 Click the "Create Pull Request" button.
 
 ## 💬 Step 9: Code Review and Communication
 
 Your work isn't done just because the PR is open!
 
-**Jump into our Discord channel.**
-
-Send a message letting the team know your PR is up. Include a link to the PR and a brief 1-sentence summary of what it does.
-
-A maintainer will review your code. Be prepared to answer questions or make requested changes based on their feedback.
+A maintainer will review your code — tag it on the Project board and it'll get picked up. Be prepared to answer questions or make requested changes based on their feedback.
 
 Once approved, a maintainer will merge your branch into `dev`.
 
