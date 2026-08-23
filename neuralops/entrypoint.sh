@@ -44,12 +44,25 @@ case "$MODE" in
     # deployment:
     #   docker run --rm <image> init-secrets > neuralops/secrets.env
     # Prints a fresh, unique FIELD_ENCRYPTION_KEY/INTERNAL_API_KEY/
-    # CENTRIFUGO_API_KEY/CENTRIFUGO_HMAC_SECRET as KEY=VALUE lines to
-    # stdout. These are the internal-only secrets that used to be baked
-    # as one shared default for every deployment (see git history on
-    # neuralops/Dockerfile) -- moved here once the image went public on
-    # Docker Hub, since a shared baked value stopped being a secret the
-    # moment anyone could `docker pull` and read it out of the image.
+    # CENTRIFUGO_API_KEY/CENTRIFUGO_HMAC_SECRET/POSTGRES_PASSWORD as
+    # KEY=VALUE lines to stdout. These are the internal-only secrets that
+    # used to be baked as one shared default for every deployment (see git
+    # history on neuralops/Dockerfile) -- moved here once the image went
+    # public on Docker Hub, since a shared baked value stopped being a
+    # secret the moment anyone could `docker pull` and read it out of the
+    # image.
+    #
+    # POSTGRES_PASSWORD joined this list for a different but related
+    # reason: neuralops/infra.env.example used to ship a literal example
+    # password (`change-me`), and with no generator, nothing stopped every
+    # self-hosted deployment from leaving it unchanged and sharing the same
+    # password -- worse, postgres publishes a host port
+    # (POSTGRES_HOST_PORT, default 5495), so a shared, guessable password
+    # is a real exposure if a deployment's firewall is more open than
+    # intended, not just a theoretical one. POSTGRES_DB/POSTGRES_USER stay
+    # in infra.env -- they're plain identifiers, not secrets, safe to
+    # leave as shared defaults or change by hand.
+    #
     # SUPABASE_URL/SUPABASE_ANON_KEY are NOT generated here -- those point
     # at one real shared Supabase project and are meant to be identical
     # across every deployment, not per-install secrets.
@@ -65,6 +78,7 @@ print(f'FIELD_ENCRYPTION_KEY={Fernet.generate_key().decode()}')
 print(f'INTERNAL_API_KEY={secrets.token_urlsafe(32)}')
 print(f'CENTRIFUGO_API_KEY={secrets.token_urlsafe(32)}')
 print(f'CENTRIFUGO_HMAC_SECRET={secrets.token_urlsafe(32)}')
+print(f'POSTGRES_PASSWORD={secrets.token_urlsafe(24)}')
 "
     ;;
   *)

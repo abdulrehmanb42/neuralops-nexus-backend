@@ -106,3 +106,43 @@ repo first, rather than relying on this list, since it wasn't exhaustively
 searched.
 
 ---
+
+## Shared default Postgres/Redis credentials, both exposed on host ports
+
+**Where:** `docker-compose.neuralops.yaml`'s `postgres` and `redis` service
+blocks (production profile), plus `neuralops/infra.env.example`.
+
+**What's wrong:** `infra.env.example` ships literal example values —
+`POSTGRES_DB=neuralops`, `POSTGRES_USER=neuralops`,
+`POSTGRES_PASSWORD=change-me` — and unlike `FIELD_ENCRYPTION_KEY` /
+`INTERNAL_API_KEY` / `CENTRIFUGO_API_KEY` / `CENTRIFUGO_HMAC_SECRET` (which
+get a dedicated `init-secrets` generator producing a fresh random value per
+deployment), there is no equivalent generator or forced-change mechanism for
+the Postgres credentials. A self-hoster who copies the example file and
+doesn't specifically go edit `POSTGRES_PASSWORD` ends up running Postgres
+with the literal password `change-me` — confirmed this repo's own
+`neuralops/infra.env` still has it unchanged.
+
+Redis has the same shape of gap but worse: no `REDIS_PASSWORD` / Redis
+`--requirepass` is set anywhere in the compose file or example env — Redis
+runs with **zero authentication** at all, not even a shared default one.
+
+**Why it's more than cosmetic:** both services publish host ports in the
+`postgres`/`redis` blocks — `${POSTGRES_HOST_PORT:-5495}:5432` and
+`${REDIS_HOST_PORT:-6395}:6379` — meaning they're not internal-network-only.
+If a self-hoster's firewall, cloud security group, or tunnel/funnel config is
+more permissive than intended, these ports are reachable from outside the
+host. Combined with a widely-known shared default password (or no password
+at all, for Redis), that turns "misconfigured firewall" into "anyone can
+connect directly to the database or cache with `psql`/`redis-cli`,
+bypassing the app layer and RBAC entirely."
+
+**Decision needed:** whether Postgres credentials should get the same
+per-deployment `init-secrets`-style generation treatment the other four
+secrets already have; whether Redis should require a password by default;
+and whether `postgres`/`redis` need their host `ports:` mappings published
+at all in the production profile, versus staying reachable only over
+`neuralops-network` internally (nothing outside the stack currently seems to
+need direct host access to either).
+
+---
