@@ -25,17 +25,82 @@
 # shared default exists for those, ever; nucleus's /add-model UI is the
 # real path for those, not an env var.
 #
-# FIELD_ENCRYPTION_KEY, INTERNAL_API_KEY, CENTRIFUGO_API_KEY, and
-# CENTRIFUGO_HMAC_SECRET are the opposite: genuinely per-deployment secrets,
-# referenced below via ${VAR} (no baked fallback in the image at all — see
-# neuralops/Dockerfile). Generate them ONCE per deployment before first run:
+# FIELD_ENCRYPTION_KEY, INTERNAL_API_KEY, CENTRIFUGO_API_KEY,
+# CENTRIFUGO_HMAC_SECRET, and POSTGRES_PASSWORD are the opposite: genuinely
+# per-deployment secrets, generated ONCE per deployment before first run:
 #
 #   docker run --rm ${NEURALOPS_IMAGE:-noamanfaisal/neuralops:latest} init-secrets > neuralops/secrets.env
 #
-# then pass that file as a third --env-file. Without it these four are
-# empty strings — nucleus/nexus-ai/centrifugo will still start, but internal
-# service-to-service calls between them will fail auth, and the Django
-# FIELD_ENCRYPTION_KEY check will raise ImproperlyConfigured on first use.
+# POSTGRES_PASSWORD joined this list to close a real gap: infra.env.example
+# used to ship a literal example password, and with no generator, nothing
+# stopped every self-hosted deployment from sharing that same value — worse,
+# postgres publishes a host port, so a shared password wasn't just a
+# theoretical risk. POSTGRES_DB/POSTGRES_USER stay in infra.env — plain
+# identifiers, not secrets, safe to leave as shared defaults or change by
+# hand for minor extra hardening.
+#
+# Reliability note: every app service that needs any of these five values
+# (nucleus, nucleus-celery, nucleus-celery-beat, nexus-ai, centrifugo,
+# postgres, and their -dev counterparts) loads neuralops/secrets.env
+# directly via its own `env_file:` key below, not through ${VAR} references.
+# This means these values get loaded at container-creation time regardless
+# of what flags anyone types on the `up` command line — a forgotten
+# --env-file neuralops/secrets.env flag can no longer silently leave them
+# blank (Compose would otherwise just warn and substitute an empty string,
+# which surfaces later as a confusing auth failure, not an obvious error).
+# One accepted trade-off: nexus-ai receives all five secrets this way even
+# though it only uses INTERNAL_API_KEY directly — env_file: loads a whole
+# file, not individual keys — and nexus-ai spawns MCP server subprocesses,
+# which inherit their parent's environment by default. Chosen deliberately
+# in favor of consistent reliability across every service; splitting
+# secrets.env into a smaller per-service file is the way to get both
+# precision and reliability later, if that trade-off ever needs revisiting.
+# Because every consumer now reads this file via env_file: rather than
+# ${VAR} interpolation, --env-file neuralops/secrets.env in the run command
+# below is technically redundant now — kept anyway, harmless, and keeps the
+# command self-documenting.
+#
+# NEURALOPS_SERVER_URL note (production only -- dev still uses ${VAR}, see
+# below): this hit the exact same reliability gap as the five secrets above
+# -- nucleus and centrifugo used to read it via ${NEURALOPS_SERVER_URL}
+# interpolation, so a `docker compose up`/`create` run without
+# --env-file neuralops/app.env in scope silently left it blank instead of
+# erroring. Fixed the same way: nucleus now loads neuralops/app.env directly
+# via env_file: (same variable name on both sides, so no extra step needed).
+# centrifugo is trickier -- nexus-transport reads the config key as
+# CENTRIFUGO_ALLOWED_ORIGINS, a DIFFERENT name than NEURALOPS_SERVER_URL, and
+# env_file: can only load a variable under its own name, not rename it (only
+# ${VAR} interpolation can remap names, which is the exact fragility being
+# removed here). So app.env now also carries an explicit
+# CENTRIFUGO_ALLOWED_ORIGINS line -- same value as NEURALOPS_SERVER_URL, set
+# once by hand in neuralops/app.env, not derived -- and centrifugo loads
+# app.env via env_file: too. Keep the two values identical when either one
+# changes; see the comment in neuralops/app.env.example.
+#
+# Project files note: nexus-ai's /nexus/projects is a BIND MOUNT to ./projects
+# (repo root, sibling to this file), not a named volume — deliberately, so a
+# self-hoster can see, edit, and back up their actual project files/code as
+# a normal folder instead of hunting through Docker's internal volume
+# storage. postgres/redis/chromadb/fastembed-cache data stay as named
+# volumes; only projects changed. This has one real consequence: nexus-ai
+# runs as a non-root user (UID 1000, the `nexus` user baked into the image —
+# see neuralops/Dockerfile's `ARG UID=1000`) with no privileges to fix
+# directory ownership itself at startup, unlike named volumes (which inherit
+# the image's own ownership on first mount) or the official postgres image
+# (whose entrypoint runs as root initially and fixes its own data directory
+# ownership). A bind-mounted host folder gets none of that — whatever
+# ownership it has on the host is exactly what the container sees. Create
+# and own it BEFORE the first `up`:
+#
+#   mkdir -p ./projects
+#   sudo chown -R 1000:1000 ./projects
+#
+# Skipping this isn't fatal but is confusing: Compose will auto-create
+# ./projects as root-owned if it doesn't exist, and nexus-ai will then fail
+# to write into it — fixable after the fact by running the same chown
+# command and restarting the nexus-ai container, but doing it up front
+# avoids hitting that failure at all. ./projects is git-ignored (see
+# .gitignore) since it holds real project files/code, never repo content.
 #
 # Run with (see neuralops/app.env.example + neuralops/infra.env.example —
 # copy both to neuralops/app.env + neuralops/infra.env first, filled in with
@@ -63,19 +128,17 @@ services:
     profiles: ["production"]
     container_name: neuralops-nucleus
     command: ["nucleus-env", "uvicorn", "core.asgi:application", "--host", "0.0.0.0", "--port", "8000", "--workers", "2"]
+    env_file:
+      - ./neuralops/secrets.env
+      - ./neuralops/app.env
     environment:
       - POSTGRES_HOST=postgres
       - POSTGRES_PORT=5432
       - POSTGRES_DB=${POSTGRES_DB}
       - POSTGRES_USER=${POSTGRES_USER}
-      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
       - REDIS_URL=redis://redis:6379/0
       - NEXUS_AI_URL=http://nexus-ai:8000
       - CENTRIFUGO_API_URL=http://centrifugo:8000/api
-      - NEURALOPS_SERVER_URL=${NEURALOPS_SERVER_URL}
-      - FIELD_ENCRYPTION_KEY=${FIELD_ENCRYPTION_KEY}
-      - INTERNAL_API_KEY=${INTERNAL_API_KEY}
-      - CENTRIFUGO_API_KEY=${CENTRIFUGO_API_KEY}
     networks:
       - neuralops-network
     depends_on:
@@ -89,18 +152,16 @@ services:
     container_name: neuralops-nucleus-celery
     command: ["nucleus-env", "celery", "-A", "core", "worker", "-l", "info"]
     restart: unless-stopped
+    env_file:
+      - ./neuralops/secrets.env
     environment:
       - POSTGRES_HOST=postgres
       - POSTGRES_PORT=5432
       - POSTGRES_DB=${POSTGRES_DB}
       - POSTGRES_USER=${POSTGRES_USER}
-      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
       - REDIS_URL=redis://redis:6379/0
       - NEXUS_AI_URL=http://nexus-ai:8000
       - CENTRIFUGO_API_URL=http://centrifugo:8000/api
-      - FIELD_ENCRYPTION_KEY=${FIELD_ENCRYPTION_KEY}
-      - INTERNAL_API_KEY=${INTERNAL_API_KEY}
-      - CENTRIFUGO_API_KEY=${CENTRIFUGO_API_KEY}
     networks:
       - neuralops-network
     depends_on:
@@ -113,15 +174,14 @@ services:
     container_name: neuralops-nucleus-celery-beat
     command: ["nucleus-env", "celery", "-A", "core", "beat", "-l", "info"]
     restart: unless-stopped
+    env_file:
+      - ./neuralops/secrets.env
     environment:
       - POSTGRES_HOST=postgres
       - POSTGRES_PORT=5432
       - POSTGRES_DB=${POSTGRES_DB}
       - POSTGRES_USER=${POSTGRES_USER}
-      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
       - REDIS_URL=redis://redis:6379/0
-      - FIELD_ENCRYPTION_KEY=${FIELD_ENCRYPTION_KEY}
-      - INTERNAL_API_KEY=${INTERNAL_API_KEY}
     networks:
       - neuralops-network
     depends_on:
@@ -137,7 +197,9 @@ services:
       - "${NEXUS_AI_HOST_PORT:-8020}:8000"
     volumes:
       - neuralops_fastembed_cache:/home/nexus/.cache/fastembed
-      - neuralops_projects:/nexus/projects
+      - ./projects:/nexus/projects
+    env_file:
+      - ./neuralops/secrets.env
     environment:
       - CHROMA_HOST=chromadb
       - CHROMA_PORT=8000
@@ -145,7 +207,6 @@ services:
       - EMBEDDING_MODEL=${EMBEDDING_MODEL:-nomic-ai/nomic-embed-text-v1.5}
       - EMBEDDING_BASE_URL=${EMBEDDING_BASE_URL:-}
       - NEXUS_NUCLEUS_URL=http://nucleus:8000
-      - INTERNAL_API_KEY=${INTERNAL_API_KEY}
     networks:
       - neuralops-network
     depends_on:
@@ -157,10 +218,9 @@ services:
     profiles: ["production"]
     container_name: neuralops-centrifugo
     command: ["centrifugo", "nexus-transport", "--admin.enabled", "--admin.insecure", "--client.insecure", "--http_api.insecure"]
-    environment:
-      - CENTRIFUGO_ALLOWED_ORIGINS=${NEURALOPS_SERVER_URL}
-      - CENTRIFUGO_API_KEY=${CENTRIFUGO_API_KEY}
-      - CENTRIFUGO_HMAC_SECRET=${CENTRIFUGO_HMAC_SECRET}
+    env_file:
+      - ./neuralops/secrets.env
+      - ./neuralops/app.env
     networks:
       - neuralops-network
     depends_on:
@@ -171,10 +231,11 @@ services:
     profiles: ["production"]
     container_name: neuralops-postgres
     restart: always
+    env_file:
+      - ./neuralops/secrets.env
     environment:
       - POSTGRES_DB=${POSTGRES_DB}
       - POSTGRES_USER=${POSTGRES_USER}
-      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
     ports:
       - "${POSTGRES_HOST_PORT:-5495}:5432"
     volumes:
@@ -223,6 +284,8 @@ services:
   # ===========================================================================
   # DEV profile — image built locally, app code bind-mounted over the baked-in
   # copy for live editing. Infra still pulled, not rebuilt.
+  # NOTE: dev profile deliberately left untouched by the env_file: hardening
+  # passes (secrets and NEURALOPS_SERVER_URL both) -- tracked separately.
   # ===========================================================================
 
   nucleus-dev:
@@ -235,20 +298,18 @@ services:
     command: ["nucleus-env", "uvicorn", "core.asgi:application", "--host", "0.0.0.0", "--port", "8000", "--reload"]
     volumes:
       - ./modules/nexus-nucleus:/nexus/nucleus
+    env_file:
+      - ./neuralops/secrets.env
     environment:
       - POSTGRES_HOST=postgres-dev
       - POSTGRES_PORT=5432
       - POSTGRES_DB=${POSTGRES_DB}
       - POSTGRES_USER=${POSTGRES_USER}
-      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
       - REDIS_URL=redis://redis-dev:6379/0
       - NEXUS_AI_URL=http://nexus-ai-dev:8000
       - CENTRIFUGO_API_URL=http://centrifugo-dev:8000/api
       - NEURALOPS_SERVER_URL=${NEURALOPS_SERVER_URL}
       - NEURALOPS_VERSION=dev
-      - FIELD_ENCRYPTION_KEY=${FIELD_ENCRYPTION_KEY}
-      - INTERNAL_API_KEY=${INTERNAL_API_KEY}
-      - CENTRIFUGO_API_KEY=${CENTRIFUGO_API_KEY}
     networks:
       - neuralops-network
     depends_on:
@@ -267,18 +328,16 @@ services:
     restart: unless-stopped
     volumes:
       - ./modules/nexus-nucleus:/nexus/nucleus
+    env_file:
+      - ./neuralops/secrets.env
     environment:
       - POSTGRES_HOST=postgres-dev
       - POSTGRES_PORT=5432
       - POSTGRES_DB=${POSTGRES_DB}
       - POSTGRES_USER=${POSTGRES_USER}
-      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
       - REDIS_URL=redis://redis-dev:6379/0
       - NEXUS_AI_URL=http://nexus-ai-dev:8000
       - CENTRIFUGO_API_URL=http://centrifugo-dev:8000/api
-      - FIELD_ENCRYPTION_KEY=${FIELD_ENCRYPTION_KEY}
-      - INTERNAL_API_KEY=${INTERNAL_API_KEY}
-      - CENTRIFUGO_API_KEY=${CENTRIFUGO_API_KEY}
     networks:
       - neuralops-network
     depends_on:
@@ -296,15 +355,14 @@ services:
     restart: unless-stopped
     volumes:
       - ./modules/nexus-nucleus:/nexus/nucleus
+    env_file:
+      - ./neuralops/secrets.env
     environment:
       - POSTGRES_HOST=postgres-dev
       - POSTGRES_PORT=5432
       - POSTGRES_DB=${POSTGRES_DB}
       - POSTGRES_USER=${POSTGRES_USER}
-      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
       - REDIS_URL=redis://redis-dev:6379/0
-      - FIELD_ENCRYPTION_KEY=${FIELD_ENCRYPTION_KEY}
-      - INTERNAL_API_KEY=${INTERNAL_API_KEY}
     networks:
       - neuralops-network
     depends_on:
@@ -330,6 +388,8 @@ services:
       - ./modules/nexus-ai:/nexus/ai
       - neuralops_fastembed_cache_dev:/home/nexus/.cache/fastembed
       - neuralops_projects_dev:/nexus/projects
+    env_file:
+      - ./neuralops/secrets.env
     environment:
       - CHROMA_HOST=chromadb-dev
       - CHROMA_PORT=8000
@@ -337,7 +397,6 @@ services:
       - EMBEDDING_MODEL=${EMBEDDING_MODEL:-nomic-ai/nomic-embed-text-v1.5}
       - EMBEDDING_BASE_URL=${EMBEDDING_BASE_URL:-}
       - NEXUS_NUCLEUS_URL=http://nucleus-dev:8000
-      - INTERNAL_API_KEY=${INTERNAL_API_KEY}
     networks:
       - neuralops-network
     depends_on:
@@ -352,10 +411,10 @@ services:
     profiles: ["dev"]
     container_name: neuralops-centrifugo-dev
     command: ["centrifugo", "nexus-transport", "--admin.enabled", "--admin.insecure", "--client.insecure", "--http_api.insecure"]
+    env_file:
+      - ./neuralops/secrets.env
     environment:
       - CENTRIFUGO_ALLOWED_ORIGINS=${NEURALOPS_SERVER_URL}
-      - CENTRIFUGO_API_KEY=${CENTRIFUGO_API_KEY}
-      - CENTRIFUGO_HMAC_SECRET=${CENTRIFUGO_HMAC_SECRET}
     networks:
       - neuralops-network
     depends_on:
@@ -366,10 +425,11 @@ services:
     profiles: ["dev"]
     container_name: neuralops-postgres-dev
     restart: always
+    env_file:
+      - ./neuralops/secrets.env
     environment:
       - POSTGRES_DB=${POSTGRES_DB}
       - POSTGRES_USER=${POSTGRES_USER}
-      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
     ports:
       - "${DEV_POSTGRES_HOST_PORT:-5496}:5432"
     volumes:
@@ -425,7 +485,6 @@ volumes:
   neuralops_redis_data:
   neuralops_chroma_data:
   neuralops_fastembed_cache:
-  neuralops_projects:
   neuralops_postgres_data_dev:
   neuralops_redis_data_dev:
   neuralops_chroma_data_dev:

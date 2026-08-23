@@ -16,7 +16,19 @@ export const APP_NAME = "NeuralOps";
 // major stays 0 through the whole alpha period. PATCH-only drift just shows
 // a "please update" banner but still lets the connection through. Once we
 // cut 1.0, only MAJOR differences will be treated as breaking.
-export const COMPATIBLE_SERVER_VERSION = "0.1.1";
+//
+// 0.1.2 bump note: this release only changed neuralops/entrypoint.sh
+// (init-secrets now also generates POSTGRES_PASSWORD) -- nucleus's actual
+// Django API surface didn't change, so this is a real PATCH-only bump.
+// A single MAJOR.MINOR.PATCH string is kept deliberately, even though the
+// image bundles nucleus + nexus-ai + centrifugo -- they build and ship as
+// ONE atomic image from ONE Dockerfile, so there's no such thing as a
+// deployed state where they're at different versions from each other.
+// Per-component digit groups were considered and rejected: this parser
+// only understands dot-separated numeric parts, so encoding nexus-ai's own
+// counter into the MINOR slot would make an nexus-ai-only change (which
+// this frontend never even talks to directly) misfire as "breaking" here.
+export const COMPATIBLE_SERVER_VERSION = "0.1.2";
 
 export type ServerVersionDrift = "match" | "minor" | "breaking" | "unknown";
 

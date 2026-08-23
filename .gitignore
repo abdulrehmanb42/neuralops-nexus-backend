@@ -267,6 +267,7 @@ chroma_data/
 postgres_data/
 data/chroma_data
 data/postgres_data
+
 \[nexus-ai
 \[nexus-ai]
 modules/nexus-nucleus.backup
@@ -283,3 +284,9 @@ node-3.tail9ed39a.ts.net.key
 modules/nexus-ai/.secrets/
 modules/nexus-ai/.secrets/
 modules/nexus-ai/.secrets/
+
+# --- docker-compose.neuralops.yaml production nexus-ai bind mount ---
+# Real project files/code once the stack is running -- never committed.
+# Root-anchored (leading /) so this only matches the repo-root folder, not
+# any other directory named "projects" that might exist elsewhere.
+/projects/
