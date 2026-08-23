@@ -60,6 +60,23 @@
 # below is technically redundant now — kept anyway, harmless, and keeps the
 # command self-documenting.
 #
+# NEURALOPS_SERVER_URL note (production only -- dev still uses ${VAR}, see
+# below): this hit the exact same reliability gap as the five secrets above
+# -- nucleus and centrifugo used to read it via ${NEURALOPS_SERVER_URL}
+# interpolation, so a `docker compose up`/`create` run without
+# --env-file neuralops/app.env in scope silently left it blank instead of
+# erroring. Fixed the same way: nucleus now loads neuralops/app.env directly
+# via env_file: (same variable name on both sides, so no extra step needed).
+# centrifugo is trickier -- nexus-transport reads the config key as
+# CENTRIFUGO_ALLOWED_ORIGINS, a DIFFERENT name than NEURALOPS_SERVER_URL, and
+# env_file: can only load a variable under its own name, not rename it (only
+# ${VAR} interpolation can remap names, which is the exact fragility being
+# removed here). So app.env now also carries an explicit
+# CENTRIFUGO_ALLOWED_ORIGINS line -- same value as NEURALOPS_SERVER_URL, set
+# once by hand in neuralops/app.env, not derived -- and centrifugo loads
+# app.env via env_file: too. Keep the two values identical when either one
+# changes; see the comment in neuralops/app.env.example.
+#
 # Project files note: nexus-ai's /nexus/projects is a BIND MOUNT to ./projects
 # (repo root, sibling to this file), not a named volume — deliberately, so a
 # self-hoster can see, edit, and back up their actual project files/code as
@@ -113,6 +130,7 @@ services:
     command: ["nucleus-env", "uvicorn", "core.asgi:application", "--host", "0.0.0.0", "--port", "8000", "--workers", "2"]
     env_file:
       - ./neuralops/secrets.env
+      - ./neuralops/app.env
     environment:
       - POSTGRES_HOST=postgres
       - POSTGRES_PORT=5432
@@ -121,7 +139,6 @@ services:
       - REDIS_URL=redis://redis:6379/0
       - NEXUS_AI_URL=http://nexus-ai:8000
       - CENTRIFUGO_API_URL=http://centrifugo:8000/api
-      - NEURALOPS_SERVER_URL=${NEURALOPS_SERVER_URL}
     networks:
       - neuralops-network
     depends_on:
@@ -203,8 +220,7 @@ services:
     command: ["centrifugo", "nexus-transport", "--admin.enabled", "--admin.insecure", "--client.insecure", "--http_api.insecure"]
     env_file:
       - ./neuralops/secrets.env
-    environment:
-      - CENTRIFUGO_ALLOWED_ORIGINS=${NEURALOPS_SERVER_URL}
+      - ./neuralops/app.env
     networks:
       - neuralops-network
     depends_on:
@@ -268,6 +284,8 @@ services:
   # ===========================================================================
   # DEV profile — image built locally, app code bind-mounted over the baked-in
   # copy for live editing. Infra still pulled, not rebuilt.
+  # NOTE: dev profile deliberately left untouched by the env_file: hardening
+  # passes (secrets and NEURALOPS_SERVER_URL both) -- tracked separately.
   # ===========================================================================
 
   nucleus-dev:
