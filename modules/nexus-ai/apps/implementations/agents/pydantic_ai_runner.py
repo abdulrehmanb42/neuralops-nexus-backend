@@ -249,6 +249,10 @@ class PydanticAIRunner(AgentRunner):
                                     item.text if hasattr(item, "text") else str(item)
                                     for item in items
                                 )
+                                
+                                is_error = getattr(result, "is_error", getattr(result, "isError", False))
+                                if is_error:
+                                    content = f"Error from tool: {content}"
                             except Exception as exc:
                                 content = f"Tool error: {exc}"
 
