@@ -458,6 +458,7 @@ class Persona(TenantBaseModel):
         related_name="personas",
     )
 
+
     avatar = models.ImageField(
         upload_to="personas/%Y/%m/",
         null=True,

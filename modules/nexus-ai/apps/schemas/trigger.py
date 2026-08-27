@@ -1,5 +1,6 @@
 """Schemas for the /trigger/ endpoint (nexus-nucleus → nexus-ai) and SSE events."""
 
+import typing
 from pydantic import BaseModel, Field
 
 
@@ -80,8 +81,37 @@ class TriggerJob(BaseModel):
     # Any other value = explicit override (e.g. "chart", "terminal", "code").
     output_type: str = "auto"
 
+class TriggerSwarmJob(BaseModel):
+    """
+    Deliberately minimal (#131) -- nexus-nucleus only tells us WHO and
+    WHAT, not HOW. persona_id and topic_id are resolved into a full
+    PersonaConfig and history list by apps/managers/nucleus_client.py,
+    right at the top of AgenticManager.run(), not here on the schema.
+    context_sources is the one exception still pushed by nucleus -- see
+    the comment on trigger_ai_response_async in chat/services.py for why.
+    """
+    job_id: str
+    msg_id: str  # pre-generated UUID — used in SSE events + DB save
+
+    personas: list[list[str, str, str]]
+    topic_id: str
+    user_message_id: str             # the human message this is replying to --
+                                      # excluded when nucleus_client fetches history,
+                                      # since it's sent separately as `message` below
+    message: str                     # the user's current message (mentions stripped)
+    context_sources: list[ContextSourceRef] = Field(default_factory=list)
+
+    # M7: output type — resolved in nexus-nucleus from @mention detection.
+    # "auto" = nexus-ai should classify intent via cosine similarity.
+    # Any other value = explicit override (e.g. "chart", "terminal", "code").
+    output_type: str = "auto"
 
 # ── Outbound SSE events (nexus-ai → nexus-nucleus) ────────────────────────────
+
+
+class ToolCallData(BaseModel):
+    name: str
+    args: dict
 
 
 class AgentEvent(BaseModel):
@@ -90,9 +120,14 @@ class AgentEvent(BaseModel):
 
     # message_start only
     created_at: str | None = None
-
+    persona_id: str | None = None
+    persona_name: str | None = None
+    
     # message_delta only
     delta: str | None = None
+
+    # tool_call_start only
+    tool_call: ToolCallData | None = None
 
     # message_done only
     content: str | None = None  # full assembled response (markers stripped) for DB save
@@ -110,3 +145,6 @@ class AgentEvent(BaseModel):
     # fetch, the LLM call itself, ...), so the SSE stream ends with one clean
     # event nucleus can act on instead of the connection just dying mid-body.
     error: str | None = None
+
+    # swarm_transition only
+    metadata: dict | None = None

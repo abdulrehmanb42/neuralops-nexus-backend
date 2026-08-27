@@ -89,13 +89,25 @@ interface UserTypingEvent {
   avatar?: string | null;
 }
 
+interface SwarmTransitionEvent {
+  type: "swarm_transition";
+  id: string; // msg_id
+  content: string;
+  metadata?: {
+    transition_type: string;
+    from_persona: string;
+    to_persona: string;
+  };
+}
+
 type CentrifugoEvent =
   | HumanMessageEvent
   | AiStartEvent
   | AiDeltaEvent
   | AiDoneEvent
   | AiErrorEvent
-  | UserTypingEvent;
+  | UserTypingEvent
+  | SwarmTransitionEvent;
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -413,6 +425,22 @@ export function useTopicMessages(
           return updated;
         });
         setTypingActors((prev) => prev.filter((a) => a.key !== event.id));
+      } else if (event.type === "swarm_transition") {
+        setMessages((prev) => [
+          ...prev,
+          {
+            id: `transition-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`,
+            type: "text",
+            content: event.content,
+            sender: {
+              id: "system",
+              name: "System",
+              type: "system",
+              avatar: null,
+            },
+            timestamp: new Date().toISOString(),
+          } satisfies ChatMessage,
+        ]);
       }
     });
 

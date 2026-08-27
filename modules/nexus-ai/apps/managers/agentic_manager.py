@@ -24,7 +24,10 @@ from apps.interfaces.embedding import EmbeddingModel
 from apps.interfaces.vectorstore import VectorStore, Chunk
 from apps.factories.context_source import ContextSourceFactory
 from apps.managers.prompt_builder import PromptBuilder
-from apps.schemas.trigger import TriggerJob, AgentEvent
+from apps.schemas.trigger import TriggerJob, AgentEvent, HistoryMessage, TriggerSwarmJob
+from apps.managers import nucleus_client
+from apps.output_types import OutputTypeRegistry
+from apps.output_types.markers import parse_output_markers
 
 log = logging.getLogger(__name__)
 
@@ -50,7 +53,6 @@ class AgenticManager:
         #    job only carries persona_id/topic_id/user_message_id. This is
         #    where prompt-quality decisions (how much history, which past
         #    replies are worth showing the model) live now, not nexus-nucleus.
-        from apps.managers import nucleus_client
         persona = await nucleus_client.resolve_persona(job.persona_id)
         history = await nucleus_client.fetch_history(
             job.topic_id, exclude_message_id=job.user_message_id,
@@ -60,7 +62,6 @@ class AgenticManager:
         resolved_type = await self._resolve_output_type(job)
 
         # 2. Get output type spec (system instruction + render_as)
-        from apps.output_types import OutputTypeRegistry
         spec = OutputTypeRegistry.get(resolved_type)
         output_instruction = spec.system_instruction if spec else None
         render_as = spec.render_as if spec else "text"
@@ -113,7 +114,6 @@ class AgenticManager:
 
         # 7. Parse output markers from the full assembled response
         raw_full = "".join(full_content)
-        from apps.output_types.markers import parse_output_markers
         clean_content, marker_type, embed_description = parse_output_markers(raw_full)
 
         # Marker type overrides the resolved type if present
@@ -169,3 +169,365 @@ class AgenticManager:
         except Exception as exc:
             log.warning("[agentic] classifier failed: %s", exc)
             return "text"
+
+class AgenticSwarmManager:
+    def __init__(
+        self,
+        runner: AgentRunner,
+        embedder: EmbeddingModel,
+        store: VectorStore,
+    ) -> None:
+        self.runner = runner
+        self.embedder = embedder
+        self.store = store
+        self.prompt_builder = PromptBuilder()
+
+    async def _resolve_output_type(self, job: TriggerSwarmJob) -> str:
+        """
+        Resolve the output type for this job.
+        """
+        from apps.output_types import OutputTypeRegistry
+
+        explicit = job.output_type
+
+        if explicit and explicit != "auto":
+            if OutputTypeRegistry.get(explicit):
+                log.debug("[agentic] swarm output type explicit: %s", explicit)
+                return explicit
+            log.warning("[agentic] unknown explicit output type %r — falling back to auto", explicit)
+
+        # Auto-classify
+        try:
+            from apps.output_types.classifier import classify_output_type
+            detected = await classify_output_type(job.message)
+            log.debug("[agentic] swarm output type classified: %s", detected)
+            return detected
+        except Exception as exc:
+            log.warning("[agentic] classifier failed: %s", exc)
+            return "text"
+
+    async def run(self, job: TriggerSwarmJob) -> AsyncIterator[AgentEvent]:
+
+        history = await nucleus_client.fetch_history(
+            job.topic_id, exclude_message_id=job.user_message_id,
+        )
+        
+        history.append(HistoryMessage(
+            role="user",
+            content=job.message
+        ))
+       
+        # The first mentioned persona takes precedent
+        active_persona_id = job.personas[0][0]
+        resolved_type = await self._resolve_output_type(job)
+        spec = OutputTypeRegistry.get(resolved_type)
+        output_instruction = spec.system_instruction if spec else None
+        render_as = spec.render_as if spec else "text"
+
+        chunks = []
+
+        for source in job.context_sources:
+            try:
+                plugin = ContextSourceFactory.get(source.type)
+                filter_dict = (
+                    {"topic_id": source.source_id}
+                    if source.type == "chat"
+                    else {"source_id": source.source_id}
+                )
+                source_chunks = await plugin.retrieve(
+                    query=job.message,
+                    collection_id=source.collection_id,
+                    top_k=5,
+                    filter=filter_dict,
+                )
+                chunks.extend(source_chunks)
+            except Exception as exc:
+                log.warning(
+                    "[agentic] context retrieval failed for source %s (%s): %s",
+                    source.source_id, source.type, exc,
+                )
+
+
+        import uuid
+        stack = [active_persona_id]
+        hops = 0
+        MAX_HOPS = 7
+        is_first_hop = True
+
+        while hops < MAX_HOPS:
+            handoff_triggered = False
+            delegation_triggered = False
+
+            if is_first_hop:
+                current_sub_msg_id = job.msg_id
+                is_first_hop = False
+            else:
+                current_sub_msg_id = str(uuid.uuid4())
+
+            persona = await nucleus_client.resolve_persona(active_persona_id)
+
+            yield AgentEvent(
+                type="message_start",
+                id=current_sub_msg_id,
+                persona_id=active_persona_id,
+                created_at=datetime.now(timezone.utc).isoformat(),
+            )
+
+            is_delegated = len(stack) > 1
+            injected_tools = [] if is_delegated else self.build_tools(job.personas, active_persona_id) 
+
+            # Phase 3: Targeted Prompting
+            # Pass the instruction to all agents, but if they have routing tools,
+            # explicitly warn them to only apply formatting if they are answering the user directly.
+            current_output_instruction = output_instruction
+            if output_instruction and injected_tools:
+                current_output_instruction = (
+                    f"{output_instruction}\n\n"
+                    "CRITICAL: ONLY apply the formatting above if you are providing the FINAL direct answer to the user. "
+                    "If your next action is to call a tool (like handoff_task or delegate_task), IGNORE the formatting above and do not output any markers."
+                )
+
+            # Create a shallow copy of job with empty message so it doesn't get
+            # repeatedly appended to the bottom of the prompt on every hop.
+            job_for_prompt = job.model_copy(update={"message": ""}) if hasattr(job, "model_copy") else job.copy(update={"message": ""})
+            
+            messages = self.prompt_builder.build(
+                job=job_for_prompt,
+                persona=persona,
+                history=history,
+                context_chunks=chunks,
+                output_type_instruction=current_output_instruction,
+                swarm_mode=True,
+            )
+
+            agent_response_content = []
+
+            async for event in self.runner.run_stream(
+                job=job,
+                messages=messages,
+                persona=persona,
+                tools=injected_tools,
+            ):
+                event.id = current_sub_msg_id
+
+                if event.type == "message_delta" and event.delta:
+                    agent_response_content.append(event.delta)
+
+                yield event
+
+                if event.type == "tool_call_start" and event.tool_call.name == "handoff_task":
+                    target_name = event.tool_call.args.get("target_persona")
+                    instructions = event.tool_call.args.get("instructions")
+                    target_id = next(
+                        (p[0] for p in job.personas if p[1] == target_name),
+                        None
+                    )
+                    
+                    if not target_id:
+                        break
+                    
+                    handoff_text = f"Handing off to @{target_name}..."
+                    yield AgentEvent(
+                        type="swarm_transition",
+                        id=current_sub_msg_id,
+                        content=handoff_text,
+                        metadata={
+                            "transition_type": "handoff",
+                            "from_persona": persona.name,
+                            "to_persona": target_name
+                        }
+                    )
+                    
+                    stack[-1] = target_id
+                    active_persona_id = target_id
+                    handoff_triggered = True
+                    break
+
+                if event.type == "tool_call_start" and event.tool_call.name == "delegate_task":
+                    target_name = event.tool_call.args.get("target_persona")
+                    instructions = event.tool_call.args.get("instructions")
+                    target_id = next(
+                        (p[0] for p in job.personas if p[1] == target_name),
+                        None
+                    )
+                    
+                    if not target_id:
+                        break
+                    
+                    delegate_text = f"Delegating task to @{target_name}..."
+                    yield AgentEvent(
+                        type="swarm_transition",
+                        id=current_sub_msg_id,
+                        content=delegate_text,
+                        metadata={
+                            "transition_type": "delegation",
+                            "from_persona": persona.name,
+                            "to_persona": target_name
+                        }
+                    )
+                    
+                    stack.append(target_id)
+                    active_persona_id = target_id
+                    delegation_triggered = True
+                    break
+
+            raw_hop = "".join(agent_response_content)
+            clean_hop, marker_type, embed_description = parse_output_markers(raw_hop)
+
+            if marker_type and OutputTypeRegistry.get(marker_type):
+                final_type = marker_type
+                final_spec = OutputTypeRegistry.get(marker_type)
+                final_render_as = final_spec.render_as if final_spec else render_as
+            else:
+                final_type = resolved_type
+                final_render_as = "text"
+                clean_hop = raw_hop
+                embed_description = None
+
+            yield AgentEvent(
+                type="message_done",
+                id=current_sub_msg_id,
+                content=clean_hop,
+                output_type=final_type,
+                render_as=final_render_as,
+                embed_description=embed_description,
+            )
+
+            if agent_response_content:
+                history.append(HistoryMessage(
+                    role="assistant",
+                    content="".join(agent_response_content),
+                    sender_name=persona.name
+                ))
+
+            if handoff_triggered:
+                history.append(HistoryMessage(
+                    role="assistant",
+                    content=f"[Handed off task to @{target_name} with instructions: {instructions}]",
+                    sender_name=persona.name
+                ))
+                history.append(HistoryMessage(
+                    role="user",
+                    content=f"You have been handed this task from @{persona.name}. Here are your instructions: {instructions}",
+                ))
+                hops += 1
+                continue
+
+            if delegation_triggered:
+                history.append(HistoryMessage(
+                    role="assistant",
+                    content=f"[Delegated task to @{target_name} with instructions: {instructions}]",
+                    sender_name=persona.name
+                ))
+                history.append(HistoryMessage(
+                    role="user",
+                    content=f"You have been temporarily delegated this task from @{persona.name}. Here are your instructions: {instructions}",
+                ))
+                hops += 1
+                continue
+
+            if not handoff_triggered and not delegation_triggered:
+                if len(stack) > 1:
+                    stack.pop()
+                    active_persona_id = stack[-1]
+                    
+                    return_text = f"Returning control to @{persona.name}..."
+                    yield AgentEvent(
+                        type="swarm_transition",
+                        id=current_sub_msg_id,
+                        content=return_text,
+                        metadata={
+                            "transition_type": "return_control",
+                            "from_persona": persona.name,
+                            "to_persona": "parent"
+                        }
+                    )
+
+                    history.append(HistoryMessage(
+                        role="user",
+                        content=f"The delegated task to @{persona.name} has been completed. You are back in control."
+                    ))
+                    hops += 1
+                    continue
+                else:
+                    break
+
+        if hops >= MAX_HOPS:
+            limit_msg = f"\n\n*Swarm stopped: Maximum number of handoffs ({MAX_HOPS}) reached.*"
+            error_msg_id = str(uuid.uuid4())
+            yield AgentEvent(
+                type="message_start",
+                id=error_msg_id,
+                persona_id=active_persona_id,
+                created_at=datetime.now(timezone.utc).isoformat(),
+            )
+            yield AgentEvent(
+                type="message_delta",
+                id=error_msg_id,
+                delta=limit_msg
+            )
+            yield AgentEvent(
+                type="message_done",
+                id=error_msg_id,
+                content=limit_msg,
+                output_type="text",
+                render_as="text",
+                embed_description=None,
+            )
+
+    def build_handoff_tool(self, names: list, descriptions: str) -> dict:
+        return {
+            "type": "function",
+            "function": {
+                "name": "handoff_task",
+                "description": f"Transfer control to a specialized persona.\n {descriptions}",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "target_persona": {
+                            "type": "string",
+                            "enum": names,
+                        },
+                        "instructions": {
+                            "type": "string",
+                            "description": "What the next persona/agent needs to do"
+                        },
+                    },
+                    "required": ["target_persona", "instructions"]
+                }
+            }
+        }
+    
+    def build_delegate_tool(self, names: list, descriptions: str) -> dict:
+        return {
+            "type": "function",
+            "function": {
+                "name": "delegate_task",
+                "description": f"Delegate task to a specialized persona, and take back control once done\n {descriptions}",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "target_persona": {
+                            "type": "string",
+                            "enum": names,
+                        },
+                        "instructions": {
+                            "type": "string",
+                            "description": "What the next persona/agent needs to do, before returning control"
+                        },
+                    },
+                    "required": ["target_persona", "instructions"]
+                }
+            }
+        }
+
+    def build_tools(self, personas: list[list[str, str]], active_persona_id: str) -> list[dict]:
+
+        names = [persona[1] for persona in personas if persona[0] != active_persona_id]
+        descriptions = "\n".join([f"- {persona[1]}:{persona[2]}" for persona in personas if persona[0] != active_persona_id])
+        handoff_tool = self.build_handoff_tool(names, descriptions)
+        delegate_tool = self.build_delegate_tool(names, descriptions)
+
+        return [handoff_tool, delegate_tool]
+
+

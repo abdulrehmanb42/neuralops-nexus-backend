@@ -25,6 +25,7 @@ class PromptBuilder:
         history: list[HistoryMessage],
         context_chunks: list[Chunk],
         output_type_instruction: str | None = None,
+        swarm_mode: bool = False,
     ) -> list[dict]:
         """
         Assemble messages array.
@@ -43,6 +44,16 @@ class PromptBuilder:
                 f"{system_content}\n\n"
                 f"--- OUTPUT FORMAT INSTRUCTION ---\n"
                 f"{output_type_instruction}"
+            )
+            
+        if swarm_mode:
+            system_content = (
+                f"{system_content}\n\n"
+                f"--- SWARM ROUTING ---\n"
+                f"You may transfer this conversation to other specialized agents if their expertise is needed.\n"
+                f"To transfer or delegate, use your 'handoff_task' or 'delegate_task' tool and provide explicit instructions for what they need to do.\n"
+                f"CRITICAL: If you are asked to perform a task AND hand off to someone else, you MUST perform your part of the task in your text response FIRST, before using the tool.\n"
+                f"CRITICAL: If you can answer the user's query yourself, or if the task has already been completed, DO NOT use these tools. Simply answer the user directly to end the chain."
             )
         messages.append(
             {
@@ -99,12 +110,13 @@ class PromptBuilder:
             })
 
         # 4. Current user message
-        messages.append(
-            {
-                "role": "user",
-                "content": job.message,
-            }
-        )
+        if job.message:
+            messages.append(
+                {
+                    "role": "user",
+                    "content": job.message,
+                }
+            )
 
         return messages
 
