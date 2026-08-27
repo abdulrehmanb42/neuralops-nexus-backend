@@ -12,8 +12,8 @@ from fastapi.responses import StreamingResponse
 from fastapi.security.api_key import APIKeyHeader
 
 from apps.core.config import settings
-from apps.schemas.trigger import AgentEvent, TriggerJob
-from apps.managers.agentic_manager import AgenticManager
+from apps.schemas.trigger import AgentEvent, TriggerJob, TriggerSwarmJob
+from apps.managers.agentic_manager import AgenticManager, AgenticSwarmManager
 from apps.factories.agent import AgentFactory
 from apps.factories.embedding import EmbeddingFactory
 from apps.factories.vectorstore import VectorStoreFactory
@@ -58,6 +58,21 @@ async def _event_stream(job: TriggerJob):
         error_event = AgentEvent(type="message_error", id=job.msg_id, error=str(exc))
         yield f"data: {error_event.model_dump_json()}\n\n"
 
+async def _swarm_event_stream(job: TriggerSwarmJob):
+    manager = AgenticSwarmManager(
+        runner=AgentFactory.get(),
+        embedder=EmbeddingFactory.get(),
+        store=VectorStoreFactory.get(),
+    )
+
+    try:
+        async for event in manager.run(job):
+            yield f"data: {event.model_dump_json()}\n\n"
+    except Exception as exc:
+        log.exception("[trigger] job %s failed: %s", job.job_id, exc)
+        error_event = AgentEvent(type="message_error", id=job.msg_id, error=str(exc))
+        yield f"data: {error_event.model_dump_json()}\n\n"
+
 
 @router.post("/trigger/")
 async def trigger(
@@ -75,4 +90,19 @@ async def trigger(
             "Cache-Control": "no-cache",
             "X-Accel-Buffering": "no",     # disable nginx buffering
         },
+    )
+
+
+@router.post("/trigger/swarm/")
+async def swarm(
+    job: TriggerSwarmJob,
+    _: str = Depends(_verify_key),
+) -> StreamingResponse:
+    return StreamingResponse(
+        _swarm_event_stream(job),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "X-Accel-Buffering": "no",
+        }
     )

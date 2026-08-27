@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import {
   Paperclip, Send, X, UserPlus, FileText,
   BarChart2, Code, Globe, Terminal, Table2, GitBranch, ClipboardList, AlignLeft,
-  Cpu, Plug, Bot, User, List, Clock,
+  Cpu, Plug, Bot, User, List, Clock, Users,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
@@ -15,6 +15,7 @@ import { AddModelForm } from "./slash-commands/forms/AddModelForm";
 import { AddMCPForm } from "./slash-commands/forms/AddMCPForm";
 import { AddAgentForm } from "./slash-commands/forms/AddAgentForm";
 import { AddPersonaForm } from "./slash-commands/forms/AddPersonaForm";
+import { EditPersonaForm } from "./slash-commands/forms/EditPersonaForm";
 import { AddScheduleForm } from "./slash-commands/forms/AddScheduleForm";
 import {
   ListModelsDialog,
@@ -42,6 +43,7 @@ const OUTPUT_TYPE_DIRECTIVES = [
 const SLASH_COMMANDS = [
   { command: "/invite",         description: "Invite someone to this topic or project", icon: UserPlus },
   { command: "/changeusername", description: "Change your display name on this server", icon: UserPlus },
+  { command: "/swarm",          description: "Trigger a swarm of agents to tackle this task", icon: Users },
   { command: "/add-model",      description: "Add an AI model",                        icon: Cpu },
   { command: "/list-models",    description: "List all AI models",                     icon: List },
   { command: "/add-mcp",        description: "Register an MCP tool server",            icon: Plug },
@@ -50,6 +52,7 @@ const SLASH_COMMANDS = [
   { command: "/list-agents",    description: "List all agents",                        icon: List },
   { command: "/add-persona",    description: "Create a persona (@mention)",            icon: User },
   { command: "/list-personas",  description: "List and manage personas",               icon: List },
+  { command: "/edit-persona",   description: "Edit an existing persona",               icon: User },
   { command: "/schedule",       description: "Automate a persona on a schedule",       icon: Clock },
   { command: "/list-schedules", description: "List and manage schedules in this topic", icon: List },
 ];
@@ -58,7 +61,7 @@ type ActiveForm =
   | "add-model" | "list-models"
   | "add-mcp"   | "list-mcps"
   | "add-agent" | "list-agents"
-  | "add-persona" | "list-personas"
+  | "add-persona" | "list-personas" | "edit-persona"
   | "schedule"  | "list-schedules"
   | null;
 
@@ -71,6 +74,7 @@ const FORM_MAP: Record<string, ActiveForm> = {
   "/list-agents":   "list-agents",
   "/add-persona":   "add-persona",
   "/list-personas": "list-personas",
+  "/edit-persona":  "edit-persona",
   "/schedule":       "schedule",
   "/list-schedules": "list-schedules",
 };
@@ -258,7 +262,10 @@ export function MessageInput({
     if (trimmed.startsWith("/changeusername")) { handleChangeUsernameCommand(trimmed); return; }
     const cmd = trimmed.split(" ")[0];
     if (FORM_MAP[cmd]) { setText(""); setSlashOpen(false); setActiveForm(FORM_MAP[cmd]); return; }
-    if (trimmed.startsWith("/") && !trimmed.includes(" ")) { toast.info(`Unknown command: ${trimmed}`); return; }
+    
+    const BACKEND_COMMANDS = ["/swarm"];
+    if (trimmed.startsWith("/") && !trimmed.includes(" ") && !BACKEND_COMMANDS.includes(trimmed)) { toast.info(`Unknown command: ${trimmed}`); return; }
+    
     onSend?.(trimmed, file ?? undefined);
     setText("");
     setFile(null);
@@ -289,6 +296,7 @@ export function MessageInput({
       <AddAgentForm    open={activeForm === "add-agent"}     onClose={() => setActiveForm(null)} projectId={projectId} />
       <ListAgentsDialog open={activeForm === "list-agents"}  onClose={() => setActiveForm(null)} />
       <AddPersonaForm  open={activeForm === "add-persona"}   onClose={() => setActiveForm(null)} projectId={projectId} />
+      <EditPersonaForm open={activeForm === "edit-persona"}  onClose={() => setActiveForm(null)} projectId={projectId} />
       <ListPersonasDialog open={activeForm === "list-personas"} onClose={() => setActiveForm(null)} projectId={projectId} />
       <AddScheduleForm open={activeForm === "schedule"} onClose={() => setActiveForm(null)}
         projectId={projectId} channelId={channelId} topicId={topicId} />

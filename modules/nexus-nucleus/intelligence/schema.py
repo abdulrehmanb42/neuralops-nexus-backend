@@ -3,6 +3,7 @@ Schemas for AI Model, Persona, Prompt, and PromptTemplate APIs.
 """
 from typing import Optional
 from ninja import Schema
+from pydantic import Field
 
 
 # ── AIModel ───────────────────────────────────────────────────────────────────
@@ -169,6 +170,7 @@ class PersonaIn(Schema):
     model_id: Optional[str] = None
     agent_id: Optional[str] = None
     prompt: PromptIn
+
 
 
 class PersonaPatchIn(Schema):

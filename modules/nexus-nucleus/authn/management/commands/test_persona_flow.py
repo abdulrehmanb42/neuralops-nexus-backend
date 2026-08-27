@@ -71,9 +71,9 @@ class Command(BaseCommand):
                            f"no company-wide role) {'[created]' if created else '[reused]'}")
 
         # ── 1. persona.create ────────────────────────────────────────────────
-        self._section("1. CREATE -- persona.create (COMPANY scope only)")
-        self._check("owner can create_persona", PermissionChecker.can(owner, "persona.create", company=company), True)
-        self._check("project_admin can create_persona", PermissionChecker.can(project_admin, "persona.create", company=company), False)
+        self._section("1. CREATE -- persona.create (PROJECT scope)")
+        self._check("owner can create_persona", PermissionChecker.can(owner, "persona.create", obj=project), True)
+        self._check("project_admin can create_persona", PermissionChecker.can(project_admin, "persona.create", obj=project), True)
 
         persona = isvc.create_persona(company, owner, {
             "name": "Nova Test Flow",
@@ -103,17 +103,17 @@ class Command(BaseCommand):
                            f"narrow-path reach via their own project membership): {admin_sees}")
 
         # ── 3. persona.update ────────────────────────────────────────────────
-        self._section("3. PATCH -- persona.update (COMPANY scope only)")
-        self._check("owner can persona.update", PermissionChecker.can(owner, "persona.update", company=company), True)
-        self._check("project_admin can persona.update", PermissionChecker.can(project_admin, "persona.update", company=company), False)
+        self._section("3. PATCH -- persona.update (PROJECT scope)")
+        self._check("owner can persona.update", PermissionChecker.can(owner, "persona.update", obj=project), True)
+        self._check("project_admin can persona.update", PermissionChecker.can(project_admin, "persona.update", obj=project), True)
 
         updated = isvc.patch_persona(company, str(persona.id), {"description": "Updated by test_persona_flow."})
         self.stdout.write(f"  -> patched description: {updated.description!r}")
 
         # ── 4. persona.delete ────────────────────────────────────────────────
-        self._section("4. DELETE -- persona.delete (COMPANY scope only)")
-        self._check("owner can persona.delete", PermissionChecker.can(owner, "persona.delete", company=company), True)
-        self._check("project_admin can persona.delete", PermissionChecker.can(project_admin, "persona.delete", company=company), False)
+        self._section("4. DELETE -- persona.delete (PROJECT scope)")
+        self._check("owner can persona.delete", PermissionChecker.can(owner, "persona.delete", obj=project), True)
+        self._check("project_admin can persona.delete", PermissionChecker.can(project_admin, "persona.delete", obj=project), True)
 
         result = isvc.delete_persona(company, str(persona.id))
         self.stdout.write(f"  -> delete_persona returned: {result}")

@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
-import { createPersona } from "@/services/personas.service";
+import { createPersona, listPersonas } from "@/services/personas.service";
 import { listAIModels } from "@/services/ai-models.service";
 import { listAgents } from "@/services/agents.service";
 import { listPrompts, getPromptContent } from "@/services/prompts.service";
@@ -8,7 +8,7 @@ import { FormDialog, Field } from "./shared";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Button } from "@/components/ui/button";
-import { Star } from "lucide-react";
+import { Star, X } from "lucide-react";
 import {
   Select,
   SelectContent,
@@ -51,11 +51,15 @@ export function AddPersonaForm({
   const [saving, setSaving] = useState(false);
   const [prompts, setPrompts] = useState<{ id: string; name: string; isFeatured?: boolean }[]>([]);
   const [loadingPrompt, setLoadingPrompt] = useState(false);
+  const [allPersonas, setAllPersonas] = useState<{ id: string; name: string }[]>([]);
 
   useEffect(() => {
     if (!open) return;
     listAIModels().then(setModels).catch(() => {});
     listAgents().then(setAgents).catch(() => {});
+    if (projectId) {
+      listPersonas(projectId).then(setAllPersonas).catch(() => {});
+    }
     listPrompts()
       .then((res) => {
         const arr = Object.entries(res.prompts).map(([id, path]) => {
@@ -230,6 +234,8 @@ export function AddPersonaForm({
             placeholder={`You are ${form.name || "a helpful AI assistant"}.`}
           />
         </Field>
+
+
 
         <Field label="Description">
           <Input

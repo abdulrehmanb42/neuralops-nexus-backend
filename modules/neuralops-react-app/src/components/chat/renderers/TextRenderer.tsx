@@ -42,6 +42,7 @@ function sanitizeMermaid(src: string): string {
 
 function MermaidBlock({ code }: { code: string }) {
   const ref = useRef<HTMLDivElement>(null);
+  const idRef = useRef("mermaid-" + Math.random().toString(36).slice(2));
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -51,35 +52,38 @@ function MermaidBlock({ code }: { code: string }) {
 
     let cancelled = false;
 
-    import("mermaid")
-      .then(async (mod) => {
-        const mermaid = mod.default;
-        mermaid.initialize({
-          startOnLoad: false,
-          theme: "dark",
-          securityLevel: "strict",
-        });
-        // Only touch the source if mermaid itself rejects it. Valid diagrams
-        // are rendered verbatim, so the repair pass can never corrupt them.
-        const valid = await mermaid.parse(source, { suppressErrors: true });
-        const finalSource = valid ? source : sanitizeMermaid(source);
+    // Debounce rendering during streaming to prevent tooltip errors and DOM thrashing
+    const timer = setTimeout(() => {
+      import("mermaid")
+        .then(async (mod) => {
+          const mermaid = mod.default;
+          mermaid.initialize({
+            startOnLoad: false,
+            theme: "dark",
+            themeVariables: {
+              background: "transparent",
+            },
+            securityLevel: "strict",
+          });
+          // Only touch the source if mermaid itself rejects it.
+          const valid = await mermaid.parse(source, { suppressErrors: true });
+          const finalSource = valid ? source : sanitizeMermaid(source);
 
-        const id = "mermaid-" + Math.random().toString(36).slice(2);
-        const { svg } = await mermaid.render(id, finalSource);
-        if (!cancelled && ref.current) {
-          ref.current.innerHTML = svg;
-          setError(null);
-        }
-      })
-      .catch((err) => {
-        // Keep the detail in the console for debugging; the UI falls back to
-        // showing the diagram source rather than an error dump.
-        console.error("[MermaidBlock] render failed", err);
-        if (!cancelled) setError(String(err?.message ?? err));
-      });
+          const { svg } = await mermaid.render(idRef.current, finalSource);
+          if (!cancelled && ref.current) {
+            ref.current.innerHTML = svg;
+            setError(null);
+          }
+        })
+        .catch((err) => {
+          console.error("[MermaidBlock] render failed", err);
+          if (!cancelled) setError(String(err?.message ?? err));
+        });
+    }, 150);
 
     return () => {
       cancelled = true;
+      clearTimeout(timer);
     };
   }, [code]);
 

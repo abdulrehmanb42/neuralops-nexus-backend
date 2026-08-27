@@ -272,12 +272,14 @@ async def send_message(
         # Only trigger personas if there is actual content beyond the @mention
         if directives.message_without_mentions():
             await _trigger_personas(mentioned_personas, company, project, topic,
-                                     topic_id, msg, directives.clean_message, directives.output_type)
+                                     topic_id, msg, directives.clean_message, 
+                                     directives.output_type, directives.swarm)
 
     elif mentioned_personas:
         # Rule 3: @mentions (no @session) — trigger only mentioned, session unchanged
         await _trigger_personas(mentioned_personas, company, project, topic,
-                                 topic_id, msg, directives.clean_message, directives.output_type)
+                                 topic_id, msg, directives.clean_message,
+                                 directives.output_type, directives.swarm)
 
     else:
         # Rules 4 + 5: no explicit mention — check session
@@ -290,7 +292,8 @@ async def send_message(
                 [p.name for p in session_personas],
             )
             await _trigger_personas(session_personas, company, project, topic,
-                                     topic_id, msg, directives.clean_message, directives.output_type)
+                                     topic_id, msg, directives.clean_message,
+                                     directives.output_type, directives.swarm)
         # Rule 5: no mention, no session — human-only message, nothing to do
 
     # 7. Return immediately
@@ -309,6 +312,7 @@ async def _trigger_personas(
     msg: dict,
     clean_message: str,
     output_type: str,
+    swarm: bool
 ) -> None:
     """
     Fire AI trigger tasks for each persona in parallel.
@@ -323,26 +327,47 @@ async def _trigger_personas(
     """
     if not personas:
         return
+    # Turn off swarm mode if only one persona is mentioned
+    swarm = swarm and len(personas) > 1
 
-    for persona in personas:
-        source_type = getattr(persona, "source_type", "model")
-        if source_type == "model" and not persona.model:
-            logger.info("[chat/api] skipping persona=%s (no model configured)", persona)
-            continue
-        if source_type == "agent" and not (
-            getattr(persona, "agent", None) and persona.agent.model
-        ):
-            logger.info("[chat/api] skipping persona=%s (agent has no model configured)", persona)
-            continue
+    if swarm:
         asyncio.create_task(
-            chat_svc.trigger_ai_response_async(
+            chat_svc.trigger_ai_swarm_response_async(
                 company=company,
                 project=project,
                 topic=topic,
-                persona=persona,
+                personas=personas,
                 user_message=clean_message,
                 user_message_id=msg["id"],
                 topic_id=topic_id,
                 output_type=output_type,
             )
         )
+
+    else:
+        for persona in personas:
+            source_type = getattr(persona, "source_type", "model")
+            if source_type == "model" and not persona.model:
+                logger.info("[chat/api] skipping persona=%s (no model configured)", persona)
+                continue
+            if source_type == "agent" and not (
+                getattr(persona, "agent", None) and persona.agent.model
+            ):
+                logger.info("[chat/api] skipping persona=%s (agent has no model configured)", persona)
+                continue
+            asyncio.create_task(
+                chat_svc.trigger_ai_response_async(
+                    company=company,
+                    project=project,
+                    topic=topic,
+                    persona=persona,
+                    user_message=clean_message,
+                    user_message_id=msg["id"],
+                    topic_id=topic_id,
+                    output_type=output_type,
+                )
+            )
+
+
+        
+

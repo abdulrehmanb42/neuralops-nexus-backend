@@ -27,7 +27,7 @@ from fastmcp.client.transports import StdioTransport
 from pydantic_ai.mcp import FastMCPClient
 
 from apps.interfaces.agent import AgentRunner
-from apps.schemas.trigger import TriggerJob, AgentEvent, ModelConfig
+from apps.schemas.trigger import TriggerJob, AgentEvent, ToolCallData, ModelConfig
 from apps.core.config import settings
 
 # Suppress litellm's verbose logging
@@ -52,16 +52,19 @@ class PydanticAIRunner(AgentRunner):
         job: TriggerJob,
         messages: list[dict],
         persona: "PersonaConfig",
+        tools: list[dict] | None = None,
     ) -> AsyncIterator[AgentEvent]:
         # M8: persona has MCP servers — delegate to pydantic-ai agent runner
         if persona.mcp_servers:
-            async for event in self._run_with_mcp(job, messages, persona):
+            async for event in self._run_with_mcp(job, messages, persona, tools):
                 yield event
             return
 
         # Default: LiteLLM direct streaming (unchanged from pre-M8)
         model_config = persona.model
         kwargs = _build_litellm_kwargs(model_config, messages)
+        if tools:
+            kwargs["tools"] = tools
 
         full_response = ""
         prompt_tokens = 0
@@ -70,23 +73,59 @@ class PydanticAIRunner(AgentRunner):
         error_msg = None
         t0 = time.monotonic()
 
+        # Buffer to accumulate streaming tool calls
+        assembled_tool_calls: dict[int, dict] = {}
+
         try:
             response = await litellm.acompletion(**kwargs)
             async for chunk in response:
-                delta = chunk.choices[0].delta.content or ""
-                if delta:
-                    full_response += delta
+                delta = chunk.choices[0].delta
+                
+                # 1. Handle normal text streaming
+                if getattr(delta, "content", None):
+                    full_response += delta.content
                     yield AgentEvent(
                         type="message_delta",
                         id=job.msg_id,
-                        delta=delta,
+                        delta=delta.content,
                     )
+                    
+                # 2. Handle streaming tool calls
+                if getattr(delta, "tool_calls", None):
+                    for tc in delta.tool_calls:
+                        idx = tc.index
+                        if idx not in assembled_tool_calls:
+                            assembled_tool_calls[idx] = {
+                                "id": tc.id or f"call_{idx}",
+                                "name": tc.function.name if tc.function else "",
+                                "arguments": ""
+                            }
+                        if tc.function and tc.function.arguments:
+                            assembled_tool_calls[idx]["arguments"] += tc.function.arguments
                 # Accumulate usage from the final chunk (some providers send it there)
                 if hasattr(chunk, "usage") and chunk.usage:
                     prompt_tokens = getattr(chunk.usage, "prompt_tokens", 0) or 0
                     completion_tokens = (
                         getattr(chunk.usage, "completion_tokens", 0) or 0
                     )
+
+            # At the very end of the stream, yield any fully assembled tool calls!
+            # The orchestrator (e.g. SwarmManager) will catch these.
+            for tc in assembled_tool_calls.values():
+                try:
+                    args = json.loads(tc["arguments"] or "{}")
+                except json.JSONDecodeError:
+                    args = {}
+                    
+                yield AgentEvent(
+                    type="tool_call_start",
+                    id=job.msg_id,
+                    tool_call=ToolCallData(
+                        name=tc["name"],
+                        args=args
+                    )
+                )
+
         except Exception as exc:
             status = "error"
             error_msg = str(exc)
@@ -111,6 +150,7 @@ class PydanticAIRunner(AgentRunner):
         job: TriggerJob,
         messages: list[dict],
         persona: "PersonaConfig",
+        injected_tools: list[dict] | None = None,
     ) -> AsyncIterator[AgentEvent]:
         """
         Run the persona via litellm + FastMCPClient tool loop.
@@ -188,8 +228,8 @@ class PydanticAIRunner(AgentRunner):
                 for _ in range(10):
                     kwargs = _build_litellm_kwargs(model_config, current_messages)
                     kwargs["stream"] = False
-                    if all_tools:
-                        kwargs["tools"] = all_tools
+                    if all_tools or injected_tools:
+                        kwargs["tools"] = all_tools + (injected_tools or [])
 
                     response = await litellm.acompletion(**kwargs)
                     msg = response.choices[0].message
@@ -233,6 +273,24 @@ class PydanticAIRunner(AgentRunner):
 
                     # Execute each tool via MCP
                     for tc in tool_calls:
+                        if injected_tools and any(t["function"]["name"] == tc.function.name for t in injected_tools):
+                            try:
+                                args = json.loads(tc.function.arguments or "{}")
+                            except json.JSONDecodeError:
+                                args = {}
+                                
+                            yield AgentEvent(
+                                type="tool_call_start",
+                                id=job.msg_id,
+                                tool_call=ToolCallData(
+                                    name=tc.function.name,
+                                    args=args
+                                )
+                            )
+                            # Hand control back to the orchestrator immediately!
+                            return
+
+                        # 2. Otherwise, it's a normal MCP tool
                         client = tool_client_map.get(tc.function.name)
                         if client is None:
                             content = f"Tool '{tc.function.name}' not found."
@@ -249,6 +307,10 @@ class PydanticAIRunner(AgentRunner):
                                     item.text if hasattr(item, "text") else str(item)
                                     for item in items
                                 )
+                                
+                                is_error = getattr(result, "is_error", getattr(result, "isError", False))
+                                if is_error:
+                                    content = f"Error from tool: {content}"
                             except Exception as exc:
                                 content = f"Tool error: {exc}"
 
