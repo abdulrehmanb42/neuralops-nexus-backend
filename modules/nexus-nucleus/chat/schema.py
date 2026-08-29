@@ -5,8 +5,6 @@ from typing import Optional
 
 class SendMessageIn(Schema):
     content: str
-    # Threaded reply: id of the root message this replies to (same topic).
-    parent_id: Optional[str] = None
 
     @field_validator("content")
     @classmethod
@@ -41,7 +39,6 @@ class MessageOut(Schema):
                                        # over time (e.g. deleted + recreated "Nova")
     sequence: int
     created_at: str
-    parent_id: Optional[str] = None  # threaded reply -> id of the root message
 
 
 class SendMessageOut(Schema):
