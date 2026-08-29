@@ -56,6 +56,7 @@ def _model_out(model) -> AIModelOut:
         config=model.config,
         is_active=model.is_active,
         has_api_key=bool(model.api_key_encrypted),
+        project_ids=[str(pid) for pid in model.projects.filter(is_active=True).values_list("id", flat=True)],
     )
 
 
@@ -125,6 +126,7 @@ def _persona_out(persona) -> PersonaOut:
         agent_id=str(persona.agent_id) if persona.agent_id else None,
         prompt=prompt,
         is_active=persona.is_active,
+        avatar=(persona.identity_user.avatar.url if persona.identity_user_id and persona.identity_user.avatar else None),
     )
 
 
