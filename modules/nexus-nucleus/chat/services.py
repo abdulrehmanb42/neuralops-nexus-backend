@@ -952,7 +952,7 @@ def save_system_message(company, project, topic, content: str) -> dict:
     return _serialise(msg)
 
 
-def save_user_message(company, project, topic, user, content: str) -> dict:
+def save_user_message(company, project, topic, user, content: str, parent_id: str = None) -> dict:
     """Save a human message and return its serialised form."""
     from nucleus.models import ChatMessage
 
@@ -960,6 +960,14 @@ def save_user_message(company, project, topic, user, content: str) -> dict:
         ChatMessage.objects.filter(topic_id=topic.id)
         .aggregate(Max("sequence"))["sequence__max"] or 0
     )
+
+    # Threaded reply: parent must be a real, active message in the SAME topic —
+    # otherwise the reply silently becomes a normal message rather than erroring.
+    parent = None
+    if parent_id:
+        parent = ChatMessage.objects.filter(
+            id=parent_id, topic_id=topic.id, is_active=True,
+        ).first()
 
     msg = ChatMessage.objects.create(
         company=company,
@@ -970,6 +978,7 @@ def save_user_message(company, project, topic, user, content: str) -> dict:
         message_type=ChatMessage.MessageType.TEXT,
         status=ChatMessage.Status.COMPLETED,
         sequence=max_seq + 1,
+        parent=parent,
         metadata={"role": "user"},
     )
     return _serialise(msg)
@@ -1042,4 +1051,6 @@ def _serialise(msg) -> dict:
         "persona_id": metadata.get("persona_id"),
         "sequence": msg.sequence,
         "created_at": msg.created_at.isoformat(),
+        # Threaded reply -> root message id; None for top-level messages.
+        "parent_id": str(msg.parent_id) if msg.parent_id else None,
     }

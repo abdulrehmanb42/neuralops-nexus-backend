@@ -200,6 +200,7 @@ async def send_message(
         topic=topic,
         user=user,
         content=payload.content,
+        parent_id=payload.parent_id,
     )
 
     # 3. Embed to nexus-ai — fire and forget (M2), right after the save.
