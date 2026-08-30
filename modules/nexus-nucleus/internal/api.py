@@ -43,6 +43,13 @@ class MCPServerInternal(Schema):
     secrets: dict = Field(default_factory=dict)
     is_first_party: bool = False
     embed_output: bool = False
+    needs_reauth: bool = False  # NEW
+    # Which auth style this server uses, and -- for oauth2 -- which key in
+    # `secrets` holds the bearer access token nexus-ai should send on HTTP/
+    # SSE requests (StdioTransport already gets the whole `secrets` dict as
+    # subprocess env, so this is only consumed on the non-stdio path).
+    auth_type: str = "static_secrets"
+    token_env_var: str = "OAUTH_ACCESS_TOKEN"
 
 
 class PromptInternal(Schema):
@@ -183,7 +190,9 @@ def get_persona_internal(request, persona_id: str):
             )
         # Collect all MCP servers linked to this agent's model
         if agent.mcp_server:
+            from intelligence import oauth_client
             s = agent.mcp_server
+            ok = oauth_client.refresh_if_needed(s)
             mcp_servers.append(
                 MCPServerInternal(
                     id=str(s.id),
@@ -193,9 +202,12 @@ def get_persona_internal(request, persona_id: str):
                     url=s.url,
                     command=s.command,
                     config=s.config,
-                    secrets=s.get_secrets(),
+                    secrets={} if not ok else s.get_secrets(),
                     is_first_party=s.is_first_party,
                     embed_output=s.embed_output,
+                    needs_reauth=not ok,
+                    auth_type=s.auth_type,
+                    token_env_var=(s.oauth_config or {}).get("token_env_var", "OAUTH_ACCESS_TOKEN"),
                 )
             )
 

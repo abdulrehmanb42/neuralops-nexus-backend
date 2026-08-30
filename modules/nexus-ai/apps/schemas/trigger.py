@@ -31,6 +31,14 @@ class MCPServerConfig(BaseModel):
     timeout_seconds: int = 60
     is_first_party: bool = False
     embed_output: bool = False
+    needs_reauth: bool = False  # NEW
+    # auth_type + token_env_var: which key in `secrets` holds the bearer
+    # access token to send as an Authorization header on http/sse/
+    # streamable-http transports (see pydantic_ai_runner.py:_run_with_mcp).
+    # stdio servers ignore this -- they get the whole `secrets` dict as
+    # subprocess env instead.
+    auth_type: str = "static_secrets"
+    token_env_var: str = "OAUTH_ACCESS_TOKEN"
 
 
 class PersonaConfig(BaseModel):
@@ -110,3 +118,4 @@ class AgentEvent(BaseModel):
     # fetch, the LLM call itself, ...), so the SSE stream ends with one clean
     # event nucleus can act on instead of the connection just dying mid-body.
     error: str | None = None
+    error_code: str | None = None  # NEW -- e.g. "mcp_reauth_required"

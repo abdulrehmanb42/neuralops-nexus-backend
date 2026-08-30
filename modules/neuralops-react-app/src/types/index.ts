@@ -67,6 +67,18 @@ export interface AIModel {
   api_key?: string;
 }
 
+// Mirrors nucleus's MCPServer.AuthType enum (nucleus/models/intelligence.py).
+export type MCPAuthType = "none" | "static_secrets" | "oauth2";
+
+export interface MCPOAuthConfig {
+  client_id?: string;
+  authorize_endpoint?: string;
+  token_endpoint?: string;
+  scopes?: string[];
+  token_env_var?: string;
+  expires_at?: string;
+}
+
 export interface MCPServer {
   id: string;
   name: string;
@@ -82,6 +94,14 @@ export interface MCPServer {
   is_first_party: boolean;
   embed_output: boolean;
   is_active: boolean;
+  auth_type: MCPAuthType;
+  oauth_connected: boolean;
+  // Non-secret OAuth2 metadata -- only meaningful when auth_type === "oauth2".
+  oauth_config?: MCPOAuthConfig | null;
+  // Write-only on create/patch requests -- never present in a server
+  // returned from the API (mirrors MCPServerIn/PatchIn on the backend,
+  // which fold it into secrets_encrypted and never echo it back).
+  client_secret?: string;
 }
 
 export interface Agent {

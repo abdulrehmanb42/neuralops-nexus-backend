@@ -63,6 +63,9 @@ async def resolve_persona(persona_id: str) -> PersonaConfig:
             secrets=s.get("secrets") or {},
             is_first_party=s.get("is_first_party", False),
             embed_output=s.get("embed_output", False),
+            needs_reauth=s.get("needs_reauth", False),  # NEW
+            auth_type=s.get("auth_type", "static_secrets"),
+            token_env_var=s.get("token_env_var", "OAUTH_ACCESS_TOKEN"),
         )
         for s in data.get("mcp_servers", [])
     ]

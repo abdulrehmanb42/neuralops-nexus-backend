@@ -406,7 +406,7 @@ def update_ai_message(
     )
 
 
-def fail_ai_message(message_id: str, error: str) -> None:
+def fail_ai_message(message_id: str, error: str, display_content: str | None = None) -> None:
     """
     Mark the AI placeholder message FAILED instead of COMPLETED -- called
     when nexus-ai reports an AgentEvent(type="message_error") (see
@@ -415,25 +415,21 @@ def fail_ai_message(message_id: str, error: str) -> None:
     on "completed" with blank content -- indistinguishable from the AI
     genuinely replying with nothing.
 
-    content is a friendly placeholder, not the raw exception text -- the
-    real error is kept in metadata.error_detail for debugging, not shown
-    to users in the chat itself.
+    display_content overrides the generic placeholder -- used for errors
+    the user should actually see verbatim (e.g. mcp_reauth_required). The
+    real error is always kept in metadata.error_detail for debugging either way.
     """
     from nucleus.models import ChatMessage
-
     msg = ChatMessage.objects.filter(id=message_id).first()
     if not msg:
         return
-
     metadata = dict(msg.metadata or {})
     metadata["error_detail"] = error
-
     ChatMessage.objects.filter(id=message_id).update(
-        content="Something went wrong generating this response.",
+        content=display_content or "Something went wrong generating this response.",
         status=ChatMessage.Status.FAILED,
         metadata=metadata,
     )
-
 
 async def trigger_ai_response_async(
     *,
@@ -546,6 +542,7 @@ async def trigger_ai_response_async(
     final_clean_content: str | None = None
     embed_description: str | None = None
     ai_error: str | None = None
+    ai_error_code: str | None = None
 
     try:
         async with httpx.AsyncClient(timeout=120) as client:
@@ -598,9 +595,10 @@ async def trigger_ai_response_async(
                             # nexus-ai's pipeline raised before/during generation --
                             # see apps/routers/trigger.py:_event_stream on that side.
                             ai_error = event.get("error") or "Unknown error"
+                            ai_error_code = event.get("error_code")  # NEW
                             logger.warning(
-                                "[trigger] nexus-ai reported error for msg %s: %s",
-                                msg_id, ai_error,
+                                "[trigger] nexus-ai reported error for msg %s: %s (code: %s)",
+                                msg_id, ai_error, ai_error_code,
                             )
                             break
 
@@ -620,7 +618,8 @@ async def trigger_ai_response_async(
     # 5. Save full content to DB + publish message_done (or FAILED + message_error)
     try:
         if ai_error:
-            await _fail_ai_message(msg_id, ai_error)
+            display = ai_error if ai_error_code == "mcp_reauth_required" else None
+            await _fail_ai_message(msg_id, ai_error, display)
         else:
             await _update_ai_message(
                 msg_id,
@@ -638,7 +637,8 @@ async def trigger_ai_response_async(
         # exception text (ai_error) stays server-side only (logged above +
         # stored in ChatMessage.metadata.error_detail), never shipped to
         # the browser over Centrifugo.
-        "content": "Something went wrong generating this response." if ai_error else save_content,
+            "content": (ai_error if ai_error_code == "mcp_reauth_required"
+                else "Something went wrong generating this response.") if ai_error else save_content,
         "output_type": final_output_type,   # M7: e.g. "chart"
         "render_as": final_render_as,        # M7: e.g. "html"
     })

@@ -21,7 +21,8 @@ from nucleus.models import (
     ChatMessage, ChatReadMarker, ChatTopic, Channel, Company, CompanyAccess,
     Invitation, Persona, Project, ProjectMember, TopicParticipant,
 )
-
+import os
+from nucleus.models import MCPServer
 User = get_user_model()
 
 
@@ -36,6 +37,30 @@ def list_projects(company, user, include_archived=False):
     # visible_projects — imported at top of file.
     return visible_projects(user, company, include_archived=include_archived)
 
+# workspace/services.py
+
+def get_project_folder_name(project) -> str:
+    return f"{project.slug}-{str(project.id)[:8]}"
+
+def provision_project_folder_and_mcp(project):
+
+
+    folder_name = get_project_folder_name(project)
+    folder_path = os.path.join(settings.PROJECTS_ROOT, folder_name)
+    os.makedirs(folder_path, exist_ok=True)
+
+    server = MCPServer.objects.create(
+        company=project.company,
+        name=f"{project.name} Files",
+        server_type=MCPServer.ServerType.LOCAL,
+        transport=MCPServer.Transport.STDIO,
+        command=f"npx -y @modelcontextprotocol/server-filesystem {folder_path}",
+        is_protected=True,
+        is_default=True,
+        config={"root_path": folder_path},
+    )
+    server.projects.add(project)
+    return server
 
 def create_project(company, user, name: str, description: str = None):
     # Project, Channel, ProjectMember, Role, PermissionChecker — imported at top of file.

@@ -14,6 +14,7 @@ from authn.permissions.checker import PermissionChecker
 from .schema import (
     AIModelIn, AIModelOut,
     MCPServerIn, MCPServerPatchIn, MCPServerOut,
+    MCPOAuthAuthorizeOut,
     AIAgentIn, AIAgentPatchIn, AIAgentOut,
     PersonaIn, PersonaPatchIn, PersonaOut,
     PromptTemplateOut,
@@ -79,6 +80,8 @@ def _mcp_out(server) -> MCPServerOut:
         is_first_party=server.is_first_party,
         embed_output=server.embed_output,
         is_active=server.is_active,
+        auth_type=server.auth_type,
+        oauth_connected=bool(server.get_secrets().get("refresh_token")),
     )
 
 
@@ -253,6 +256,56 @@ def delete_mcp_server_standalone(request, server_id: str):
 # create_mcp_server_standalone(), same pattern as AIAgent), assigned once at
 # creation via payload.project_id. Unlike AIModel, which is genuinely shared
 # across projects, there's nothing to attach/detach after the fact.
+
+
+# ── MCPServer OAuth2 ───────────────────────────────────────────────────────────
+
+@router.get("/mcp-servers/{server_id}/oauth/authorize/", response=MCPOAuthAuthorizeOut)
+def mcp_oauth_authorize(request, server_id: str, frontend_origin: str):
+    from nucleus.models import MCPServer
+    from . import oauth_client
+
+    company = _company(request)
+    server = svc.get_mcp_server_standalone(company, server_id)
+    if not server:
+        raise HttpError(404, "MCP server not found.")
+    if not PermissionChecker.can(request.auth, "mcp_server.update", obj=server):
+        raise HttpError(403, "You don't have permission to connect this MCP server.")
+    if server.auth_type != MCPServer.AuthType.OAUTH2:
+        raise HttpError(400, "This MCP server is not configured for OAuth2.")
+    return {"authorize_url": oauth_client.build_authorize_url(server, frontend_origin)}
+
+
+@router.get("/mcp-servers/oauth/callback/", auth=None)
+def mcp_oauth_callback(request, code: str = None, state: str = None, error: str = None):
+    """
+    Public -- the OAuth provider redirects the browser here directly, no
+    Authorization header available. Returns a tiny self-closing HTML page
+    that posts the result back to window.opener (standard OAuth popup
+    pattern) -- there's no frontend route for this at all.
+    """
+    from django.core import signing
+    from django.http import HttpResponse
+    from . import oauth_client
+    import json
+
+    def html(ok: bool, origin: str | None, err: str = "", server_id: str = "") -> HttpResponse:
+        payload = json.dumps({"type": "mcp-oauth-result", "ok": ok, "server_id": server_id, "error": err})
+        target = json.dumps(origin) if origin else "'*'"
+        body = "Connected. You can close this window." if ok else f"Connection failed: {err}"
+        return HttpResponse(
+            f"<!doctype html><html><body><script>"
+            f"if (window.opener) {{ window.opener.postMessage({payload}, {target}); }}"
+            f"window.close();</script>{body}</body></html>"
+        )
+
+    if error or not code or not state:
+        return html(False, None, err=error or "missing_code")
+    try:
+        result = oauth_client.complete_callback(code, state)
+    except (signing.BadSignature, ValueError) as exc:
+        return html(False, None, err=str(exc))
+    return html(True, result["frontend_origin"], server_id=result["server_id"])
 
 
 # ── MCPServer endpoints (nested under model — legacy) ─────────────────────────

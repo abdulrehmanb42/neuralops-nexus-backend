@@ -17,7 +17,7 @@ from apps.managers.agentic_manager import AgenticManager
 from apps.factories.agent import AgentFactory
 from apps.factories.embedding import EmbeddingFactory
 from apps.factories.vectorstore import VectorStoreFactory
-
+from apps.implementations.agents.pydantic_ai_runner import MCPReauthRequiredError
 log = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/v1", tags=["trigger"])
@@ -53,6 +53,9 @@ async def _event_stream(job: TriggerJob):
     try:
         async for event in manager.run(job):
             yield f"data: {event.model_dump_json()}\n\n"
+    except MCPReauthRequiredError as exc:
+        yield f"data: {AgentEvent(type='message_error', id=job.msg_id, error=str(exc), error_code='mcp_reauth_required').model_dump_json()}\n\n"
+
     except Exception as exc:
         log.exception("[trigger] job %s failed: %s", job.job_id, exc)
         error_event = AgentEvent(type="message_error", id=job.msg_id, error=str(exc))
