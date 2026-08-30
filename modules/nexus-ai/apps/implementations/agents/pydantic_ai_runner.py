@@ -23,7 +23,7 @@ from typing import AsyncIterator
 
 import httpx
 import litellm
-from fastmcp.client.transports import StdioTransport
+from fastmcp.client.transports import StdioTransport, StreamableHttpTransport, SSETransport
 from pydantic_ai.mcp import FastMCPClient
 
 from apps.interfaces.agent import AgentRunner
@@ -35,6 +35,8 @@ litellm.suppress_debug_info = True
 
 log = logging.getLogger(__name__)
 
+class MCPReauthRequiredError(Exception):
+    pass
 
 class PydanticAIRunner(AgentRunner):
     """
@@ -172,6 +174,13 @@ class PydanticAIRunner(AgentRunner):
 
         # Build MCP transport configs
         client_configs = []
+        reauth = [s.name for s in persona.mcp_servers if s.needs_reauth]
+        if reauth:
+            names = ", ".join(reauth)
+            raise MCPReauthRequiredError(
+                f"The MCP server{'s' if len(reauth) > 1 else ''} {names} "
+                f"need{'s' if len(reauth) == 1 else ''} to be reconnected before use here."
+            )
         for s in persona.mcp_servers:
             if s.transport == "stdio":
                 # shlex.split (not str.split) so quoted args survive intact --
@@ -198,9 +207,43 @@ class PydanticAIRunner(AgentRunner):
                             env=s.secrets or None,
                         )
                     )
-            else:  # http | sse | streamable-http
+            else:  # http | sse | streamable-http | websocket
                 if s.url:
-                    client_configs.append(s.url)
+                    # OAuth2-authenticated servers need the access token sent
+                    # as a bearer header on every request -- StdioTransport
+                    # gets the whole `secrets` dict as subprocess env above,
+                    # but there's no equivalent "env" concept over HTTP/SSE.
+                    # Only the specific token_env_var key is forwarded here,
+                    # never the full secrets dict -- refresh_token/client_secret
+                    # must never leave nucleus and reach the remote MCP server.
+                    headers = None
+                    if s.auth_type == "oauth2":
+                        token = (s.secrets or {}).get(s.token_env_var)
+                        if token:
+                            headers = {"Authorization": f"Bearer {token}"}
+                        else:
+                            # needs_reauth already fails fast above when there's
+                            # no valid token -- reaching here with auth_type
+                            # oauth2 and no token means the token_env_var
+                            # doesn't match what was actually stored. Log and
+                            # continue unauthenticated rather than silently
+                            # dropping the server.
+                            log.warning(
+                                "[runner] MCP server %s is oauth2 but has no "
+                                "token under '%s' -- connecting without auth.",
+                                s.name, s.token_env_var,
+                            )
+                    if headers is None:
+                        # No auth to attach -- pass the bare URL, same as
+                        # before, so FastMCPClient's own URL-scheme dispatch
+                        # keeps picking the transport (including ws://
+                        # websocket servers, which StreamableHttpTransport/
+                        # SSETransport don't handle).
+                        client_configs.append(s.url)
+                    elif s.transport == "sse":
+                        client_configs.append(SSETransport(s.url, headers=headers))
+                    else:
+                        client_configs.append(StreamableHttpTransport(s.url, headers=headers))
 
         try:
             async with contextlib.AsyncExitStack() as stack:
@@ -307,6 +350,9 @@ class PydanticAIRunner(AgentRunner):
                                     item.text if hasattr(item, "text") else str(item)
                                     for item in items
                                 )
+                                is_error = getattr(result, "is_error", 
+                                                   getattr(result, 
+                                                           "isError", False))
                                 
                                 is_error = getattr(result, "is_error", getattr(result, "isError", False))
                                 if is_error:

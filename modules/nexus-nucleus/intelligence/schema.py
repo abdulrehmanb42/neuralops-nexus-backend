@@ -51,7 +51,8 @@ class AIModelOut(Schema):
     project_ids: list[str] = []
 
 
-# ── MCPServer ─────────────────────────────────────────────────────────────────
+class MCPOAuthAuthorizeOut(Schema):
+    authorize_url: str
 
 class MCPServerIn(Schema):
     name: str
@@ -70,6 +71,11 @@ class MCPServerIn(Schema):
     max_retries: int = 3
     is_first_party: bool = False
     embed_output: bool = False
+    # oauth configuration
+    auth_type: str = "static_secrets"
+    oauth_config: Optional[dict] = None
+    client_secret: Optional[str] = None  # write-only -- folded into secrets_encrypted, never echoed back
+
 
 
 class MCPServerPatchIn(Schema):
@@ -84,6 +90,11 @@ class MCPServerPatchIn(Schema):
     timeout_seconds: Optional[int] = None
     max_retries: Optional[int] = None
     embed_output: Optional[bool] = None
+    # oauth configuration
+    auth_type: Optional[str] = None
+    oauth_config: Optional[dict] = None
+    client_secret: Optional[str] = None
+
 
 
 class MCPServerOut(Schema):
@@ -102,6 +113,9 @@ class MCPServerOut(Schema):
     is_first_party: bool
     embed_output: bool
     is_active: bool
+    # oauth configuration
+    auth_type: str
+    oauth_connected: bool
 
 
 # ── AIAgent ───────────────────────────────────────────────────────────────────

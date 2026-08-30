@@ -1,7 +1,7 @@
 import { createFileRoute, useSearch } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
-import { Plus, Trash2, Bot, Cpu, Plug, User, Pencil } from "lucide-react";
+import { Plus, Trash2, Bot, Cpu, Plug, User, Pencil, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -24,10 +24,11 @@ import {
 } from "@/components/ui/select";
 import { listAIModels, createAIModel, deleteAIModel } from "@/services/ai-models.service";
 import { listMCPServers, createMCPServer, patchMCPServer, deleteMCPServer } from "@/services/mcp-servers.service";
+import { connectMcpOAuth } from "@/lib/mcpOAuth";
 import { listAgents, createAgent, patchAgent, deleteAgent } from "@/services/agents.service";
 import { listPersonas, createPersona, patchPersona, deletePersona } from "@/services/personas.service";
 import { listProjects } from "@/services/projects.service";
-import type { AIModel, MCPServer, Agent, Persona, Project } from "@/types";
+import type { AIModel, MCPServer, MCPAuthType, Agent, Persona, Project } from "@/types";
 
 export const Route = createFileRoute("/app/agents")({
   validateSearch: (s: Record<string, unknown>) => ({ tab: (s.tab as string) || "mcps" }),
@@ -63,6 +64,39 @@ function Row({ children }: { children: React.ReactNode }) {
     <div className="flex items-center justify-between gap-3 rounded-md border border-border bg-card px-4 py-3">
       {children}
     </div>
+  );
+}
+
+// ── MCP OAuth2 connect ──────────────────────────────────────────────────────────
+
+function ConnectMcpButton({
+  server,
+  onConnected,
+}: {
+  server: MCPServer;
+  onConnected: () => void;
+}) {
+  const [connecting, setConnecting] = useState(false);
+  if (server.auth_type !== "oauth2") return null;
+
+  async function handleClick() {
+    setConnecting(true);
+    try {
+      await connectMcpOAuth(server.id);
+      toast.success(`${server.name} connected.`);
+      onConnected();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Connection failed.");
+    } finally {
+      setConnecting(false);
+    }
+  }
+
+  return (
+    <Button size="sm" variant="outline" onClick={handleClick} disabled={connecting}>
+      {connecting && <Loader2 className="h-3.5 w-3.5 mr-1 animate-spin" />}
+      {server.oauth_connected ? "Reconnect" : "Connect"}
+    </Button>
   );
 }
 
@@ -233,26 +267,69 @@ function MCPServersTab() {
     url: "",
     is_first_party: true,
     embed_output: true,
+    auth_type: "static_secrets" as MCPAuthType,
+    client_secret: "",
+    oauth_client_id: "",
+    oauth_authorize_endpoint: "",
+    oauth_token_endpoint: "",
+    oauth_scopes: "",
+    oauth_token_env_var: "OAUTH_ACCESS_TOKEN",
   });
 
   // Edit state
   const [editTarget, setEditTarget] = useState<MCPServer | null>(null);
-  const [editForm, setEditForm] = useState({ name: "", description: "", url: "" });
+  const [editForm, setEditForm] = useState({
+    name: "", description: "", url: "",
+    auth_type: "static_secrets" as MCPAuthType,
+    client_secret: "",
+    oauth_client_id: "",
+    oauth_authorize_endpoint: "",
+    oauth_token_endpoint: "",
+    oauth_scopes: "",
+    oauth_token_env_var: "OAUTH_ACCESS_TOKEN",
+  });
   const [editSaving, setEditSaving] = useState(false);
+
+  function refreshServers() {
+    listMCPServers().then(setServers).catch(() => {});
+  }
 
   function openEdit(s: MCPServer) {
     setEditTarget(s);
-    setEditForm({ name: s.name, description: s.description ?? "", url: s.url ?? "" });
+    setEditForm({
+      name: s.name,
+      description: s.description ?? "",
+      url: s.url ?? "",
+      auth_type: s.auth_type ?? "static_secrets",
+      client_secret: "",
+      oauth_client_id: s.oauth_config?.client_id ?? "",
+      oauth_authorize_endpoint: s.oauth_config?.authorize_endpoint ?? "",
+      oauth_token_endpoint: s.oauth_config?.token_endpoint ?? "",
+      oauth_scopes: (s.oauth_config?.scopes ?? []).join(", "),
+      oauth_token_env_var: s.oauth_config?.token_env_var || "OAUTH_ACCESS_TOKEN",
+    });
   }
 
   async function handleEdit() {
     if (!editTarget) return;
     setEditSaving(true);
     try {
+      const isOAuth = editForm.auth_type === "oauth2";
       const updated = await patchMCPServer(editTarget.id, {
         name: editForm.name || undefined,
         description: editForm.description || undefined,
         url: editForm.url || undefined,
+        auth_type: editForm.auth_type,
+        client_secret: editForm.client_secret || undefined,
+        oauth_config: isOAuth
+          ? {
+              client_id: editForm.oauth_client_id,
+              authorize_endpoint: editForm.oauth_authorize_endpoint,
+              token_endpoint: editForm.oauth_token_endpoint,
+              scopes: editForm.oauth_scopes.split(",").map((s) => s.trim()).filter(Boolean),
+              token_env_var: editForm.oauth_token_env_var || "OAUTH_ACCESS_TOKEN",
+            }
+          : undefined,
       });
       setServers((prev) => prev.map((s) => s.id === updated.id ? updated : s));
       setEditTarget(null);
@@ -265,17 +342,32 @@ function MCPServersTab() {
   }
 
   useEffect(() => {
-    listMCPServers().then(setServers).catch(() => {});
+    refreshServers();
     listProjects().then((pr) => {
       setProjects(pr);
       if (pr.length > 0) setProjectId((prev) => prev || pr[0].id);
     }).catch(() => {});
   }, []);
 
+  function resetCreateForm() {
+    setForm({
+      name: "", description: "", transport: "http", url: "",
+      is_first_party: true, embed_output: true,
+      auth_type: "static_secrets", client_secret: "",
+      oauth_client_id: "", oauth_authorize_endpoint: "", oauth_token_endpoint: "",
+      oauth_scopes: "", oauth_token_env_var: "OAUTH_ACCESS_TOKEN",
+    });
+  }
+
   async function handleCreate() {
     if (!projectId) { toast.error("Select a project first."); return; }
     if (!form.name || !form.url) {
       toast.error("Name and URL are required.");
+      return;
+    }
+    const isOAuth = form.auth_type === "oauth2";
+    if (isOAuth && (!form.oauth_client_id || !form.oauth_authorize_endpoint || !form.oauth_token_endpoint)) {
+      toast.error("Client ID, authorize endpoint, and token endpoint are required for OAuth2.");
       return;
     }
     setSaving(true);
@@ -291,11 +383,22 @@ function MCPServersTab() {
         config: {},
         timeout_seconds: 60,
         max_retries: 3,
+        auth_type: form.auth_type,
+        client_secret: form.client_secret || undefined,
+        oauth_config: isOAuth
+          ? {
+              client_id: form.oauth_client_id,
+              authorize_endpoint: form.oauth_authorize_endpoint,
+              token_endpoint: form.oauth_token_endpoint,
+              scopes: form.oauth_scopes.split(",").map((s) => s.trim()).filter(Boolean),
+              token_env_var: form.oauth_token_env_var || "OAUTH_ACCESS_TOKEN",
+            }
+          : undefined,
       });
       setServers((prev) => [...prev, s]);
       setOpen(false);
-      setForm({ name: "", description: "", transport: "http", url: "", is_first_party: true, embed_output: true });
-      toast.success(`MCP server "${s.name}" added.`);
+      resetCreateForm();
+      toast.success(`MCP server "${s.name}" added.${isOAuth ? " Connect it from the list to finish OAuth setup." : ""}`);
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Failed to create MCP server.");
     } finally {
@@ -346,6 +449,18 @@ function MCPServersTab() {
                 {s.is_first_party && (
                   <span className="rounded-full bg-blue-500/10 px-2 py-0.5 text-[10px] text-blue-600">first-party</span>
                 )}
+                {s.auth_type === "oauth2" && (
+                  <span
+                    className={`rounded-full px-2 py-0.5 text-[10px] ${
+                      s.oauth_connected
+                        ? "bg-green-500/10 text-green-600"
+                        : "bg-amber-500/10 text-amber-600"
+                    }`}
+                  >
+                    {s.oauth_connected ? "connected" : "not connected"}
+                  </span>
+                )}
+                <ConnectMcpButton server={s} onConnected={refreshServers} />
                 <Button
                   size="icon"
                   variant="ghost"
@@ -383,6 +498,54 @@ function MCPServersTab() {
                 Transport/server type can't be changed after creation -- delete and re-add if you need a different one.
               </p>
             </div>
+            <div>
+              <Label>Authentication</Label>
+              <Select value={editForm.auth_type} onValueChange={(v) => setEditForm({ ...editForm, auth_type: v as MCPAuthType })}>
+                <SelectTrigger className="mt-1"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="none">None</SelectItem>
+                  <SelectItem value="static_secrets">Static secret</SelectItem>
+                  <SelectItem value="oauth2">OAuth2</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            {editForm.auth_type === "static_secrets" && (
+              <div>
+                <Label>Client Secret <span className="text-foreground-muted">(leave blank to keep current)</span></Label>
+                <Input type="password" value={editForm.client_secret} onChange={(e) => setEditForm({ ...editForm, client_secret: e.target.value })} className="mt-1" />
+              </div>
+            )}
+            {editForm.auth_type === "oauth2" && (
+              <>
+                <div>
+                  <Label>Client ID</Label>
+                  <Input value={editForm.oauth_client_id} onChange={(e) => setEditForm({ ...editForm, oauth_client_id: e.target.value })} className="mt-1" />
+                </div>
+                <div>
+                  <Label>Client Secret <span className="text-foreground-muted">(leave blank to keep current)</span></Label>
+                  <Input type="password" value={editForm.client_secret} onChange={(e) => setEditForm({ ...editForm, client_secret: e.target.value })} className="mt-1" />
+                </div>
+                <div>
+                  <Label>Authorize Endpoint</Label>
+                  <Input value={editForm.oauth_authorize_endpoint} onChange={(e) => setEditForm({ ...editForm, oauth_authorize_endpoint: e.target.value })} placeholder="https://provider.example.com/oauth/authorize" className="mt-1" />
+                </div>
+                <div>
+                  <Label>Token Endpoint</Label>
+                  <Input value={editForm.oauth_token_endpoint} onChange={(e) => setEditForm({ ...editForm, oauth_token_endpoint: e.target.value })} placeholder="https://provider.example.com/oauth/token" className="mt-1" />
+                </div>
+                <div>
+                  <Label>Scopes <span className="text-foreground-muted">(comma-separated)</span></Label>
+                  <Input value={editForm.oauth_scopes} onChange={(e) => setEditForm({ ...editForm, oauth_scopes: e.target.value })} placeholder="read, write" className="mt-1" />
+                </div>
+                <div>
+                  <Label>Token Env Var <span className="text-foreground-muted">(how the access token reaches the MCP process)</span></Label>
+                  <Input value={editForm.oauth_token_env_var} onChange={(e) => setEditForm({ ...editForm, oauth_token_env_var: e.target.value })} className="mt-1" />
+                </div>
+                <p className="text-xs text-foreground-muted">
+                  After saving, use the {editTarget?.oauth_connected ? "Reconnect" : "Connect"} button in the list to complete the OAuth flow.
+                </p>
+              </>
+            )}
           </div>
           <DialogFooter>
             <Button variant="ghost" onClick={() => setEditTarget(null)}>Cancel</Button>
@@ -429,6 +592,54 @@ function MCPServersTab() {
               <Switch checked={form.embed_output} onCheckedChange={(v) => setForm({ ...form, embed_output: v })} />
               <Label>Embed tool results to vector DB</Label>
             </div>
+            <div>
+              <Label>Authentication</Label>
+              <Select value={form.auth_type} onValueChange={(v) => setForm({ ...form, auth_type: v as MCPAuthType })}>
+                <SelectTrigger className="mt-1"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="none">None</SelectItem>
+                  <SelectItem value="static_secrets">Static secret</SelectItem>
+                  <SelectItem value="oauth2">OAuth2</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            {form.auth_type === "static_secrets" && (
+              <div>
+                <Label>Client Secret <span className="text-foreground-muted">(optional)</span></Label>
+                <Input type="password" value={form.client_secret} onChange={(e) => setForm({ ...form, client_secret: e.target.value })} className="mt-1" />
+              </div>
+            )}
+            {form.auth_type === "oauth2" && (
+              <>
+                <div>
+                  <Label>Client ID</Label>
+                  <Input value={form.oauth_client_id} onChange={(e) => setForm({ ...form, oauth_client_id: e.target.value })} className="mt-1" />
+                </div>
+                <div>
+                  <Label>Client Secret</Label>
+                  <Input type="password" value={form.client_secret} onChange={(e) => setForm({ ...form, client_secret: e.target.value })} className="mt-1" />
+                </div>
+                <div>
+                  <Label>Authorize Endpoint</Label>
+                  <Input value={form.oauth_authorize_endpoint} onChange={(e) => setForm({ ...form, oauth_authorize_endpoint: e.target.value })} placeholder="https://provider.example.com/oauth/authorize" className="mt-1" />
+                </div>
+                <div>
+                  <Label>Token Endpoint</Label>
+                  <Input value={form.oauth_token_endpoint} onChange={(e) => setForm({ ...form, oauth_token_endpoint: e.target.value })} placeholder="https://provider.example.com/oauth/token" className="mt-1" />
+                </div>
+                <div>
+                  <Label>Scopes <span className="text-foreground-muted">(comma-separated)</span></Label>
+                  <Input value={form.oauth_scopes} onChange={(e) => setForm({ ...form, oauth_scopes: e.target.value })} placeholder="read, write" className="mt-1" />
+                </div>
+                <div>
+                  <Label>Token Env Var <span className="text-foreground-muted">(how the access token reaches the MCP process)</span></Label>
+                  <Input value={form.oauth_token_env_var} onChange={(e) => setForm({ ...form, oauth_token_env_var: e.target.value })} className="mt-1" />
+                </div>
+                <p className="text-xs text-foreground-muted">
+                  After creating, use the Connect button in the list to complete the OAuth flow.
+                </p>
+              </>
+            )}
           </div>
           <DialogFooter>
             <Button variant="ghost" onClick={() => setOpen(false)}>Cancel</Button>

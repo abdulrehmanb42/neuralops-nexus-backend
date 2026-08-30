@@ -73,6 +73,7 @@ def create_project(request, payload: ProjectCreateRequest):
         project = svc.create_project(company=company, user=user, name=payload.name, description=payload.description)
     except ValueError as exc:
         raise HttpError(400, str(exc))
+    svc.provision_project_folder_and_mcp(project)
     return _project_out(project)
 
 

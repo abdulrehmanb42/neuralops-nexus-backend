@@ -31,3 +31,15 @@ export async function patchMCPServer(
 export async function deleteMCPServer(id: string): Promise<void> {
   return apiJson<void>(`/api/v1/mcp-servers/${id}/`, { method: "DELETE" });
 }
+
+// OAuth2 connect flow (auth_type === "oauth2" servers only). Sends
+// window.location.origin -- nucleus signs it into the state param so the
+// public callback endpoint (auth=None, no bearer token available) knows
+// which origin's window.postMessage() to target on the way back. See
+// intelligence/oauth_client.py:build_authorize_url / mcp_oauth_callback.
+export async function getMCPOAuthAuthorizeUrl(id: string): Promise<string> {
+  const res = await apiJson<{ authorize_url: string }>(
+    `/api/v1/mcp-servers/${id}/oauth/authorize/?frontend_origin=${encodeURIComponent(window.location.origin)}`,
+  );
+  return res.authorize_url;
+}

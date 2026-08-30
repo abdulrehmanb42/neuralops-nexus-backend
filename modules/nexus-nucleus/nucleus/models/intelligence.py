@@ -606,6 +606,26 @@ class MCPServer(TenantBaseModel):
         help_text="Fernet-encrypted JSON dict of secret env vars. Do not set directly — use set_secrets().",
     )
 
+    class AuthType(models.TextChoices):
+        NONE           = "none",           "None"
+        STATIC_SECRETS = "static_secrets", "Static Secrets"
+        OAUTH2         = "oauth2",         "OAuth2"
+
+    auth_type = models.CharField(
+        max_length=20,
+        choices=AuthType.choices,
+        default=AuthType.STATIC_SECRETS,
+        db_index=True,
+    )
+
+    # Non-secret OAuth metadata only — token_endpoint, authorize_endpoint,
+    # client_id, scopes, expires_at. Actual tokens (access_token, refresh_token,
+    # client_secret) go through secrets_encrypted via set_secrets(), same as
+    # every other credential on this model.
+    oauth_config = models.JSONField(null=True, blank=True)
+
+    is_protected = models.BooleanField(default=False)
+    is_default = models.BooleanField(default=False)    
     timeout_seconds = models.PositiveIntegerField(default=60)
 
     max_retries = models.PositiveIntegerField(default=3)

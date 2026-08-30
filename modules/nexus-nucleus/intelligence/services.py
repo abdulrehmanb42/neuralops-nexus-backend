@@ -81,6 +81,7 @@ def create_mcp_server_standalone(company, data: dict):
     """
     from nucleus.models import MCPServer, Project
     project_id = data.pop("project_id")
+    client_secret = data.pop("client_secret", None)
     project = Project.objects.filter(company=company, id=project_id, is_active=True).first()
     if not project:
         raise ValueError("Project not found")
@@ -91,6 +92,9 @@ def create_mcp_server_standalone(company, data: dict):
         raise ValueError(f"An MCP server named '{data.get('name')}' already exists in this project.")
 
     server = MCPServer.objects.create(company=company, **data)
+    if client_secret:
+        server.set_secrets({**server.get_secrets(), "client_secret": client_secret})
+        server.save()
     server.projects.add(project)
     return server
 
@@ -105,9 +109,12 @@ def update_mcp_server_standalone(company, server_id: str, data: dict):
     server = get_mcp_server_standalone(company, server_id)
     if not server:
         return None
+    client_secret = data.pop("client_secret", None)
     for field, value in data.items():
         if value is not None:
             setattr(server, field, value)
+    if client_secret:
+        server.set_secrets({**server.get_secrets(), "client_secret": client_secret})
     server.save()
     return server
 

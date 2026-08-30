@@ -192,7 +192,8 @@ services:
     image: ${NEURALOPS_IMAGE:-noamanfaisal/neuralops:latest}
     profiles: ["production"]
     container_name: neuralops-nexus-ai
-    command: ["nexus-ai-env", "python3", "-m", "uvicorn", "apps.main:app", "--host", "0.0.0.0", "--port", "8000"]
+    # command: ["nexus-ai-env", "python3", "-m", "uvicorn", "apps.main:app", "--host", "0.0.0.0", "--port", "8000"]
+    command: ["tail", "-f", "/dev/null"]
     ports:
       - "${NEXUS_AI_HOST_PORT:-8020}:8000"
     volumes:
@@ -296,6 +297,7 @@ services:
     profiles: ["dev"]
     container_name: neuralops-nucleus-dev
     command: ["nucleus-env", "uvicorn", "core.asgi:application", "--host", "0.0.0.0", "--port", "8000", "--reload"]
+    # command: ["nucleus-env", "tail", "-f", "/dev/null"]
     volumes:
       - ./modules/nexus-nucleus:/nexus/nucleus
     env_file:
@@ -308,7 +310,17 @@ services:
       - REDIS_URL=redis://redis-dev:6379/0
       - NEXUS_AI_URL=http://nexus-ai-dev:8000
       - CENTRIFUGO_API_URL=http://centrifugo-dev:8000/api
-      - NEURALOPS_SERVER_URL=${NEURALOPS_SERVER_URL}
+      # Hardcoded, NOT ${NEURALOPS_SERVER_URL} -- that variable comes from
+      # neuralops/app.env, which is shared with the PRODUCTION nucleus/
+      # centrifugo services (both load it via env_file:). Interpolating it
+      # here would mean editing app.env for dev testing silently changes
+      # production's OAuth redirect_uri and Centrifugo CORS origin too, the
+      # next time production gets recreated. Pinned directly instead --
+      # update this line by hand if the Funnel's proxy target or hostname
+      # ever changes (currently: `tailscale funnel status` shows the single
+      # 443 Funnel entry pointed at localhost:8096, i.e. THIS dev stack --
+      # no separate port in use).
+      - NEURALOPS_SERVER_URL=https://node-3.tail9ed39a.ts.net
       - NEURALOPS_VERSION=dev
     networks:
       - neuralops-network
@@ -377,6 +389,7 @@ services:
     profiles: ["dev"]
     container_name: neuralops-nexus-ai-dev
     command: ["nexus-ai-env", "python3", "-m", "uvicorn", "apps.main:app", "--host", "0.0.0.0", "--port", "8000", "--reload"]
+    # command: ["nexus-ai-env", "tail", "-f", "/dev/null"]
     ports:
       - "${DEV_NEXUS_AI_HOST_PORT:-8021}:8000"
     # host.docker.internal -- stdio MCP servers spawned as subprocesses of
@@ -414,7 +427,10 @@ services:
     env_file:
       - ./neuralops/secrets.env
     environment:
-      - CENTRIFUGO_ALLOWED_ORIGINS=${NEURALOPS_SERVER_URL}
+      # Hardcoded for the same reason as nucleus-dev's NEURALOPS_SERVER_URL
+      # above -- ${NEURALOPS_SERVER_URL} resolves from the shared
+      # neuralops/app.env, which production also loads.
+      - CENTRIFUGO_ALLOWED_ORIGINS=https://node-3.tail9ed39a.ts.net
     networks:
       - neuralops-network
     depends_on:
