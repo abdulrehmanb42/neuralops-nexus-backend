@@ -21,7 +21,7 @@ from django.utils import timezone
 from asgiref.sync import sync_to_async
 import json
 import uuid
-from datetime import datetime, timezone
+from datetime import datetime, timezone as dt_timezone
 
 logger = logging.getLogger(__name__)
 
@@ -506,7 +506,7 @@ async def trigger_ai_response_async(
 
     msg_id = ai_msg["id"]
     channel = topic_channel(topic_id)
-    now = datetime.now(timezone.utc).isoformat()
+    now = datetime.now(dt_timezone.utc).isoformat()
 
     # 2. Publish message_start
     await publish_async(channel, {
@@ -737,7 +737,7 @@ async def trigger_ai_swarm_response_async(
     
     msg_id = ai_msg["id"]
     channel = topic_channel(topic_id)
-    now = datetime.now(timezone.utc).isoformat()
+    now = datetime.now(dt_timezone.utc).isoformat()
 
     # 2. Publish message_start
     await publish_async(channel, {

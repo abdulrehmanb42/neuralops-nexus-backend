@@ -46,6 +46,9 @@ class AIModelOut(Schema):
     config: dict
     is_active: bool
     has_api_key: bool
+    # Projects this model is attached to (visibility gate) -- lets clients
+    # render and manage attachments without a second endpoint.
+    project_ids: list[str] = []
 
 
 # ── MCPServer ─────────────────────────────────────────────────────────────────
@@ -189,6 +192,9 @@ class PersonaOut(Schema):
     agent_id: Optional[str] = None
     prompt: Optional[PromptOut] = None
     is_active: bool
+    # Server-relative media URL of the shadow user's assigned avatar --
+    # personas already show it in chat; management UIs need it too.
+    avatar: Optional[str] = None
 
 
 # ── PromptTemplate ────────────────────────────────────────────────────────────
