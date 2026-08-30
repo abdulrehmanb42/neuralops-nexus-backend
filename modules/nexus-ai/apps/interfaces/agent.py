@@ -26,6 +26,7 @@ class AgentRunner(ABC):
         job: "TriggerJob",
         messages: list[dict],
         persona: "PersonaConfig",
+        tools: list[dict] | None = None,
     ) -> AsyncIterator["AgentEvent"]:
         """
         Run the agent loop for this job.

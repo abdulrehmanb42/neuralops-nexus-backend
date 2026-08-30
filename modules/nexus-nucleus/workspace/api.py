@@ -144,7 +144,8 @@ def list_topics(request, project_id: str, channel_id: str, include_archived: boo
         {
             "id": str(t.id), "title": t.title, "slug": t.slug,
             "channel_id": str(t.channel_id), "project_id": str(t.project_id),
-            "has_unread": unread_map.get(str(t.id), False),
+            "has_unread": unread_map.get(str(t.id), 0) > 0,
+            "unread_count": unread_map.get(str(t.id), 0),
         }
         for t in topics
     ]

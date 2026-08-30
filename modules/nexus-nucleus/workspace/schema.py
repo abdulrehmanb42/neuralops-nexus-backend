@@ -44,6 +44,7 @@ class TopicOut(Schema):
     channel_id: str
     project_id: str
     has_unread: bool = False
+    unread_count: int = 0
 
 
 # ── Members ───────────────────────────────────────────────────────────────────

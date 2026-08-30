@@ -136,6 +136,7 @@ export interface Persona {
   agent_id?: string;
   prompt?: Prompt;
   is_active: boolean;
+  is_active: boolean;
 }
 
 // ── Scheduling ────────────────────────────────────────────────────────────────

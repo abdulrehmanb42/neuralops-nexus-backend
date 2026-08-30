@@ -102,14 +102,18 @@ REGISTRY = [
     # must NOT inherit these: creating one of these affects the whole
     # company, not just one project. Only a COMPANY-scoped assignment can
     # grant them.
-    ("persona.list", ObjectType.PERSONA, ScopeType.COMPANY, "List personas."),
-    ("persona.create", ObjectType.PERSONA, ScopeType.COMPANY, "Create a persona."),
-    ("persona.update", ObjectType.PERSONA, ScopeType.COMPANY, "Edit a persona."),
-    ("persona.delete", ObjectType.PERSONA, ScopeType.COMPANY, "Delete a persona."),
-
     # agent.list stays COMPANY -- reachability for ordinary project members
     # comes through the row-visibility fallback (visible_agents), same as
     # mcp_server.list below, not through this right being held directly.
+    ("persona.list", ObjectType.PERSONA, ScopeType.COMPANY, "List personas."),
+    
+    # create/update/delete are PROJECT scope -- a persona belongs to exactly one
+    # project, and that project's own Admin should be able to manage it without
+    # needing company-wide access (aligned with agent.* and mcp_server.*).
+    ("persona.create", ObjectType.PERSONA, ScopeType.PROJECT, "Create a persona in a project."),
+    ("persona.update", ObjectType.PERSONA, ScopeType.PROJECT, "Edit a persona."),
+    ("persona.delete", ObjectType.PERSONA, ScopeType.PROJECT, "Delete a persona."),
+
     ("agent.list", ObjectType.AGENT, ScopeType.COMPANY, "List AI agents."),
     # create/delete are PROJECT scope -- an agent belongs to exactly one
     # project (see AIAgent.projects in nucleus/models/intelligence.py), and

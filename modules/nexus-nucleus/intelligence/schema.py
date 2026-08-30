@@ -3,6 +3,7 @@ Schemas for AI Model, Persona, Prompt, and PromptTemplate APIs.
 """
 from typing import Optional
 from ninja import Schema
+from pydantic import Field
 
 
 # ── AIModel ───────────────────────────────────────────────────────────────────
@@ -45,6 +46,9 @@ class AIModelOut(Schema):
     config: dict
     is_active: bool
     has_api_key: bool
+    # Projects this model is attached to (visibility gate) -- lets clients
+    # render and manage attachments without a second endpoint.
+    project_ids: list[str] = []
 
 
 class MCPOAuthAuthorizeOut(Schema):
@@ -185,6 +189,7 @@ class PersonaIn(Schema):
     prompt: PromptIn
 
 
+
 class PersonaPatchIn(Schema):
     name: Optional[str] = None
     description: Optional[str] = None
@@ -201,6 +206,9 @@ class PersonaOut(Schema):
     agent_id: Optional[str] = None
     prompt: Optional[PromptOut] = None
     is_active: bool
+    # Server-relative media URL of the shadow user's assigned avatar --
+    # personas already show it in chat; management UIs need it too.
+    avatar: Optional[str] = None
 
 
 # ── PromptTemplate ────────────────────────────────────────────────────────────

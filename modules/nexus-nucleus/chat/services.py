@@ -12,11 +12,16 @@ from __future__ import annotations
 import logging
 import re
 from datetime import timedelta
+import asyncio
 
 import httpx
 from django.conf import settings
 from django.db.models import Max
 from django.utils import timezone
+from asgiref.sync import sync_to_async
+import json
+import uuid
+from datetime import datetime, timezone as dt_timezone
 
 logger = logging.getLogger(__name__)
 
@@ -194,6 +199,7 @@ class MessageDirectives:
     "act on it" are two separate, easy-to-follow steps.
 
     Directives, checked/stripped in this order:
+        /swarm              -- trigger the mentioned persona in swarm mode
         @session            -- open a session with whoever gets @mentioned
         @session close/end  -- close the active session, no AI trigger
         @output_type        -- e.g. @chart, @html -- how the AI should
@@ -211,6 +217,9 @@ class MessageDirectives:
 
     def __init__(self, raw: str):
         self.raw = raw
+
+        self.swarm = "/swarm" in raw
+        raw = re.sub(r'\s*/swarm\s*', ' ', raw).strip() if self.swarm else raw
         self.has_session_open, self.is_session_close, after_session = extract_session_directive(raw)
         self.output_type, self.clean_message = extract_output_type(after_session)
 
@@ -472,10 +481,6 @@ async def trigger_ai_response_async(
 
     Errors are logged and swallowed — AI failure must never affect chat.
     """
-    from asgiref.sync import sync_to_async
-    import json
-    import uuid
-    from datetime import datetime, timezone
 
     nexus_ai_url = getattr(settings, "NEXUS_AI_URL", "")
     internal_key = getattr(settings, "INTERNAL_API_KEY", "")
@@ -497,7 +502,7 @@ async def trigger_ai_response_async(
 
     msg_id = ai_msg["id"]
     channel = topic_channel(topic_id)
-    now = datetime.now(timezone.utc).isoformat()
+    now = datetime.now(dt_timezone.utc).isoformat()
 
     # 2. Publish message_start
     await publish_async(channel, {
@@ -519,7 +524,6 @@ async def trigger_ai_response_async(
     #    actually uses (ContextSource); switching to it without confirming
     #    they're equivalent risks silently breaking RAG/attached-file search.
     #    Left as a separate, explicitly flagged follow-up -- see #131.
-    import asyncio
 
     # _build_context_sources does sync ORM queries — must be wrapped for async context
     context_sources = await sync_to_async(_build_context_sources)(topic, company)
@@ -670,7 +674,235 @@ async def trigger_ai_response_async(
             created_at=now,
         ))
 
+async def trigger_ai_swarm_response_async(
+    *,
+    company,
+    project,
+    topic,
+    personas,
+    user_message: str,
+    user_message_id: str,
+    topic_id: str,
+    output_type: str = "auto",
+) -> None:
+    """
+    Fire-and-forget: trigger nexus-ai to generate a persona response.
 
+    nexus-nucleus's job here is orchestration only -- create the placeholder
+    message, tell nexus-ai which persona + topic + message to respond to,
+    relay the stream, save the result. It does NOT resolve the persona's
+    model/API key/system prompt, and does NOT fetch or filter conversation
+    history -- nexus-ai pulls both of those itself, right before it builds
+    the prompt (see nexus-ai: apps/managers/nucleus_client.py + agentic_manager.py).
+    That's a deliberate move: how much history to include and which past
+    replies are "good enough" to show the model are prompt-quality calls,
+    not chat-orchestration ones.
+
+    M7 additions:
+    - Passes output_type to nexus-ai TriggerJob
+    - Captures output_type + render_as from message_done event
+    - Publishes both to Centrifugo on message_done
+    - Stores render_as in ChatMessage.metadata for history replay
+
+    Flow:
+        1. Pre-create AI message in DB (status=PENDING)
+        2. Publish message_start to Centrifugo
+        3. Call nexus-ai POST /api/v1/trigger/ with a minimal job
+           (job_id, msg_id, persona_id, topic_id, user_message_id, message,
+           output_type) — SSE stream
+        4. For each message_delta: publish token to Centrifugo
+        5. On message_done: update DB message, publish message_done + output_type + render_as
+
+    Errors are logged and swallowed — AI failure must never affect chat.
+    """
+
+    nexus_ai_url = getattr(settings, "NEXUS_AI_URL", "")
+    internal_key = getattr(settings, "INTERNAL_API_KEY", "")
+
+    if not nexus_ai_url:
+        logger.warning("[trigger] NEXUS_AI_URL not set — skipping AI response")
+        return
+
+    # 1. Pre-create AI message in DB
+    _create_ai_message = sync_to_async(create_ai_message)
+    _update_ai_message = sync_to_async(update_ai_message)
+    _fail_ai_message = sync_to_async(fail_ai_message)
+
+    try:
+        persona = personas[0]
+        ai_msg = await _create_ai_message(company, project, topic, persona)
+    except Exception as exc:
+        logger.warning("[trigger] failed to create AI message: %s", exc)
+        return
+    
+    msg_id = ai_msg["id"]
+    channel = topic_channel(topic_id)
+    now = datetime.now(dt_timezone.utc).isoformat()
+
+    # 2. Publish message_start
+    await publish_async(channel, {
+        "type": "message_start",
+        "id": msg_id,
+        "sender_id": ai_msg["sender_id"],
+        "sender_name": ai_msg["sender_name"],
+        "sender_avatar": ai_msg["sender_avatar"],  # #148 -- already in _serialise()'s dict
+        "sequence": ai_msg["sequence"],
+        "created_at": now,
+    })
+
+    # 3. Build the minimal TriggerJob payload -- nexus-ai resolves persona/
+    #    model config and history itself via its own internal calls back
+    #    into nucleus (see nucleus_client.py). context_sources is the one
+    #    exception, still built and pushed here for now -- there's an
+    #    existing but UNVERIFIED nexus-ai-side endpoint for topic contexts
+    #    that queries a different model (TopicContext) than this function
+    #    actually uses (ContextSource); switching to it without confirming
+    #    they're equivalent risks silently breaking RAG/attached-file search.
+    #    Left as a separate, explicitly flagged follow-up -- see #131.
+
+    # _build_context_sources does sync ORM queries — must be wrapped for async context
+    context_sources = await sync_to_async(_build_context_sources)(topic, company)
+
+    job_payload = {
+        "job_id": str(uuid.uuid4()),
+        "msg_id": msg_id,
+        "personas": [[str(persona.id), persona.name, persona.description] for persona in personas],
+        "topic_id": topic_id,
+        "user_message_id": user_message_id,
+        "message": user_message,
+        "context_sources": context_sources,
+        "output_type": output_type,  # M7: "auto" | "chart" | "code" | "terminal" | ...
+    }
+
+    # 4. Stream from nexus-ai, relay tokens to Centrifugo
+    active_msg_id = msg_id
+    streamed_contents: dict[str, list[str]] = {msg_id: []}
+    ai_error: str | None = None
+
+    try:
+        async with httpx.AsyncClient(timeout=120) as client:
+            async with client.stream(
+                "POST",
+                f"{nexus_ai_url}/api/v1/trigger/swarm/",
+                json=job_payload,
+                headers={
+                    "X-Internal-Key": internal_key,
+                    "Content-Type": "application/json",
+                },
+            ) as response:
+                if response.status_code != 200:
+                    body = await response.aread()
+                    raise RuntimeError(
+                        f"nexus-ai /trigger/ returned {response.status_code}: {body.decode()[:300]}"
+                    )
+
+                async for line in response.aiter_lines():
+                    if not line.startswith("data: "):
+                        continue
+                    raw = line[6:].strip()
+                    if not raw:
+                        continue
+                    try:
+                        event = json.loads(raw)
+                        event_type = event.get("type")
+                        current_id = event.get("id") or msg_id
+
+                        if event_type == "message_start":
+                            # If we see a new ID, we are starting a sub-message for a delegate
+                            if current_id != msg_id and current_id not in streamed_contents:
+                                persona_id = event.get("persona_id") or str(personas[0].id)
+                                from nucleus.models import Persona
+                                p_obj = await sync_to_async(lambda: Persona.objects.filter(id=persona_id).first())()
+                                if not p_obj:
+                                    p_obj = personas[0]
+                                new_ai_msg = await _create_ai_message(company, project, topic, p_obj)
+                                current_id = new_ai_msg["id"]
+                                event.update({
+                                    "id": current_id,
+                                    "sender_id": new_ai_msg["sender_id"],
+                                    "sender_name": new_ai_msg["sender_name"],
+                                    "sender_avatar": new_ai_msg["sender_avatar"],
+                                    "sequence": new_ai_msg["sequence"],
+                                })
+                                # Track this new msg metadata for embedding later
+                                streamed_contents[f"{current_id}_meta"] = new_ai_msg
+                                
+                            active_msg_id = current_id
+                            streamed_contents[current_id] = []
+                            await publish_async(channel, event)
+
+                        elif event_type == "message_delta":
+                            delta = event.get("delta") or ""
+                            if delta:
+                                streamed_contents[active_msg_id].append(delta)
+                                await publish_async(channel, {
+                                    "type": "message_delta",
+                                    "id": active_msg_id,
+                                    "delta": delta,
+                                })
+
+                        elif event_type == "message_done":
+                            # Process completion for the current sub-message
+                            final_clean = event.get("content")
+                            save_content = final_clean if final_clean is not None else "".join(streamed_contents.get(active_msg_id, []))
+                            final_output_type = event.get("output_type") or "text"
+                            final_render_as = event.get("render_as") or "text"
+                            embed_description = event.get("embed_description")
+                            
+                            await _update_ai_message(
+                                active_msg_id,
+                                save_content,
+                                render_as=final_render_as,
+                                output_type=final_output_type,
+                            )
+                            event["id"] = active_msg_id
+                            await publish_async(channel, event)
+                            
+                            # M8: Embed AI response
+                            _TEXT_EMBEDDABLE = {"text", "code", "auto"}
+                            _DESC_EMBEDDABLE = {"html", "form", "terminal"}
+                            embed_content = None
+                            if final_output_type in _TEXT_EMBEDDABLE and save_content:
+                                embed_content = save_content
+                            elif final_output_type in _DESC_EMBEDDABLE and embed_description:
+                                embed_content = embed_description
+
+                            if embed_content:
+                                meta = streamed_contents.get(f"{active_msg_id}_meta", ai_msg)
+                                asyncio.create_task(embed_message_async(
+                                    message_id=active_msg_id,
+                                    company_id=str(company.id),
+                                    sequence=meta["sequence"],
+                                    topic_id=topic_id,
+                                    channel_id=str(topic.channel_id),
+                                    project_id=str(project.id),
+                                    sender_id=meta["sender_id"] or "",
+                                    sender_name=meta["sender_name"] or "",
+                                    sender_type="ai",
+                                    content=embed_content,
+                                    created_at=now,
+                                ))
+                            
+                            # DO NOT BREAK! We must keep the stream open for subsequent swarm agents
+
+                        elif event_type == "swarm_transition":
+                            event["id"] = active_msg_id
+                            await publish_async(channel, event)
+
+                        elif event_type == "message_error":
+                            ai_error = event.get("error") or "Unknown error"
+                            logger.warning(
+                                "[trigger] nexus-ai reported error for msg %s: %s",
+                                active_msg_id, ai_error,
+                            )
+                            await _fail_ai_message(active_msg_id, ai_error)
+                            break
+
+                    except (json.JSONDecodeError, KeyError):
+                        continue
+
+    except Exception as exc:
+        logger.warning("[trigger] streaming error for msg %s: %s", active_msg_id, exc)
 # ── Read messages ──────────────────────────────────────────────────────────────
 
 def list_messages(topic_id: str, limit: int = 100, before_sequence: int = None) -> list[dict]:

@@ -9,6 +9,7 @@ from pathlib import Path
 import base64
 import binascii
 
+from nucleus.models import Project, Persona, AIRequestLog
 from authn.auth import SupabaseBearer
 from authn.permissions.checker import PermissionChecker
 from .schema import (
@@ -56,6 +57,7 @@ def _model_out(model) -> AIModelOut:
         config=model.config,
         is_active=model.is_active,
         has_api_key=bool(model.api_key_encrypted),
+        project_ids=[str(pid) for pid in model.projects.filter(is_active=True).values_list("id", flat=True)],
     )
 
 
@@ -127,6 +129,7 @@ def _persona_out(persona) -> PersonaOut:
         agent_id=str(persona.agent_id) if persona.agent_id else None,
         prompt=prompt,
         is_active=persona.is_active,
+        avatar=(persona.identity_user.avatar.url if persona.identity_user_id and persona.identity_user.avatar else None),
     )
 
 
@@ -171,7 +174,6 @@ def delete_ai_model(request, model_id: str):
 @router.post("/projects/{project_id}/ai-models/{model_id}/attach/", response={200: dict})
 def attach_ai_model(request, project_id: str, model_id: str):
     company = _company(request)
-    from nucleus.models import Project
     project = Project.objects.filter(company=company, id=project_id, is_active=True).first()
     if not project:
         raise HttpError(404, "Project not found.")
@@ -185,7 +187,6 @@ def attach_ai_model(request, project_id: str, model_id: str):
 @router.delete("/projects/{project_id}/ai-models/{model_id}/attach/", response={200: dict})
 def detach_ai_model(request, project_id: str, model_id: str):
     company = _company(request)
-    from nucleus.models import Project
     project = Project.objects.filter(company=company, id=project_id, is_active=True).first()
     if not project:
         raise HttpError(404, "Project not found.")
@@ -215,7 +216,6 @@ def list_mcp_servers_all(request):
 def create_mcp_server_standalone(request, payload: MCPServerIn):
     """Create a standalone MCP server, owned by payload.project_id."""
     company = _company(request)
-    from nucleus.models import Project
     project = Project.objects.filter(company=company, id=payload.project_id, is_active=True).first()
     if not project:
         raise HttpError(404, "Project not found.")
@@ -359,7 +359,6 @@ def list_agents(request):
 @router.post("/agents/", response=AIAgentOut)
 def create_agent(request, payload: AIAgentIn):
     company = _company(request)
-    from nucleus.models import Project
     project = Project.objects.filter(company=company, id=payload.project_id, is_active=True).first()
     if not project:
         raise HttpError(404, "Project not found.")
@@ -416,7 +415,6 @@ def list_personas(request, project_id: str):
     agents/mcp-servers, not a blanket permission check.
     """
     company = _company(request)
-    from nucleus.models import Project
     project = Project.objects.filter(company=company, id=project_id, is_active=True).first()
     if not project:
         raise HttpError(404, "Project not found.")
@@ -426,8 +424,11 @@ def list_personas(request, project_id: str):
 @router.post("/personas/", response=PersonaOut)
 def create_persona(request, payload: PersonaIn):
     company = _company(request)
-    if not PermissionChecker.can(request.auth, "persona.create", company=company):
-        raise HttpError(403, "You don't have permission to create personas.")
+    project = Project.objects.filter(company=company, id=payload.project_id, is_active=True).first()
+    if not project:
+        raise HttpError(404, "Project not found.")
+    if not PermissionChecker.can(request.auth, "persona.create", obj=project):
+        raise HttpError(403, "You don't have permission to create personas in this project.")
     persona = svc.create_persona(company, request.auth, payload.dict())
     return _persona_out(persona)
 
@@ -435,21 +436,26 @@ def create_persona(request, payload: PersonaIn):
 @router.patch("/personas/{persona_id}/", response=PersonaOut)
 def patch_persona(request, persona_id: str, payload: PersonaPatchIn):
     company = _company(request)
-    if not PermissionChecker.can(request.auth, "persona.update", company=company):
-        raise HttpError(403, "You don't have permission to edit personas.")
-    persona = svc.patch_persona(company, persona_id, payload.dict(exclude_none=True))
-    if not persona:
+    persona_obj = Persona.objects.filter(company=company, id=persona_id, is_active=True).select_related("project").first()
+    if not persona_obj:
         raise HttpError(404, "Persona not found.")
+    if not PermissionChecker.can(request.auth, "persona.update", obj=persona_obj.project):
+        raise HttpError(403, "You don't have permission to edit this persona.")
+    
+    persona = svc.patch_persona(company, persona_id, payload.dict(exclude_none=True))
     return _persona_out(persona)
 
 
 @router.delete("/personas/{persona_id}/", response={204: None})
 def delete_persona(request, persona_id: str):
     company = _company(request)
-    if not PermissionChecker.can(request.auth, "persona.delete", company=company):
-        raise HttpError(403, "You don't have permission to delete personas.")
-    if not svc.delete_persona(company, persona_id):
+    persona_obj = Persona.objects.filter(company=company, id=persona_id, is_active=True).select_related("project").first()
+    if not persona_obj:
         raise HttpError(404, "Persona not found.")
+    if not PermissionChecker.can(request.auth, "persona.delete", obj=persona_obj.project):
+        raise HttpError(403, "You don't have permission to delete this persona.")
+        
+    svc.delete_persona(company, persona_id)
     return 204, None
 
 
@@ -503,7 +509,6 @@ def get_ai_config(request):
 @router.get("/ai-request-logs/", response=List[AIRequestLogOut])
 def list_ai_request_logs(request):
     """Return the last 200 AI request logs, newest first."""
-    from nucleus.models import AIRequestLog
     company = _company(request)
     logs = (
         AIRequestLog.objects.filter(company=company)

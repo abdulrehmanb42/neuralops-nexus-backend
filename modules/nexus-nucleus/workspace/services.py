@@ -252,11 +252,11 @@ def get_topic_unread_map(user, topics) -> dict:
         if marker_msg is None:
             result[str(topic.id)] = ChatMessage.objects.filter(
                 topic=topic, is_active=True
-            ).exists()
+            ).count()
         else:
             result[str(topic.id)] = ChatMessage.objects.filter(
                 topic=topic, is_active=True, created_at__gt=marker_msg.created_at,
-            ).exists()
+            ).count()
     return result
 
 

@@ -1,5 +1,5 @@
 ---
-persona_name: {PERSONAL_NAME}
+persona_name: {PERSONA_NAME}
 role_type: orchestration
 version: 1.1.0
 ---

@@ -171,22 +171,18 @@ OutputTypeRegistry.register(
 OutputTypeRegistry.register(
     OutputTypeSpec(
         name="diagram",
-        render_as="html",
+        render_as="text",
         label="Diagram",
         icon="git-branch",
         system_instruction=(
-            "Respond with a complete, self-contained HTML page that renders a Mermaid diagram. "
-            "Wrap your entire response in output markers:\n\n"
-            "<<<OUTPUT:diagram>>>\n"
-            "<!DOCTYPE html>\n"
-            "<html>...</html>\n"
-            "<<<END_OUTPUT>>>\n\n"
-            "Import Mermaid from CDN: https://cdn.jsdelivr.net/npm/mermaid/dist/mermaid.min.js\n"
-            "Requirements:\n"
-            "- Call mermaid.initialize({startOnLoad: true, theme: 'default'}) in a <script>\n"
-            "- Use a <div class='mermaid'> block containing the diagram definition\n"
-            "- Supported: flowchart, sequenceDiagram, classDiagram, erDiagram, gantt, pie\n"
-            "- body { margin: 16px; background: white; }"
+            "Respond with a Mermaid diagram. "
+            "You MUST wrap your diagram in a standard markdown mermaid code block:\n\n"
+            "```mermaid\n"
+            "graph TD;\n"
+            "  A-->B;\n"
+            "```\n\n"
+            "Supported diagram types: flowchart, sequenceDiagram, classDiagram, erDiagram, gantt, pie.\n"
+            "CRITICAL: Do not output any HTML, even if previous messages in the chat history used HTML. Use ONLY plain text markdown mermaid blocks."
         ),
         example_prompts=[
             "Draw a flowchart of the user authentication process",
