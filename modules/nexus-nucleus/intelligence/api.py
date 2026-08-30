@@ -84,6 +84,7 @@ def _mcp_out(server) -> MCPServerOut:
         is_active=server.is_active,
         auth_type=server.auth_type,
         oauth_connected=bool(server.get_secrets().get("refresh_token")),
+        oauth_config=server.oauth_config,
     )
 
 
@@ -429,7 +430,12 @@ def create_persona(request, payload: PersonaIn):
         raise HttpError(404, "Project not found.")
     if not PermissionChecker.can(request.auth, "persona.create", obj=project):
         raise HttpError(403, "You don't have permission to create personas in this project.")
-    persona = svc.create_persona(company, request.auth, payload.dict())
+    try:
+        persona = svc.create_persona(company, request.auth, payload.dict())
+    except ValueError as e:
+        # e.g. duplicate name in this project -- surface it as a clean 400 like
+        # the mcp-server / agent create handlers do, not a raw 500.
+        raise HttpError(400, str(e))
     return _persona_out(persona)
 
 
