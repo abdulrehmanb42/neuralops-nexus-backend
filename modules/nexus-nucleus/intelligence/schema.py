@@ -116,6 +116,10 @@ class MCPServerOut(Schema):
     # oauth configuration
     auth_type: str
     oauth_connected: bool
+    # Non-secret OAuth config (client_id, endpoints, scopes, token_env_var) so
+    # the frontend can pre-fill the edit form. Secrets/tokens live in
+    # secrets_encrypted and are never returned here.
+    oauth_config: Optional[dict] = None
 
 
 # ── AIAgent ───────────────────────────────────────────────────────────────────

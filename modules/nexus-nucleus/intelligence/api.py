@@ -84,6 +84,7 @@ def _mcp_out(server) -> MCPServerOut:
         is_active=server.is_active,
         auth_type=server.auth_type,
         oauth_connected=bool(server.get_secrets().get("refresh_token")),
+        oauth_config=server.oauth_config,
     )
 
 
