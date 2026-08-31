@@ -63,7 +63,8 @@ export function ContextPanel({ projectId, topicId, onViewInChat }: { projectId: 
   );
   const active = tabs.find((g) => g.directive === activeDirective) ?? tabs[0];
   const activeKey = active?.directive;
-  const fileGroup = tabs.find((g) => g.directive === "file"); // Add file/link target — exists regardless of the active tab
+  const fileGroup = tabs.find((g) => g.directive === "file"); // "Add file" target — exists regardless of the active tab
+  const webGroup = tabs.find((g) => g.directive === "web"); // "Add link" target — web links are their own group
 
   const selectTab = (directive: string) => {
     setActiveDirective(directive);
@@ -118,7 +119,10 @@ export function ContextPanel({ projectId, topicId, onViewInChat }: { projectId: 
     onError: (e) => toast.error(e.message),
   });
 
-  const onFilesTab = activeKey === "file";
+  const onWebTab = activeKey === "web";
+  // File and web are both "sources" (vs chat messages) — for the Add-link form
+  // placement and the source-vs-message wording in the remove confirmations.
+  const isSourceTab = activeKey === "file" || activeKey === "web";
 
   return (
     <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
@@ -141,12 +145,12 @@ export function ContextPanel({ projectId, topicId, onViewInChat }: { projectId: 
               /* Always available while a Files group exists — using either one
                  jumps to the Files tab so the result is visible (fixes the
                  dead-end where the default Chat tab offered no way to add). */
-              fileGroup ? (
+              fileGroup || webGroup ? (
                 <>
                   <Button size="sm" loading={uploading} onClick={() => { selectTab("file"); fileRef.current?.click(); }}>
                     <Paperclip size={14} strokeWidth={2} /> Add file
                   </Button>
-                  <Button size="sm" onClick={() => { selectTab("file"); setAddingLink((v) => !v); }}>
+                  <Button size="sm" onClick={() => { selectTab("web"); setAddingLink((v) => !v); }}>
                     <Link2 size={14} strokeWidth={2} /> Add link
                   </Button>
                 </>
@@ -222,7 +226,7 @@ export function ContextPanel({ projectId, topicId, onViewInChat }: { projectId: 
               </div>
 
               <div role="tabpanel" id="ctx-tabpanel" aria-labelledby={activeKey ? `ctx-tab-${activeKey}` : undefined}>
-              {addingLink && onFilesTab && (
+              {addingLink && onWebTab && (
                 <AddLinkForm
                   onDone={() => {
                     setAddingLink(false);
@@ -300,7 +304,7 @@ export function ContextPanel({ projectId, topicId, onViewInChat }: { projectId: 
         title={selectedInTab.length === 1 ? "Remove from context?" : `Remove ${selectedInTab.length} items from context?`}
         body={
           <p>
-            {onFilesTab
+            {isSourceTab
               ? "These sources will no longer be available to the AI when it answers here. You can add them again anytime."
               : "These messages will be excluded from what the AI sees here. They stay visible in the chat."}
           </p>
@@ -320,7 +324,7 @@ export function ContextPanel({ projectId, topicId, onViewInChat }: { projectId: 
         body={
           <p>
             <b className="text-ink">{removingOne?.label}</b> will no longer be available to the AI when it answers here.
-            {onFilesTab ? " You can add it again anytime." : " It stays visible in the chat."}
+            {isSourceTab ? " You can add it again anytime." : " It stays visible in the chat."}
           </p>
         }
         confirmLabel="Remove"
