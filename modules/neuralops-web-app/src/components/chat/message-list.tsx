@@ -1,6 +1,6 @@
 "use client";
 
-import { Fragment, useEffect, useRef, useState } from "react";
+import { Fragment, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { ArrowDown, MessagesSquare } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -13,6 +13,10 @@ import { MessageItem, SystemSeparator } from "./message-item";
 
 // How close to the bottom counts as "following the stream".
 const NEAR_BOTTOM_PX = 160;
+
+// Layout effect on the client (scroll before paint — no flash), plain effect on
+// the server (no SSR warning; it does nothing there anyway).
+const useIsoLayoutEffect = typeof document !== "undefined" ? useLayoutEffect : useEffect;
 
 function dayLabel(iso: string | null): string | null {
   if (!iso) return null;
@@ -59,6 +63,24 @@ export function MessageList({ messages, transitions, loading, loadError, onRetry
   const newestId = messages.at(-1)?.id;
   // Content signature: changes on append AND on a streaming delta.
   const totalLength = messages.reduce((n, m) => n + m.content.length, 0) + messages.length;
+  // The scroll container only renders once this is true (loading/skeleton/error
+  // states render something else). The initial scroll keys on THIS becoming
+  // true, not on message count: the delayed loader can hold the skeleton past
+  // when messages arrive, so a count-based effect fired while the container was
+  // absent and never re-fired — landing at the top.
+  const messagesReady = !loading && !showSkeleton && !loadError && hasMessages;
+
+  // Land at the latest the moment the message container mounts.
+  useIsoLayoutEffect(() => {
+    if (!messagesReady || didInitial.current) return;
+    const el = scrollRef.current;
+    if (!el) return;
+    el.scrollTop = el.scrollHeight;
+    requestAnimationFrame(() => { const e = scrollRef.current; if (e) e.scrollTop = e.scrollHeight; }); // catch late layout (media/markdown)
+    didInitial.current = true;
+    lastNewestId.current = messages.at(-1)?.id ?? null;
+    atBottomRef.current = true;
+  }, [messagesReady]);
 
   // Attach the scroll listener once the scroll container exists (it's absent in
   // the loading/empty states). setState here lives in the event handler, not the
@@ -75,20 +97,12 @@ export function MessageList({ messages, transitions, loading, loadError, onRetry
     return () => el.removeEventListener("scroll", onScroll);
   }, [hasMessages]);
 
-  // Land at the latest on first paint; then follow the stream when at the
-  // bottom, or mark the first unread when scrolled up. DOM writes run inline;
-  // the state update is deferred to rAF (set-state-in-effect rule).
+  // Follow the stream when at the bottom, or mark the first unread when scrolled
+  // up. (Initial landing is the layout effect above.) DOM writes run inline; the
+  // state update is deferred to rAF (set-state-in-effect rule).
   useEffect(() => {
     const el = scrollRef.current;
-    if (!el || !hasMessages) return;
-    if (!didInitial.current) {
-      el.scrollTop = el.scrollHeight;
-      requestAnimationFrame(() => { const e = scrollRef.current; if (e) e.scrollTop = e.scrollHeight; }); // catch late layout (media/markdown)
-      didInitial.current = true;
-      lastNewestId.current = newestId ?? null;
-      atBottomRef.current = true;
-      return;
-    }
+    if (!el || !hasMessages || !didInitial.current) return;
     if (newestId && newestId !== lastNewestId.current) {
       const prevNewest = lastNewestId.current;
       lastNewestId.current = newestId;

@@ -1,5 +1,5 @@
-import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
+import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
 import type { UiMessage } from "@/lib/realtime/message-store";
 import { MessageList } from "./message-list";
 
@@ -52,5 +52,40 @@ describe("MessageList — new-messages pill", () => {
 
     await Promise.resolve(); // let any rAF settle
     expect(screen.queryByRole("button", { name: /new message/i })).toBeNull();
+  });
+});
+
+describe("MessageList — initial landing", () => {
+  const origSH = Object.getOwnPropertyDescriptor(HTMLElement.prototype, "scrollHeight");
+  const origCH = Object.getOwnPropertyDescriptor(HTMLElement.prototype, "clientHeight");
+  beforeEach(() => {
+    // jsdom has no layout — fake a scrollable container.
+    Object.defineProperty(HTMLElement.prototype, "scrollHeight", { configurable: true, get: () => 1000 });
+    Object.defineProperty(HTMLElement.prototype, "clientHeight", { configurable: true, get: () => 300 });
+  });
+  afterEach(() => {
+    if (origSH) Object.defineProperty(HTMLElement.prototype, "scrollHeight", origSH);
+    if (origCH) Object.defineProperty(HTMLElement.prototype, "clientHeight", origCH);
+    vi.useRealTimers();
+    cleanup();
+  });
+
+  // Regression: the delayed loader holds the skeleton past when messages arrive,
+  // so the scroll container mounts LATER than the message-count change. The
+  // initial scroll must fire on that mount — otherwise it lands at the top.
+  it("lands at the bottom when the container mounts after the delayed skeleton", () => {
+    vi.useFakeTimers();
+    const msgs = [msg("m0"), msg("m1"), msg("m2")];
+    const { container, rerender } = render(<MessageList {...base} messages={[]} loading />);
+    act(() => { vi.advanceTimersByTime(200); }); // delayed skeleton appears
+    expect(container.querySelector(".overflow-y-auto")).toBeNull(); // no scroll container yet
+
+    // Messages arrive, but the loader still holds the skeleton for its min duration.
+    rerender(<MessageList {...base} messages={msgs} loading={false} />);
+    act(() => { vi.advanceTimersByTime(500); }); // hold releases → container mounts
+
+    const el = container.querySelector(".overflow-y-auto") as HTMLElement;
+    expect(el).not.toBeNull();
+    expect(el.scrollTop).toBeGreaterThan(0); // scrolled to the latest, not stuck at the top
   });
 });
