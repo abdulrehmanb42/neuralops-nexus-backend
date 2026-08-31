@@ -28,7 +28,7 @@ const securityHeaders = [
 
 const nextConfig: NextConfig = {
   // Emits .next/standalone for the minimal production Docker image.
-  output: "standalone",
+  output: process.env.VERCEL ? undefined : "standalone",
   allowedDevOrigins: devAllowedOrigins(),
   // Bottom-left would sit on top of the profile button in the server rail.
   devIndicators: { position: "bottom-right" },
