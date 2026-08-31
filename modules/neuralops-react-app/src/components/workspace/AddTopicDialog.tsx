@@ -36,12 +36,7 @@ export interface AddTopicDialogProps {
   channelId: string;
 }
 
-export function AddTopicDialog({
-  open,
-  onOpenChange,
-  projectId,
-  channelId,
-}: AddTopicDialogProps) {
+export function AddTopicDialog({ open, onOpenChange, projectId, channelId }: AddTopicDialogProps) {
   const form = useForm<FormValues>({
     resolver: zodResolver(schema),
     defaultValues: { title: "" },

@@ -18,12 +18,7 @@ import {
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
-import {
-  Sheet,
-  SheetContent,
-  SheetHeader,
-  SheetTitle,
-} from "@/components/ui/sheet";
+import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { useAuthStore } from "@/store/auth.store";
 import { useUIStore } from "@/store/ui.store";
 import { signOut } from "@/services/auth.service";
@@ -76,9 +71,7 @@ export function Sidebar() {
         </div>
         <div className="min-w-0 flex-1">
           <div className="truncate text-sm font-semibold">NeuralOps</div>
-          <div className="truncate text-xs text-foreground-muted">
-            Acme Workspace
-          </div>
+          <div className="truncate text-xs text-foreground-muted">Acme Workspace</div>
         </div>
         <Button size="icon" variant="ghost" aria-label="Switch company">
           <ChevronDown className="h-4 w-4" />
@@ -136,11 +129,7 @@ export function Sidebar() {
           <div className="flex flex-col items-start gap-2 px-2 py-4">
             <p className="text-xs text-foreground-muted">No projects yet</p>
             {canManage && (
-              <Button
-                size="sm"
-                variant="outline"
-                onClick={() => setAddProjectOpen(true)}
-              >
+              <Button size="sm" variant="outline" onClick={() => setAddProjectOpen(true)}>
                 Create your first project
               </Button>
             )}
@@ -156,13 +145,9 @@ export function Sidebar() {
                 key={project.id}
                 project={project}
                 open={popen}
-                onToggle={() =>
-                  setOpenProjects((o) => ({ ...o, [project.id]: !popen }))
-                }
+                onToggle={() => setOpenProjects((o) => ({ ...o, [project.id]: !popen }))}
                 teamOpen={topen}
-                onToggleTeam={() =>
-                  setOpenTeam((o) => ({ ...o, [project.id]: !topen }))
-                }
+                onToggleTeam={() => setOpenTeam((o) => ({ ...o, [project.id]: !topen }))}
                 canManage={canManage}
                 onAddChannel={() => setAddChannelFor(project.id)}
                 onAddTeamMember={() => setAddTeamFor(project.id)}
@@ -184,12 +169,7 @@ export function Sidebar() {
         >
           <Users className="h-4 w-4" />
         </Button>
-        <Button
-          size="icon"
-          variant="ghost"
-          aria-label="About"
-          onClick={() => setAboutOpen(true)}
-        >
+        <Button size="icon" variant="ghost" aria-label="About" onClick={() => setAboutOpen(true)}>
           <Info className="h-4 w-4" />
         </Button>
         <Link
@@ -205,12 +185,7 @@ export function Sidebar() {
           </div>
           <div className="truncate text-xs text-foreground-muted">{email}</div>
         </div>
-        <Button
-          size="icon"
-          variant="ghost"
-          aria-label="Sign out"
-          onClick={handleSignOut}
-        >
+        <Button size="icon" variant="ghost" aria-label="Sign out" onClick={handleSignOut}>
           <LogOut className="h-4 w-4" />
         </Button>
       </div>
@@ -229,10 +204,7 @@ export function Sidebar() {
 
       <AboutDialog open={aboutOpen} onOpenChange={setAboutOpen} />
 
-      <AddProjectDialog
-        open={addProjectOpen}
-        onOpenChange={setAddProjectOpen}
-      />
+      <AddProjectDialog open={addProjectOpen} onOpenChange={setAddProjectOpen} />
 
       {addChannelFor && (
         <AddChannelDialog
@@ -293,7 +265,10 @@ function ProjectNode({
             aria-label="Add topic"
             title="Add topic"
             className="ml-auto shrink-0 rounded p-0.5 text-foreground-muted hover:bg-sidebar-accent hover:text-foreground"
-            onClick={(e) => { e.stopPropagation(); onAddChannel(); }}
+            onClick={(e) => {
+              e.stopPropagation();
+              onAddChannel();
+            }}
           >
             <Plus className="h-3.5 w-3.5" />
           </button>
@@ -336,16 +311,17 @@ function ProjectNode({
                 <Users className="h-3 w-3" />
                 <span>Team</span>
                 {team && (
-                  <span className="ml-1 text-[10px] text-foreground-muted">
-                    {team.length}
-                  </span>
+                  <span className="ml-1 text-[10px] text-foreground-muted">{team.length}</span>
                 )}
               </button>
               <button
                 aria-label="Add team member"
                 title="Add team member"
                 className="ml-auto shrink-0 rounded p-0.5 text-foreground-muted hover:bg-sidebar-accent hover:text-foreground"
-                onClick={(e) => { e.stopPropagation(); onAddTeamMember(); }}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onAddTeamMember();
+                }}
               >
                 <Plus className="h-3 w-3" />
               </button>
@@ -400,13 +376,7 @@ function ProjectNode({
   );
 }
 
-function ChannelNode({
-  projectId,
-  channel,
-}: {
-  projectId: string;
-  channel: Channel;
-}) {
+function ChannelNode({ projectId, channel }: { projectId: string; channel: Channel }) {
   const activeChannelId = useUIStore((s) => s.activeChannelId);
   const setActiveTopic = useUIStore((s) => s.setActiveTopic);
   const active = activeChannelId === channel.id;

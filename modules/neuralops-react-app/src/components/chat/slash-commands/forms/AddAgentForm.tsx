@@ -50,8 +50,12 @@ export function AddAgentForm({
 
   useEffect(() => {
     if (!open) return;
-    listAIModels().then(setModels).catch(() => {});
-    listMCPServers().then(setMcps).catch(() => {});
+    listAIModels()
+      .then(setModels)
+      .catch(() => {});
+    listMCPServers()
+      .then(setMcps)
+      .catch(() => {});
   }, [open]);
 
   function set(key: keyof FormState) {
@@ -76,17 +80,14 @@ export function AddAgentForm({
         name: form.name,
         description: form.description || undefined,
         model_id: form.model_id,
-        mcp_server_id:
-          form.mcp_server_id === NO_MCP ? undefined : form.mcp_server_id,
+        mcp_server_id: form.mcp_server_id === NO_MCP ? undefined : form.mcp_server_id,
         agent_type: form.agent_type,
       });
       toast.success(`Agent "${form.name}" created`);
       setForm(EMPTY);
       onClose();
     } catch (err) {
-      toast.error(
-        err instanceof Error ? err.message : "Failed to create agent",
-      );
+      toast.error(err instanceof Error ? err.message : "Failed to create agent");
     } finally {
       setSaving(false);
     }
@@ -96,12 +97,7 @@ export function AddAgentForm({
     <FormDialog title="Create Agent" open={open} onClose={onClose}>
       <form onSubmit={submit} className="flex flex-col gap-4 mt-2">
         <Field label="Name *">
-          <Input
-            value={form.name}
-            onChange={set("name")}
-            placeholder="ERP Agent"
-            autoFocus
-          />
+          <Input value={form.name} onChange={set("name")} placeholder="ERP Agent" autoFocus />
         </Field>
 
         <Field label="AI Model *">
@@ -120,10 +116,7 @@ export function AddAgentForm({
         </Field>
 
         <Field label="MCP Server">
-          <Select
-            value={form.mcp_server_id}
-            onValueChange={setSel("mcp_server_id")}
-          >
+          <Select value={form.mcp_server_id} onValueChange={setSel("mcp_server_id")}>
             <SelectTrigger>
               <SelectValue placeholder="None" />
             </SelectTrigger>
@@ -139,21 +132,14 @@ export function AddAgentForm({
         </Field>
 
         <Field label="Description">
-          <Input
-            value={form.description}
-            onChange={set("description")}
-            placeholder="Optional"
-          />
+          <Input value={form.description} onChange={set("description")} placeholder="Optional" />
         </Field>
 
         <div className="flex justify-end gap-2 pt-1">
           <Button type="button" variant="outline" onClick={onClose}>
             Cancel
           </Button>
-          <Button
-            type="submit"
-            disabled={saving || !form.name || !form.model_id}
-          >
+          <Button type="submit" disabled={saving || !form.name || !form.model_id}>
             {saving ? "Creating…" : "Create Agent"}
           </Button>
         </div>

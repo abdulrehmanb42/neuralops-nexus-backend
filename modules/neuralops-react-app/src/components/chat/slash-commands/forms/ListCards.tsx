@@ -48,7 +48,10 @@ export function ListModelsDialog({ open, onClose }: { open: boolean; onClose: ()
   useEffect(() => {
     if (!open) return;
     setLoading(true);
-    listAIModels().then(setItems).catch(() => {}).finally(() => setLoading(false));
+    listAIModels()
+      .then(setItems)
+      .catch(() => {})
+      .finally(() => setLoading(false));
   }, [open]);
 
   async function remove(id: string, name: string) {
@@ -62,7 +65,9 @@ export function ListModelsDialog({ open, onClose }: { open: boolean; onClose: ()
       <div className="mt-2 flex flex-col gap-2 max-h-80 overflow-y-auto pr-1">
         {loading && <p className="text-sm text-muted-foreground">Loading…</p>}
         {!loading && items.length === 0 && (
-          <p className="text-sm text-muted-foreground">No models yet. Use <code>/add-model</code>.</p>
+          <p className="text-sm text-muted-foreground">
+            No models yet. Use <code>/add-model</code>.
+          </p>
         )}
         {items.map((m) => (
           <div key={m.id} className="rounded-md border border-border bg-card p-3">
@@ -90,7 +95,10 @@ export function ListMCPsDialog({ open, onClose }: { open: boolean; onClose: () =
   useEffect(() => {
     if (!open) return;
     setLoading(true);
-    listMCPServers().then(setItems).catch(() => {}).finally(() => setLoading(false));
+    listMCPServers()
+      .then(setItems)
+      .catch(() => {})
+      .finally(() => setLoading(false));
   }, [open]);
 
   async function remove(id: string, name: string) {
@@ -104,7 +112,9 @@ export function ListMCPsDialog({ open, onClose }: { open: boolean; onClose: () =
       <div className="mt-2 flex flex-col gap-2 max-h-80 overflow-y-auto pr-1">
         {loading && <p className="text-sm text-muted-foreground">Loading…</p>}
         {!loading && items.length === 0 && (
-          <p className="text-sm text-muted-foreground">No MCP servers yet. Use <code>/add-mcp</code>.</p>
+          <p className="text-sm text-muted-foreground">
+            No MCP servers yet. Use <code>/add-mcp</code>.
+          </p>
         )}
         {items.map((m) => (
           <div key={m.id} className="rounded-md border border-border bg-card p-3">
@@ -115,7 +125,9 @@ export function ListMCPsDialog({ open, onClose }: { open: boolean; onClose: () =
                 <DeleteBtn onDelete={() => remove(m.id, m.name)} />
               </div>
             </div>
-            {m.url && <div className="mt-1 text-xs text-muted-foreground font-mono truncate">{m.url}</div>}
+            {m.url && (
+              <div className="mt-1 text-xs text-muted-foreground font-mono truncate">{m.url}</div>
+            )}
           </div>
         ))}
       </div>
@@ -132,7 +144,10 @@ export function ListAgentsDialog({ open, onClose }: { open: boolean; onClose: ()
   useEffect(() => {
     if (!open) return;
     setLoading(true);
-    listAgents().then(setItems).catch(() => {}).finally(() => setLoading(false));
+    listAgents()
+      .then(setItems)
+      .catch(() => {})
+      .finally(() => setLoading(false));
   }, [open]);
 
   async function remove(id: string, name: string) {
@@ -146,7 +161,9 @@ export function ListAgentsDialog({ open, onClose }: { open: boolean; onClose: ()
       <div className="mt-2 flex flex-col gap-2 max-h-80 overflow-y-auto pr-1">
         {loading && <p className="text-sm text-muted-foreground">Loading…</p>}
         {!loading && items.length === 0 && (
-          <p className="text-sm text-muted-foreground">No agents yet. Use <code>/add-agent</code>.</p>
+          <p className="text-sm text-muted-foreground">
+            No agents yet. Use <code>/add-agent</code>.
+          </p>
         )}
         {items.map((a) => (
           <div key={a.id} className="rounded-md border border-border bg-card p-3">
@@ -155,7 +172,8 @@ export function ListAgentsDialog({ open, onClose }: { open: boolean; onClose: ()
               <DeleteBtn onDelete={() => remove(a.id, a.name)} />
             </div>
             <div className="mt-1 text-xs text-muted-foreground">
-              {a.model_name ?? "—"}{a.mcp_server_name ? ` · ${a.mcp_server_name}` : ""}
+              {a.model_name ?? "—"}
+              {a.mcp_server_name ? ` · ${a.mcp_server_name}` : ""}
             </div>
           </div>
         ))}
@@ -166,14 +184,25 @@ export function ListAgentsDialog({ open, onClose }: { open: boolean; onClose: ()
 
 // ── Personas ──────────────────────────────────────────────────────────────────
 
-export function ListPersonasDialog({ open, onClose, projectId }: { open: boolean; onClose: () => void; projectId?: string | null }) {
+export function ListPersonasDialog({
+  open,
+  onClose,
+  projectId,
+}: {
+  open: boolean;
+  onClose: () => void;
+  projectId?: string | null;
+}) {
   const [items, setItems] = useState<Persona[]>([]);
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
     if (!open) return;
     setLoading(true);
-    listPersonas(projectId).then(setItems).catch(() => {}).finally(() => setLoading(false));
+    listPersonas(projectId)
+      .then(setItems)
+      .catch(() => {})
+      .finally(() => setLoading(false));
   }, [open, projectId]);
 
   async function remove(id: string, name: string) {
@@ -187,7 +216,9 @@ export function ListPersonasDialog({ open, onClose, projectId }: { open: boolean
       <div className="mt-2 flex flex-col gap-2 max-h-80 overflow-y-auto pr-1">
         {loading && <p className="text-sm text-muted-foreground">Loading…</p>}
         {!loading && items.length === 0 && (
-          <p className="text-sm text-muted-foreground">No personas yet. Use <code>/add-persona</code>.</p>
+          <p className="text-sm text-muted-foreground">
+            No personas yet. Use <code>/add-persona</code>.
+          </p>
         )}
         {items.map((p) => (
           <div key={p.id} className="rounded-md border border-border bg-card p-3">
@@ -252,7 +283,9 @@ export function ListSchedulesDialog({
   async function togglePause(s: PersonaSchedule) {
     if (!projectId || !channelId || !topicId) return;
     try {
-      const updated = await updateSchedule(projectId, channelId, topicId, s.id, { is_paused: !s.is_paused });
+      const updated = await updateSchedule(projectId, channelId, topicId, s.id, {
+        is_paused: !s.is_paused,
+      });
       setItems((prev) => prev.map((x) => (x.id === s.id ? updated : x)));
     } catch (e) {
       toast.error("Failed to update schedule: " + (e instanceof Error ? e.message : String(e)));
@@ -267,20 +300,27 @@ export function ListSchedulesDialog({
   }
 
   const statusVariant = (s: PersonaSchedule) =>
-    s.last_status === "failed" ? "destructive" : s.last_status === "success" ? "secondary" : "outline";
+    s.last_status === "failed"
+      ? "destructive"
+      : s.last_status === "success"
+        ? "secondary"
+        : "outline";
 
   return (
     <FormDialog title="Schedules" open={open} onClose={onClose}>
       <div className="mt-2 flex flex-col gap-2 max-h-80 overflow-y-auto pr-1">
         {loading && <p className="text-sm text-muted-foreground">Loading…</p>}
         {!loading && items.length === 0 && (
-          <p className="text-sm text-muted-foreground">No schedules yet in this topic. Use <code>/schedule</code>.</p>
+          <p className="text-sm text-muted-foreground">
+            No schedules yet in this topic. Use <code>/schedule</code>.
+          </p>
         )}
         {items.map((s) => (
           <div key={s.id} className="rounded-md border border-border bg-card p-3">
             <div className="flex items-center justify-between gap-2">
               <span className="text-sm font-medium truncate">
-                @{s.persona_name}{s.label ? ` — ${s.label}` : ""}
+                @{s.persona_name}
+                {s.label ? ` — ${s.label}` : ""}
               </span>
               <div className="flex items-center gap-2 shrink-0">
                 <Switch checked={!s.is_paused} onCheckedChange={() => togglePause(s)} />
@@ -290,7 +330,9 @@ export function ListSchedulesDialog({
             <div className="mt-1 text-xs text-muted-foreground">{s.schedule_summary}</div>
             <div className="mt-1.5 text-xs text-muted-foreground line-clamp-2">{s.query_text}</div>
             <div className="mt-2 flex items-center gap-1.5">
-              <Badge variant={s.is_paused ? "outline" : "secondary"}>{s.is_paused ? "Paused" : "Active"}</Badge>
+              <Badge variant={s.is_paused ? "outline" : "secondary"}>
+                {s.is_paused ? "Paused" : "Active"}
+              </Badge>
               {s.last_status !== "never_run" && (
                 <Badge variant={statusVariant(s)}>
                   {s.last_status === "success" ? "Last run OK" : "Last run failed"}

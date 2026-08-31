@@ -36,8 +36,7 @@ export const useAuthStore = create<AuthState>()(
       companyName: null,
       isOwner: false,
       serverVersion: null,
-      setIdentity: (supabaseToken, userId, email) =>
-        set({ supabaseToken, userId, email }),
+      setIdentity: (supabaseToken, userId, email) => set({ supabaseToken, userId, email }),
       setServerUrl: (serverUrl) => set({ serverUrl }),
       setServerInfo: ({ serverUrl, userId, role, companyName, isOwner, serverVersion }) =>
         set({

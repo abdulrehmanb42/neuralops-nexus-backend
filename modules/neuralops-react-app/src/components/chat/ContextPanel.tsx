@@ -141,7 +141,10 @@ export function ContextPanel({ open, onClose, projectId, topicId }: ContextPanel
             variant="ghost"
             size="icon"
             className="h-7 w-7"
-            onClick={() => { setQuery(""); load(); }}
+            onClick={() => {
+              setQuery("");
+              load();
+            }}
             disabled={loading}
             title="Refresh"
           >
@@ -179,9 +182,7 @@ export function ContextPanel({ open, onClose, projectId, topicId }: ContextPanel
       {/* Action bar — visible when items are selected */}
       {hasSelection && (
         <div className="flex items-center justify-between border-b bg-muted/30 px-4 py-2">
-          <span className="text-xs text-muted-foreground">
-            {selected.size} selected
-          </span>
+          <span className="text-xs text-muted-foreground">{selected.size} selected</span>
           <Button
             variant="destructive"
             size="sm"
@@ -222,12 +223,7 @@ export function ContextPanel({ open, onClose, projectId, topicId }: ContextPanel
             <p className="text-xs text-muted-foreground">
               No results for <span className="font-medium">"{query}"</span>
             </p>
-            <Button
-              variant="ghost"
-              size="sm"
-              className="mt-2 text-xs"
-              onClick={() => setQuery("")}
-            >
+            <Button variant="ghost" size="sm" className="mt-2 text-xs" onClick={() => setQuery("")}>
               Clear search
             </Button>
           </div>
@@ -270,9 +266,7 @@ function ContextGroup({
   onToggleItem,
   onToggleGroup,
 }: ContextGroupProps) {
-  const deletableItems = group.can_delete_items
-    ? group.items.filter((i) => i.deletable)
-    : [];
+  const deletableItems = group.can_delete_items ? group.items.filter((i) => i.deletable) : [];
   const deletableIds = deletableItems.map((i) => i.id);
   const allSelected = isGroupFullySelected(group.directive, deletableIds);
   const someSelected =
@@ -366,9 +360,7 @@ function ContextItem({ item, directive, canDelete, selected, query, onToggle }: 
       const start = Math.max(0, idx - 20);
       const end = Math.min(content.length, idx + query.length + 40);
       snippet =
-        (start > 0 ? "…" : "") +
-        content.slice(start, end) +
-        (end < content.length ? "…" : "");
+        (start > 0 ? "…" : "") + content.slice(start, end) + (end < content.length ? "…" : "");
     }
   }
 

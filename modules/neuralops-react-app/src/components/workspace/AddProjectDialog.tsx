@@ -86,11 +86,7 @@ export function AddProjectDialog({ open, onOpenChange }: AddProjectDialogProps) 
                 <FormItem>
                   <FormLabel>Description</FormLabel>
                   <FormControl>
-                    <Textarea
-                      placeholder="Optional description"
-                      rows={3}
-                      {...field}
-                    />
+                    <Textarea placeholder="Optional description" rows={3} {...field} />
                   </FormControl>
                   <FormMessage />
                 </FormItem>

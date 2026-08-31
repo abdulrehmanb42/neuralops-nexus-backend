@@ -18,10 +18,7 @@ export async function createMCPServer(
   });
 }
 
-export async function patchMCPServer(
-  id: string,
-  input: Partial<MCPServer>,
-): Promise<MCPServer> {
+export async function patchMCPServer(id: string, input: Partial<MCPServer>): Promise<MCPServer> {
   return apiJson<MCPServer>(`/api/v1/mcp-servers/${id}/`, {
     method: "PATCH",
     body: JSON.stringify(input),

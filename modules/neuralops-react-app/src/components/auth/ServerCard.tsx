@@ -74,22 +74,14 @@ export function ServerCard({
                 </span>
               )}
             </div>
-            <div className="truncate text-xs text-foreground-muted">
-              {server.url}
-            </div>
+            <div className="truncate text-xs text-foreground-muted">{server.url}</div>
             {last && (
-              <div className="mt-0.5 text-[11px] text-foreground-muted">
-                Last connected {last}
-              </div>
+              <div className="mt-0.5 text-[11px] text-foreground-muted">Last connected {last}</div>
             )}
           </div>
         </div>
         <div className="flex items-center gap-2">
-          <Button
-            size="sm"
-            onClick={() => onConnect(server)}
-            disabled={connecting || blocked}
-          >
+          <Button size="sm" onClick={() => onConnect(server)} disabled={connecting || blocked}>
             {connecting ? (
               <>
                 <Loader2 className="mr-1 h-3.5 w-3.5 animate-spin" />

@@ -12,10 +12,7 @@ export function TerminalRenderer({ content }: { content: string }) {
       {lines.map((line, i) => {
         const isCmd = line.trimStart().startsWith("$");
         return (
-          <div
-            key={i}
-            style={{ color: isCmd ? "var(--code-cmd)" : "var(--code-text)" }}
-          >
+          <div key={i} style={{ color: isCmd ? "var(--code-cmd)" : "var(--code-text)" }}>
             {line || " "}
           </div>
         );

@@ -51,18 +51,14 @@ function ResetPasswordPage() {
           <div className="mb-4 flex h-12 w-12 items-center justify-center rounded-xl bg-primary text-primary-foreground">
             <Sparkles className="h-6 w-6" />
           </div>
-          <h1 className="text-2xl font-semibold tracking-tight text-foreground">
-            New password
-          </h1>
+          <h1 className="text-2xl font-semibold tracking-tight text-foreground">New password</h1>
           <p className="mt-1 text-sm text-foreground-muted">
             Set a new password for your NeuralOps account.
           </p>
         </div>
         <div className="rounded-xl border border-border bg-card p-6">
           {success ? (
-            <p className="text-sm text-foreground">
-              Password updated. Sign in.
-            </p>
+            <p className="text-sm text-foreground">Password updated. Sign in.</p>
           ) : (
             <form onSubmit={onSubmit} className="flex flex-col gap-4">
               <div className="flex flex-col gap-2">

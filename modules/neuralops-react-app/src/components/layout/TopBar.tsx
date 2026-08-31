@@ -18,13 +18,7 @@ export function TopBar({ breadcrumb = [] }: Props) {
           breadcrumb.map((seg, i) => (
             <span key={i} className="flex items-center gap-2">
               {i > 0 && <span className="text-foreground-muted">/</span>}
-              <span
-                className={
-                  i === breadcrumb.length - 1
-                    ? "text-foreground font-medium"
-                    : ""
-                }
-              >
+              <span className={i === breadcrumb.length - 1 ? "text-foreground font-medium" : ""}>
                 {seg}
               </span>
             </span>

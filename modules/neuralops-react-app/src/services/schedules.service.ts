@@ -67,10 +67,13 @@ export async function updateSchedule(
   scheduleId: string,
   input: { query_text?: string; label?: string; is_paused?: boolean },
 ): Promise<PersonaSchedule> {
-  const result = await apiJson<PersonaSchedule>(`${base(projectId, channelId, topicId)}${scheduleId}/`, {
-    method: "PATCH",
-    body: JSON.stringify(input),
-  });
+  const result = await apiJson<PersonaSchedule>(
+    `${base(projectId, channelId, topicId)}${scheduleId}/`,
+    {
+      method: "PATCH",
+      body: JSON.stringify(input),
+    },
+  );
   notifyChanged();
   return result;
 }

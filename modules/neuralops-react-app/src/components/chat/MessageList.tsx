@@ -41,7 +41,7 @@ export function MessageList({ messages }: { messages: ChatMessage[] }) {
           </div>
         ) : (
           <MessageItem key={m.id} message={m} />
-        )
+        ),
       )}
     </div>
   );

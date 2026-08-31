@@ -40,9 +40,7 @@ export function useServers() {
   }
 
   function touch(id: string) {
-    const next = servers.map((s) =>
-      s.id === id ? { ...s, lastConnected: Date.now() } : s,
-    );
+    const next = servers.map((s) => (s.id === id ? { ...s, lastConnected: Date.now() } : s));
     setServers(next);
     saveServers(next);
   }

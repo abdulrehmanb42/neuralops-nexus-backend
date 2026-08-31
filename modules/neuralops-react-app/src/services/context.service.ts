@@ -144,10 +144,9 @@ export async function deleteContextPanelItems(
 }
 
 export async function listDirectives(): Promise<ContextDirective[]> {
-  const res = await fetch(
-    `${getServerUrl()}/api/v1/projects/context-sources/directives/`,
-    { headers: getBaseHeaders() },
-  );
+  const res = await fetch(`${getServerUrl()}/api/v1/projects/context-sources/directives/`, {
+    headers: getBaseHeaders(),
+  });
   if (!res.ok) return [];
   return res.json();
 }

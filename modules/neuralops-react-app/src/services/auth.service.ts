@@ -90,9 +90,7 @@ export interface ServerConfigResult {
  * record, assigns avatar/display name) that shouldn't fire just from
  * having a server saved in the list.
  */
-export async function fetchServerConfig(
-  serverUrl: string,
-): Promise<ServerConfigResult | null> {
+export async function fetchServerConfig(serverUrl: string): Promise<ServerConfigResult | null> {
   try {
     const res = await fetch(`${serverUrl}/api/v1/auth/config/`);
     if (!res.ok) return null;
@@ -106,10 +104,7 @@ export async function fetchServerConfig(
   }
 }
 
-export async function verifyServerAccess(
-  serverUrl: string,
-  token: string,
-): Promise<VerifyResult> {
+export async function verifyServerAccess(serverUrl: string, token: string): Promise<VerifyResult> {
   try {
     const res = await fetch(`${serverUrl}/api/v1/auth/verify/`, {
       headers: { Authorization: `Bearer ${token}` },

@@ -11,8 +11,7 @@ function formatTime(ts: string): { short: string; full: string } {
     const date = new Date(ts);
     const now = new Date();
     const isToday = date.toDateString() === now.toDateString();
-    const isThisWeek =
-      now.getTime() - date.getTime() < 7 * 24 * 60 * 60 * 1000;
+    const isThisWeek = now.getTime() - date.getTime() < 7 * 24 * 60 * 60 * 1000;
 
     const time = date.toLocaleTimeString([], {
       hour: "2-digit",
@@ -68,9 +67,7 @@ export function MessageItem({ message }: { message: ChatMessage }) {
     <div className="flex gap-3 px-4 py-2 hover:bg-muted/30">
       <div
         className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-xs font-semibold ${
-          isHuman
-            ? "bg-primary-tint text-primary"
-            : "bg-accent text-accent-foreground"
+          isHuman ? "bg-primary-tint text-primary" : "bg-accent text-accent-foreground"
         }`}
       >
         {message.sender.avatar ? (
@@ -85,16 +82,11 @@ export function MessageItem({ message }: { message: ChatMessage }) {
       </div>
       <div className="min-w-0 flex-1">
         <div className="flex items-baseline gap-2">
-          <span className="text-sm font-semibold text-foreground">
-            {message.sender.name}
-          </span>
+          <span className="text-sm font-semibold text-foreground">{message.sender.name}</span>
           {(() => {
             const { short, full } = formatTime(message.timestamp);
             return (
-              <span
-                className="text-xs text-muted-foreground cursor-default"
-                title={full}
-              >
+              <span className="text-xs text-muted-foreground cursor-default" title={full}>
                 {short}
               </span>
             );
@@ -134,9 +126,7 @@ function Renderer({ message }: { message: ChatMessage }) {
       return <HtmlRenderer content={message.content} />;
 
     case "code":
-      return (
-        <CodeRenderer content={message.content} language={message.language} />
-      );
+      return <CodeRenderer content={message.content} language={message.language} />;
 
     case "terminal":
       return <TerminalRenderer content={message.content} />;
