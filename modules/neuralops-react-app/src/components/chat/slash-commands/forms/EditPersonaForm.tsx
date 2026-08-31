@@ -12,7 +12,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import type { Persona } from "@/types";
+import type { Persona, Prompt } from "@/types";
 
 export function EditPersonaForm({
   open,
@@ -56,10 +56,11 @@ export function EditPersonaForm({
     setSaving(true);
     try {
       await patchPersona(selectedPersonaId, {
+        // PATCH payload — the server owns the prompt id, so it isn't sent.
         prompt: {
           system_prompt: systemPrompt,
           output_type: "text",
-        } as any,
+        } as Prompt,
       });
       toast.success(`Persona updated successfully!`);
       onClose();
