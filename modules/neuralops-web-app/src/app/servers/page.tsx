@@ -15,7 +15,7 @@ import { ThemeToggle } from "@/components/theme-toggle";
 import { Button } from "@/components/ui/button";
 import { ConfirmDialog, Dialog } from "@/components/ui/dialog";
 import { FieldError, Input, Label } from "@/components/ui/field";
-import { Skeleton } from "@/components/ui/surfaces";
+import { FullPageLoader } from "@/components/ui/full-page-loader";
 import { useDelayedLoading } from "@/hooks/use-delayed-loading";
 import { connectToServer, fetchServerConfig, type ServerConfig } from "@/lib/api/servers";
 import { clearAccountScopedState } from "@/lib/auth/session-cleanup";
@@ -136,9 +136,7 @@ export default function ServersPage() {
   // greeting, email, saved servers — renders before the session is known.
   if (!hydrated || !token) {
     return (
-      <div className="flex min-h-screen items-center justify-center bg-bg">
-        <Skeleton className="h-40 w-80" />
-      </div>
+      <FullPageLoader />
     );
   }
 

@@ -10,7 +10,7 @@ import { McpTab } from "@/components/intelligence/mcp-tab";
 import { ModelsTab } from "@/components/intelligence/models-tab";
 import { IntelNav, type IntelSection } from "@/components/intelligence/nav";
 import { PersonasTab } from "@/components/intelligence/personas-tab";
-import { Skeleton } from "@/components/ui/surfaces";
+import { FullPageLoader } from "@/components/ui/full-page-loader";
 import { useConnectionStore } from "@/stores/connection.store";
 import { useUiStore } from "@/stores/ui.store";
 
@@ -37,9 +37,7 @@ export default function IntelligencePage() {
 
   if (!hydrated || !token || !serverUrl) {
     return (
-      <div className="flex min-h-screen items-center justify-center bg-bg">
-        <Skeleton className="h-40 w-80" />
-      </div>
+      <FullPageLoader />
     );
   }
 
