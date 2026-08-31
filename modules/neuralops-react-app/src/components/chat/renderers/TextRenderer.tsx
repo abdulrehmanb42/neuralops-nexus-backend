@@ -226,7 +226,9 @@ export function TextRenderer({ content }: { content: string }) {
   return (
     <div
       className={[
-        "prose prose-sm max-w-none text-foreground",
+        // break-words keeps long unbroken strings (URLs, tokens) inside the
+        // message column instead of blowing out the layout horizontally.
+        "prose prose-sm max-w-none break-words text-foreground",
         // Links
         "[&_a]:text-primary [&_a]:underline",
         // Headings
@@ -235,8 +237,9 @@ export function TextRenderer({ content }: { content: string }) {
         "[&_ul]:my-1 [&_ol]:my-1 [&_li]:my-0.5",
         // Blockquote
         "[&_blockquote]:border-l-2 [&_blockquote]:border-muted-foreground/40 [&_blockquote]:pl-3 [&_blockquote]:text-muted-foreground [&_blockquote]:italic",
-        // Tables (GFM)
-        "[&_table]:text-sm [&_th]:border [&_th]:border-border [&_th]:px-2 [&_th]:py-1 [&_td]:border [&_td]:border-border [&_td]:px-2 [&_td]:py-1",
+        // Tables (GFM) — display:block + overflow so a wide table scrolls
+        // inside the message column instead of stretching the whole chat.
+        "[&_table]:block [&_table]:max-w-full [&_table]:overflow-x-auto [&_table]:text-sm [&_th]:border [&_th]:border-border [&_th]:px-2 [&_th]:py-1 [&_td]:border [&_td]:border-border [&_td]:px-2 [&_td]:py-1",
         // Reset prose's default background on code so our custom components control it
         "[&_pre]:!bg-transparent [&_pre]:!p-0 [&_pre]:!m-0",
       ].join(" ")}
