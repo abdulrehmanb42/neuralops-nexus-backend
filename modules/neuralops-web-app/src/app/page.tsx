@@ -19,6 +19,7 @@ import { Constellation } from "@/components/brand/constellation";
 import { Nebula } from "@/components/brand/nebula";
 import { Wordmark } from "@/components/brand/wordmark";
 import { ChatDemo } from "@/components/landing/chat-demo";
+import { GithubNavLink, GithubStatsCard } from "@/components/landing/github-stats";
 import { Parallax } from "@/components/landing/parallax";
 import { Reveal } from "@/components/landing/reveal";
 import { SignedInRedirect } from "@/components/auth/signed-in-redirect";
@@ -68,6 +69,48 @@ const MVP_CAPABILITIES: { icon: IconType; title: string; body: string }[] = [
   { icon: Plug, title: "Model-Agnostic", body: "Connect any AI model via LiteLLM integration" },
 ];
 
+// Tiers describe what each will offer — no prices or checkout while the model
+// is still being finalized. Community is real today (AGPL self-host); the rest
+// are on the roadmap and marked "Coming soon" instead of a call to action.
+const PLANS: { name: string; tagline: string; soon?: boolean; highlight?: boolean; features: string[] }[] = [
+  {
+    name: "Community",
+    tagline: "Self-hosted, free forever",
+    highlight: true,
+    features: [
+      "The full platform under AGPL-3.0",
+      "All primitives — personas, agents, MCP tools",
+      "Bring your own models & keys (cloud or local)",
+      "Unlimited projects, channels, and members",
+      "Runs on your own infrastructure",
+    ],
+  },
+  {
+    name: "Cloud",
+    tagline: "Managed hosting",
+    soon: true,
+    features: [
+      "Everything in Community, fully managed",
+      "Automatic updates, backups, and scaling",
+      "Team management & single sign-on",
+      "Usage insights",
+      "Priority support",
+    ],
+  },
+  {
+    name: "Enterprise",
+    tagline: "For regulated & large teams",
+    soon: true,
+    features: [
+      "Private or air-gapped deployment",
+      "SLAs & dedicated support",
+      "Advanced roles & audit logs",
+      "Security & compliance reviews",
+      "Onboarding & solution engineering",
+    ],
+  },
+];
+
 export default function LandingPage() {
   return (
     <div className="min-h-screen bg-bg text-ink">
@@ -79,9 +122,11 @@ export default function LandingPage() {
             <a className="hover:text-ink" href="#how">How it works</a>
             <a className="hover:text-ink" href="#platform">Platform</a>
             <a className="hover:text-ink" href="#compare">Compare</a>
+            <a className="hover:text-ink" href="#plans">Plans</a>
             <a className="hover:text-ink" href="#status">Status</a>
           </nav>
           <div className="flex-1" />
+          <GithubNavLink />
           <ThemeToggle />
           <Link href="/login" className="hidden h-9 items-center rounded-[10px] bg-accent px-4 text-[13.5px] font-semibold text-accent-ink shadow-[0_8px_24px_-10px_var(--accent-deep)] hover:brightness-110 sm:inline-flex">
             Open the app
@@ -209,6 +254,43 @@ export default function LandingPage() {
         </div>
       </section>
 
+      {/* ── Plans ── */}
+      <section id="plans" className="px-6 py-24">
+        <div className="mx-auto max-w-6xl">
+          <Reveal className="text-center">
+            <Eyebrow center>Plans</Eyebrow>
+            <h2 className="font-display text-[clamp(28px,3.6vw,40px)] font-extrabold">Start free, self-hosted</h2>
+            <p className="mx-auto mt-4 max-w-2xl text-ink2">
+              The Community edition is the full platform today. Managed and enterprise offerings are on the way —
+              here&apos;s what each will include.
+            </p>
+          </Reveal>
+          <div className="mt-11 grid gap-4 md:grid-cols-3">
+            {PLANS.map((p) => (
+              <Reveal key={p.name}>
+                <div className={`flex h-full flex-col rounded-2xl border bg-surface p-6 ${p.highlight ? "border-accent/50 shadow-[0_18px_50px_-30px_var(--accent-deep)]" : "border-line"}`}>
+                  <div className="flex items-center justify-between gap-2">
+                    <h3 className="font-display text-[19px] font-bold">{p.name}</h3>
+                    <span className={`flex-none rounded-full px-2.5 py-0.5 text-[11px] font-semibold ${p.soon ? "bg-surface2 text-ink2" : "bg-ok/12 text-ok"}`}>
+                      {p.soon ? "Coming soon" : "Available now"}
+                    </span>
+                  </div>
+                  <p className="mt-1 text-[13.5px] text-ink2">{p.tagline}</p>
+                  <ul className="mt-5 flex flex-1 flex-col gap-2.5">
+                    {p.features.map((f) => (
+                      <li key={f} className="flex items-start gap-2 text-[13.5px]">
+                        <Check aria-hidden size={15} strokeWidth={2.5} className={`mt-0.5 flex-none ${p.soon ? "text-ink2" : "text-ok"}`} />
+                        <span className={p.soon ? "text-ink2" : ""}>{f}</span>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              </Reveal>
+            ))}
+          </div>
+        </div>
+      </section>
+
       {/* ── Product status ── */}
       <section id="status" className="px-6 py-24">
         <div className="mx-auto max-w-6xl">
@@ -247,6 +329,20 @@ export default function LandingPage() {
               interaction, knowledge base integration, and model-agnostic connectivity.
             </p>
           </Reveal>
+        </div>
+      </section>
+
+      {/* ── Open source ── */}
+      <section id="opensource" className="border-t border-line bg-bg2 px-6 py-24">
+        <div className="mx-auto max-w-4xl">
+          <Reveal className="text-center">
+            <Eyebrow center>Open source</Eyebrow>
+            <h2 className="font-display text-[clamp(28px,3.6vw,40px)] font-extrabold">Built in the open</h2>
+            <p className="mx-auto mt-4 max-w-2xl text-ink2">
+              NeuralOps Nexus is free software under AGPL-3.0. Read the code, open issues, and contribute on GitHub.
+            </p>
+          </Reveal>
+          <Reveal className="mt-10"><GithubStatsCard /></Reveal>
         </div>
       </section>
 
