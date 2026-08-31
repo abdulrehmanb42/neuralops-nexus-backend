@@ -89,8 +89,10 @@ export function LoginForm() {
     }
   };
 
+  // method=post so an un-hydrated native submit puts credentials in the request
+  // body, never the URL/query string. Inert once JS handles submit.
   return (
-    <form onSubmit={submit} noValidate className="flex flex-col gap-4">
+    <form onSubmit={submit} method="post" noValidate className="flex flex-col gap-4">
       <div>
         <Label htmlFor="email">Email</Label>
         <Input id="email" type="email" autoFocus autoComplete="email" placeholder="you@company.com" {...form.register("email")} />

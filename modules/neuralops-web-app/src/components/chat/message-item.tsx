@@ -9,6 +9,7 @@ import remarkGfm from "remark-gfm";
 import { Plug2, Copy } from "lucide-react";
 import { toast } from "sonner";
 import { absolutizeMedia } from "@/lib/api/client";
+import { copyText } from "@/lib/browser";
 import { RICH_OUTPUT_TYPES, stripLeakedMarkers } from "@/lib/composer/directives";
 import type { UiMessage } from "@/lib/realtime/message-store";
 import { HtmlFrame } from "./html-frame";
@@ -67,7 +68,7 @@ function CodeBlock({ content, terminal }: { content: string; terminal?: boolean 
         <button
           aria-label="Copy to clipboard"
           className="flex items-center gap-1.5 text-[11.5px] text-ink2 hover:text-ink"
-          onClick={() => navigator.clipboard.writeText(content).then(() => toast.success("Copied")).catch(() => toast.error("Copy failed — check clipboard permissions"))}
+          onClick={() => void copyText(content).then((ok) => (ok ? toast.success("Copied") : toast.error("Copy failed — check clipboard permissions")))}
         >
           <Copy size={12} strokeWidth={2} /> Copy
         </button>
@@ -186,7 +187,7 @@ export const MessageItem = memo(function MessageItem({ message }: { message: UiM
           <button
             aria-label="Copy message"
             title="Copy message"
-            onClick={() => navigator.clipboard.writeText(stripLeakedMarkers(message.content)).then(() => toast.success("Message copied")).catch(() => toast.error("Copy failed — check clipboard permissions"))}
+            onClick={() => void copyText(stripLeakedMarkers(message.content)).then((ok) => (ok ? toast.success("Message copied") : toast.error("Copy failed — check clipboard permissions")))}
             className="flex size-8 items-center justify-center text-ink2 hover:bg-surface2 hover:text-ink"
           >
             <Copy size={14} strokeWidth={2} />

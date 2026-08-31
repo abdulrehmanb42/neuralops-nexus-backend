@@ -28,7 +28,8 @@ export default function ResetPasswordPage() {
 
   return (
     <AuthShell title="Set a new password">
-      <form onSubmit={submit} noValidate className="flex flex-col gap-4">
+      {/* method=post: an un-hydrated native submit keeps the password out of the URL. */}
+      <form onSubmit={submit} method="post" noValidate className="flex flex-col gap-4">
         <div>
           <Label htmlFor="pw">New password</Label>
           <Input id="pw" type="password" autoFocus autoComplete="new-password" value={password} onChange={(e) => setPassword(e.target.value)} />

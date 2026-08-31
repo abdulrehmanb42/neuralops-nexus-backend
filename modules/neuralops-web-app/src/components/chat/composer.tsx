@@ -42,6 +42,7 @@ import { toast } from "sonner";
 import dynamic from "next/dynamic";
 import { MAX_MESSAGE_LENGTH, sendTyping } from "@/lib/api/chat";
 import { absolutizeMedia } from "@/lib/api/client";
+import { copyText } from "@/lib/browser";
 import { listPersonas } from "@/lib/api/intelligence";
 import { listTeam } from "@/lib/api/team";
 import { changeUsername } from "@/lib/api/account";
@@ -542,7 +543,10 @@ export function Composer({ projectId, channelId, topicId, channelName, topicTitl
           // old app did, so the inviter can paste it anywhere.
           toast.success(msg, {
             duration: 30_000,
-            action: { label: "Copy invite link", onClick: () => void navigator.clipboard.writeText(out.invite_url!) },
+            action: {
+              label: "Copy invite link",
+              onClick: () => void copyText(out.invite_url!).then((ok) => (ok ? toast.success("Invite link copied.") : toast.error("Couldn't copy the link."))),
+            },
           });
         } else {
           toast.success(msg);

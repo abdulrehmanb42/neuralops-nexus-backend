@@ -2,6 +2,7 @@
 
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
+import { randomId } from "@/lib/browser";
 
 export interface SavedServer {
   id: string;
@@ -35,7 +36,7 @@ export const useServersStore = create<ServersState>()(
         const clean = normalize(url);
         if (get().servers.some((s) => s.url.toLowerCase() === clean.toLowerCase()))
           throw new Error("That server is already in your list.");
-        const server: SavedServer = { id: crypto.randomUUID(), name: name.trim(), url: clean, addedAt: new Date().toISOString() };
+        const server: SavedServer = { id: randomId(), name: name.trim(), url: clean, addedAt: new Date().toISOString() };
         const removed = { ...get().removed };
         delete removed[clean.toLowerCase()]; // re-adding revokes the tombstone
         set({ servers: [...get().servers, server], removed });

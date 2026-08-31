@@ -152,7 +152,8 @@ export function ProfileDialog({ open, onClose, onSignOut }: { open: boolean; onC
         {nameErr ? <FieldError>{nameErr}</FieldError> : <p className="mt-1.5 text-[12px] text-ink2">Teammates and personas will see this name. 2–30 characters, no spaces.</p>}
       </form>
 
-      <form onSubmit={submitPw} noValidate className="mt-5 border-t border-line pt-4">
+      {/* method=post: an un-hydrated native submit keeps the password out of the URL. */}
+      <form onSubmit={submitPw} method="post" noValidate className="mt-5 border-t border-line pt-4">
         <p className="mb-2.5 flex items-center gap-1.5 text-[13px] font-semibold"><KeyRound size={14} strokeWidth={2} /> Change password</p>
         <div className="flex flex-col gap-3">
           <div>

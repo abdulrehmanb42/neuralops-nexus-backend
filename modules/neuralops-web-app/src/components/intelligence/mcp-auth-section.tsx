@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { ChevronDown, Copy, ExternalLink, Eye, EyeOff, Square, SquareCheck, Wand2 } from "lucide-react";
 import { toast } from "sonner";
+import { copyText } from "@/lib/browser";
 import { Input, Label } from "@/components/ui/field";
 import type { McpAuthType, McpOAuthConfig } from "@/lib/api/intelligence";
 import { validateUrl } from "@/lib/validation";
@@ -182,7 +183,7 @@ export function McpAuthSection({
     setGuideOpen(true);
   };
   const copy = (text: string, label: string) =>
-    navigator.clipboard.writeText(text).then(() => toast.success(`${label} copied.`)).catch(() => toast.error("Couldn't copy."));
+    copyText(text).then((ok) => (ok ? toast.success(`${label} copied.`) : toast.error("Couldn't copy.")));
 
   return (
     <div className="flex flex-col gap-4">
