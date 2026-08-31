@@ -248,6 +248,7 @@ Increment `APP_VERSION` on every meaningful change. Update the log below.
 | 0.1     | 2026-07-20 | Initial alpha — About dialog, version system |
 | 0.1.1   | 2026-07-26 | Fix pydantic-ai 2.x MCP path — rewrite `_run_with_mcp` using `FastMCPClient` + `litellm.acompletion()` directly |
 | 0.1.2   | 2026-07-27 | Session UX (open/close system messages, `@session end`, WARNING logs, content guard); persona edit dialog (PATCH); system message rendering in frontend |
+| 0.1.3   | 2026-09-01 | UI/build fixes: restore missing `src/lib/mcpOAuth.ts` (gitignore trap), dialog max-height + scroll, message word-wrap + table scroll, type fixes, prettier pass |
 
 **About dialog:** `src/components/layout/AboutDialog.tsx`
 Opened via the `ⓘ` button in the Sidebar footer.
