@@ -85,10 +85,11 @@ export function GithubNavLink() {
 // Star/Fork buttons — neutral, not the app accent.
 export function GithubStatsCard() {
   const { stars, forks, commits, loaded } = useRepoStats();
+  // GitHub-like icon tints: the star is gold (as on GitHub), fork/commit neutral.
   const counts = [
-    { icon: Star, label: "Star", value: stars },
-    { icon: GitFork, label: "Fork", value: forks },
-    { icon: GitCommitHorizontal, label: "Commits", value: commits },
+    { icon: Star, label: "Star", value: stars, tint: "text-[#e3b341]", fill: true },
+    { icon: GitFork, label: "Fork", value: forks, tint: "text-ink2", fill: false },
+    { icon: GitCommitHorizontal, label: "Commits", value: commits, tint: "text-ink2", fill: false },
   ];
   return (
     <div className="rounded-xl border border-line bg-surface p-6">
@@ -105,7 +106,7 @@ export function GithubStatsCard() {
           </a>
           <p className="mt-0.5 text-[13px] text-ink2">AGPL-3.0 · open core · contributions welcome.</p>
           <div className="mt-4 flex flex-wrap items-center gap-2">
-            {counts.map(({ icon: Icon, label, value }) => (
+            {counts.map(({ icon: Icon, label, value, tint, fill }) => (
               <a
                 key={label}
                 href={REPO_URL}
@@ -114,7 +115,7 @@ export function GithubStatsCard() {
                 className="inline-flex items-stretch overflow-hidden rounded-md border border-line text-[12px] font-semibold transition-colors hover:border-ink2"
               >
                 <span className="flex items-center gap-1.5 bg-surface2 px-2.5 py-1 text-ink2">
-                  <Icon size={13} strokeWidth={2} /> {label}
+                  <Icon size={13} strokeWidth={2} className={tint} fill={fill ? "currentColor" : "none"} /> {label}
                 </span>
                 <span className="flex items-center border-l border-line bg-surface px-2.5 py-1 tabular-nums text-ink">
                   {loaded ? fmt(value) : "···"}
@@ -127,7 +128,7 @@ export function GithubStatsCard() {
               rel="noreferrer noopener"
               className="inline-flex items-center gap-1.5 rounded-md border border-line bg-surface2 px-3 py-1 text-[12px] font-semibold text-ink transition-colors hover:border-ink2 hover:bg-surface"
             >
-              <Star size={13} strokeWidth={2} /> Star on GitHub
+              <GithubMark size={13} /> View on GitHub
             </a>
           </div>
         </div>

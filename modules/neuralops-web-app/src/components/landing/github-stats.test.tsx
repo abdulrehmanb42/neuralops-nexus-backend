@@ -28,7 +28,7 @@ describe("GithubStatsCard", () => {
   it("keeps the link but shows dashes when the API is unavailable", async () => {
     vi.spyOn(globalThis, "fetch").mockRejectedValue(new Error("rate limited"));
     render(<GithubStatsCard />);
-    expect(screen.getByRole("link", { name: /star on github/i })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: /view on github/i })).toBeInTheDocument();
     expect((await screen.findAllByText("—")).length).toBeGreaterThan(0);
   });
 });
