@@ -35,11 +35,7 @@ export function useSupabaseSessionSync() {
           return;
         }
         if (session?.access_token && session.user) {
-          setIdentity(
-            session.access_token,
-            session.user.id,
-            session.user.email ?? "",
-          );
+          setIdentity(session.access_token, session.user.id, session.user.email ?? "");
         }
       });
       unsub = () => data.subscription.unsubscribe();

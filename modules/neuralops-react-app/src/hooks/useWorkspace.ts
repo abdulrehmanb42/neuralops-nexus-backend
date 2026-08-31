@@ -38,14 +38,11 @@ export function useTopics(projectId: string, channelId: string) {
     queryKey: ["topics", projectId, channelId],
     queryFn: () => getTopics(projectId, channelId),
     enabled: !!projectId && !!channelId,
-    refetchInterval: 10_000,   // refresh unread dots every 10 s
+    refetchInterval: 10_000, // refresh unread dots every 10 s
   });
 }
 
-export function useMarkTopicRead(
-  projectId: string,
-  channelId: string,
-) {
+export function useMarkTopicRead(projectId: string, channelId: string) {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (topicId: string) => markTopicRead(projectId, channelId, topicId),
@@ -77,8 +74,7 @@ export function useCreateTopic(
 ) {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (payload: { title: string }) =>
-      createTopic(projectId, channelId, payload),
+    mutationFn: (payload: { title: string }) => createTopic(projectId, channelId, payload),
     onSuccess: (topic) => {
       qc.invalidateQueries({ queryKey: ["topics", projectId, channelId] });
       onSuccess?.(topic);
@@ -95,7 +91,9 @@ export function useRenameTopic(projectId: string, channelId: string) {
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["topics", projectId, channelId] });
     },
-    onError: () => { /* silent — rename is best-effort */ },
+    onError: () => {
+      /* silent — rename is best-effort */
+    },
   });
 }
 
@@ -112,8 +110,7 @@ export function useTeam(projectId: string) {
 export function useAddTeamMember(projectId: string, onSuccess?: () => void) {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (payload: { user_id: string; role?: string }) =>
-      addTeamMember(projectId, payload),
+    mutationFn: (payload: { user_id: string; role?: string }) => addTeamMember(projectId, payload),
     onSuccess: () => {
       toast.success("Member added");
       qc.invalidateQueries({ queryKey: ["team", projectId] });

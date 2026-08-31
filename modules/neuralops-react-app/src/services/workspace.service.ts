@@ -70,13 +70,8 @@ export async function createProject(payload: {
   return data;
 }
 
-export async function getTopics(
-  projectId: string,
-  channelId: string,
-): Promise<Topic[]> {
-  const res = await apiRequest(
-    `/api/v1/projects/${projectId}/channels/${channelId}/topics/`,
-  );
+export async function getTopics(projectId: string, channelId: string): Promise<Topic[]> {
+  const res = await apiRequest(`/api/v1/projects/${projectId}/channels/${channelId}/topics/`);
   if (!res.ok) throw new Error("Failed to fetch topics");
   return res.json();
 }
@@ -114,10 +109,9 @@ export async function markTopicRead(
   channelId: string,
   topicId: string,
 ): Promise<void> {
-  await apiRequest(
-    `/api/v1/projects/${projectId}/channels/${channelId}/topics/${topicId}/read/`,
-    { method: "POST" },
-  );
+  await apiRequest(`/api/v1/projects/${projectId}/channels/${channelId}/topics/${topicId}/read/`, {
+    method: "POST",
+  });
 }
 
 export async function createTopic(
@@ -125,10 +119,10 @@ export async function createTopic(
   channelId: string,
   payload: { title: string },
 ): Promise<Topic> {
-  const res = await apiRequest(
-    `/api/v1/projects/${projectId}/channels/${channelId}/topics/`,
-    { method: "POST", body: JSON.stringify(payload) },
-  );
+  const res = await apiRequest(`/api/v1/projects/${projectId}/channels/${channelId}/topics/`, {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
   const data = await res.json().catch(() => ({}));
   if (!res.ok) throw new Error(data.detail ?? "Failed to create topic");
   return data;
@@ -155,10 +149,7 @@ export async function addTeamMember(
   return data;
 }
 
-export async function removeTeamMember(
-  projectId: string,
-  userId: string,
-): Promise<void> {
+export async function removeTeamMember(projectId: string, userId: string): Promise<void> {
   const res = await apiRequest(`/api/v1/projects/${projectId}/team/${userId}/`, {
     method: "DELETE",
   });
@@ -167,8 +158,20 @@ export async function removeTeamMember(
 
 export async function inviteToProject(
   projectId: string,
-  payload: { email?: string; persona_name?: string; scope?: string; topic_id?: string; role?: string },
-): Promise<{ ok: boolean; message: string; is_new_user: boolean; server_url?: string; invite_url?: string }> {
+  payload: {
+    email?: string;
+    persona_name?: string;
+    scope?: string;
+    topic_id?: string;
+    role?: string;
+  },
+): Promise<{
+  ok: boolean;
+  message: string;
+  is_new_user: boolean;
+  server_url?: string;
+  invite_url?: string;
+}> {
   const res = await apiRequest(`/api/v1/projects/${projectId}/team/invite/`, {
     method: "POST",
     body: JSON.stringify(payload),
@@ -182,7 +185,11 @@ export async function inviteToProject(
       detail = parsed.detail ?? parsed.message ?? raw;
     } catch {
       // Strip HTML tags to get a readable string from Django debug pages
-      detail = raw.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim().slice(0, 200);
+      detail = raw
+        .replace(/<[^>]+>/g, " ")
+        .replace(/\s+/g, " ")
+        .trim()
+        .slice(0, 200);
     }
     throw new Error(detail);
   }
@@ -190,24 +197,15 @@ export async function inviteToProject(
   return data;
 }
 
-export async function getAvailableUsers(
-  projectId: string,
-  search = "",
-): Promise<AvailableUser[]> {
+export async function getAvailableUsers(projectId: string, search = ""): Promise<AvailableUser[]> {
   const qs = search ? `?search=${encodeURIComponent(search)}` : "";
-  const res = await apiRequest(
-    `/api/v1/projects/${projectId}/team/available-users/${qs}`,
-  );
+  const res = await apiRequest(`/api/v1/projects/${projectId}/team/available-users/${qs}`);
   if (!res.ok) throw new Error("Failed to fetch available users");
   return res.json();
 }
 
-export async function getAvailablePersonas(
-  projectId: string,
-): Promise<AvailablePersona[]> {
-  const res = await apiRequest(
-    `/api/v1/projects/${projectId}/team/available-personas/`,
-  );
+export async function getAvailablePersonas(projectId: string): Promise<AvailablePersona[]> {
+  const res = await apiRequest(`/api/v1/projects/${projectId}/team/available-personas/`);
   if (!res.ok) throw new Error("Failed to fetch available personas");
   return res.json();
 }

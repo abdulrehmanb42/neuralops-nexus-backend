@@ -41,15 +41,9 @@ export function useCentrifugo() {
       centrifugeUrl = wsUrl;
 
       // ⚠️ DEBUG — remove after WebSocket is confirmed working
-      centrifugeInstance.on("connected", (ctx) =>
-        console.log("[centrifugo] connected", ctx),
-      );
-      centrifugeInstance.on("disconnected", (ctx) =>
-        console.log("[centrifugo] disconnected", ctx),
-      );
-      centrifugeInstance.on("error", (ctx) =>
-        console.log("[centrifugo] connection error", ctx),
-      );
+      centrifugeInstance.on("connected", (ctx) => console.log("[centrifugo] connected", ctx));
+      centrifugeInstance.on("disconnected", (ctx) => console.log("[centrifugo] disconnected", ctx));
+      centrifugeInstance.on("error", (ctx) => console.log("[centrifugo] connection error", ctx));
 
       centrifugeInstance.connect();
     }
@@ -60,38 +54,29 @@ export function useCentrifugo() {
     };
   }, [serverUrl]);
 
-  const subscribe = useCallback(
-    (channel: string, onMessage: (data: unknown) => void) => {
-      if (!centrifugeInstance) return () => {};
+  const subscribe = useCallback((channel: string, onMessage: (data: unknown) => void) => {
+    if (!centrifugeInstance) return () => {};
 
-      // Reuse existing subscription if already subscribed to this channel
-      let sub = subsRef.current.get(channel);
-      if (!sub) {
-        sub = centrifugeInstance.newSubscription(channel);
-        subsRef.current.set(channel, sub);
+    // Reuse existing subscription if already subscribed to this channel
+    let sub = subsRef.current.get(channel);
+    if (!sub) {
+      sub = centrifugeInstance.newSubscription(channel);
+      subsRef.current.set(channel, sub);
 
-        // ⚠️ DEBUG — remove after WebSocket is confirmed working
-        sub.on("subscribed", (ctx) =>
-          console.log("[centrifugo] subscribed to", channel, ctx),
-        );
-        sub.on("unsubscribed", (ctx) =>
-          console.log("[centrifugo] unsubscribed from", channel, ctx),
-        );
-        sub.on("error", (ctx) =>
-          console.log("[centrifugo] subscription error", channel, ctx),
-        );
-      }
+      // ⚠️ DEBUG — remove after WebSocket is confirmed working
+      sub.on("subscribed", (ctx) => console.log("[centrifugo] subscribed to", channel, ctx));
+      sub.on("unsubscribed", (ctx) => console.log("[centrifugo] unsubscribed from", channel, ctx));
+      sub.on("error", (ctx) => console.log("[centrifugo] subscription error", channel, ctx));
+    }
 
-      const handler = (ctx: { data: unknown }) => onMessage(ctx.data);
-      sub.on("publication", handler);
-      sub.subscribe();
+    const handler = (ctx: { data: unknown }) => onMessage(ctx.data);
+    sub.on("publication", handler);
+    sub.subscribe();
 
-      return () => {
-        sub?.off("publication", handler);
-      };
-    },
-    [],
-  );
+    return () => {
+      sub?.off("publication", handler);
+    };
+  }, []);
 
   return { subscribe };
 }

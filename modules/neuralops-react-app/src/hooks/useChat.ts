@@ -1,10 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { toast } from "sonner";
-import {
-  listMessages,
-  sendMessage,
-  type ApiMessage,
-} from "@/services/chat.service";
+import { listMessages, sendMessage, type ApiMessage } from "@/services/chat.service";
 import { renameTopic } from "@/services/workspace.service";
 import { useCentrifugo } from "./useCentrifugo";
 import { useAuthStore } from "@/store/auth.store";
@@ -40,7 +36,9 @@ function playBeep(): void {
     osc.start(ctx.currentTime);
     osc.stop(ctx.currentTime + 0.25);
     osc.onended = () => ctx.close();
-  } catch { /* ignore */ }
+  } catch {
+    /* ignore */
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -53,7 +51,7 @@ interface AiStartEvent {
   id: string;
   sender_id: string;
   sender_name: string;
-  sender_avatar?: string | null;  // #148
+  sender_avatar?: string | null; // #148
   sequence: number;
   created_at: string;
 }
@@ -66,8 +64,8 @@ interface AiDoneEvent {
   type: "message_done";
   id: string;
   content?: string;
-  output_type?: string;    // M7: e.g. "chart", "text"
-  render_as?: string;      // M7: e.g. "html", "text", "code", "terminal"
+  output_type?: string; // M7: e.g. "chart", "text"
+  render_as?: string; // M7: e.g. "html", "text", "code", "terminal"
 }
 interface AiErrorEvent {
   // Sent instead of message_done when nexus-ai's pipeline failed for any
@@ -140,10 +138,7 @@ function toUiMessage(m: ApiMessage): ChatMessage {
     sender: {
       id: m.sender_id ?? "",
       name: m.sender_name ?? "",
-      type:
-        m.sender_type === "persona" ? "agent"
-        : m.sender_type === "system" ? "system"
-        : "human",
+      type: m.sender_type === "persona" ? "agent" : m.sender_type === "system" ? "system" : "human",
       avatar: m.sender_avatar ?? null,
     },
     timestamp: m.created_at,
@@ -178,7 +173,9 @@ export function useTopicMessages(
   // would be stale by the second event. Mirrored via effect, same pattern
   // any other event-sourced state here would need.
   const typingActorsRef = useRef<PendingActor[]>([]);
-  useEffect(() => { typingActorsRef.current = typingActors; }, [typingActors]);
+  useEffect(() => {
+    typingActorsRef.current = typingActors;
+  }, [typingActors]);
 
   // Per-human-actor expiry timers (see UserTypingEvent above).
   const typingTimersRef = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map());
@@ -226,9 +223,11 @@ export function useTopicMessages(
         // immediately instead of waiting out the timeout.
         const key = `human:${event.sender_id}`;
         const timer = typingTimersRef.current.get(key);
-        if (timer) { clearTimeout(timer); typingTimersRef.current.delete(key); }
+        if (timer) {
+          clearTimeout(timer);
+          typingTimersRef.current.delete(key);
+        }
         setTypingActors((prev) => prev.filter((a) => a.key !== key));
-
       } else if (event.type === "user_typing") {
         // A human is actively typing -- ignore our own echo, upsert an
         // actor, and (re)start its expiry timer. No explicit "stopped
@@ -260,7 +259,6 @@ export function useTopicMessages(
             typingTimersRef.current.delete(key);
           }, HUMAN_TYPING_TIMEOUT_MS),
         );
-
       } else if (event.type === "message_start") {
         // AI persona started responding — show a "thinking" indicator
         // (TypingIndicator, driven by typingActors below) instead of an
@@ -281,7 +279,6 @@ export function useTopicMessages(
             },
           ];
         });
-
       } else if (event.type === "message_delta") {
         // First token for this message -- materialize it out of its
         // pending typing actor (see message_start above), then clear
@@ -289,9 +286,7 @@ export function useTopicMessages(
         setMessages((prev) => {
           if (prev.some((m) => m.id === event.id)) {
             return prev.map((m) =>
-              m.id === event.id
-                ? { ...m, content: m.content + event.delta }
-                : m,
+              m.id === event.id ? { ...m, content: m.content + event.delta } : m,
             );
           }
           const actor = typingActorsRef.current.find((a) => a.key === event.id);
@@ -314,7 +309,6 @@ export function useTopicMessages(
           ];
         });
         setTypingActors((prev) => prev.filter((a) => a.key !== event.id));
-
       } else if (event.type === "message_error") {
         // Streaming failed -- stop the cursor, show the friendly message
         // as plain text instead of leaving the placeholder stuck forever.
@@ -356,7 +350,6 @@ export function useTopicMessages(
           ];
         });
         setTypingActors((prev) => prev.filter((a) => a.key !== event.id));
-
       } else if (event.type === "message_done") {
         // Streaming complete — replace content with clean version + set renderer
         // If no message_delta ever arrived (a very fast/empty reply), the
@@ -403,21 +396,28 @@ export function useTopicMessages(
           // which could be unrelated small talk before anyone ever
           // @mentioned a persona.
           if (
-            !autoRenamedRef.current && projectId && channelId && topicId &&
+            !autoRenamedRef.current &&
+            projectId &&
+            channelId &&
+            topicId &&
             updated.some((m) => m.sender.type === "agent" && m.id === event.id)
           ) {
             const aiIndex = updated.findIndex((m) => m.id === event.id);
             let triggerHuman: ChatMessage | undefined;
             for (let i = aiIndex - 1; i >= 0; i--) {
-              if (updated[i].sender.type === "human") { triggerHuman = updated[i]; break; }
+              if (updated[i].sender.type === "human") {
+                triggerHuman = updated[i];
+                break;
+              }
             }
             if (triggerHuman) {
               // Strip @mentions and output_type markers, trim to 60 chars
-              const title = triggerHuman.content
-                .replace(/@\w+/g, "")
-                .replace(/@output_type:\w+/g, "")
-                .trim()
-                .slice(0, 60) || "chat";
+              const title =
+                triggerHuman.content
+                  .replace(/@\w+/g, "")
+                  .replace(/@output_type:\w+/g, "")
+                  .trim()
+                  .slice(0, 60) || "chat";
               autoRenamedRef.current = true;
               renameTopic(projectId, channelId, topicId, title).catch(() => {});
             }
@@ -462,7 +462,9 @@ export function useTopicMessages(
           merged.sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
           return merged;
         });
-      } catch { /* silent */ }
+      } catch {
+        /* silent */
+      }
     };
     const id = setInterval(poll, 3000);
     return () => clearInterval(id);

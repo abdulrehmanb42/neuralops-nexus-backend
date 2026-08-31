@@ -6,11 +6,11 @@ export interface ApiMessage {
   type: string;
   message_type?: string;
   content: string;
-  render_as?: string;    // M7: "text" | "code" | "html" | "terminal"
-  output_type?: string;  // M7: "text" | "chart" | "table" | "diagram" | ...
+  render_as?: string; // M7: "text" | "code" | "html" | "terminal"
+  output_type?: string; // M7: "text" | "chart" | "table" | "diagram" | ...
   sender_name: string;
   sender_id: string | null;
-  sender_avatar?: string | null;  // #148
+  sender_avatar?: string | null; // #148
   sender_type: string;
   sequence: number;
   created_at: string;
@@ -18,7 +18,7 @@ export interface ApiMessage {
 
 export interface SendMessageResponse {
   message: ApiMessage;
-  channel: string;   // Centrifugo channel: "topic-{topic_id}"
+  channel: string; // Centrifugo channel: "topic-{topic_id}"
 }
 
 export async function listMessages(
@@ -53,8 +53,7 @@ export async function sendTyping(
   channelId: string,
   topicId: string,
 ): Promise<void> {
-  await apiJson(
-    `/api/v1/projects/${projectId}/channels/${channelId}/topics/${topicId}/typing/`,
-    { method: "POST" },
-  );
+  await apiJson(`/api/v1/projects/${projectId}/channels/${channelId}/topics/${topicId}/typing/`, {
+    method: "POST",
+  });
 }

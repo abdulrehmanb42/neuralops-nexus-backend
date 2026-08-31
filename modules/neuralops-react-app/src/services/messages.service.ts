@@ -6,10 +6,7 @@ export async function listMessages(topicId: string): Promise<Message[]> {
   return apiJson<Message[]>(`/api/v1/topics/${topicId}/messages/`);
 }
 
-export async function sendMessage(
-  topicId: string,
-  input: Partial<Message>,
-): Promise<Message> {
+export async function sendMessage(topicId: string, input: Partial<Message>): Promise<Message> {
   return apiJson<Message>(`/api/v1/topics/${topicId}/messages/`, {
     method: "POST",
     body: JSON.stringify(input),

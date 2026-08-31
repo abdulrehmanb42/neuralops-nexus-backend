@@ -49,9 +49,7 @@ function parseSemver(v: string): [number, number, number] | null {
  * 0 through the whole alpha/beta period. PATCH-only differences are just a
  * "minor" drift -- warn, don't block.
  */
-export function compareServerVersion(
-  serverVersion: string | null | undefined,
-): ServerVersionDrift {
+export function compareServerVersion(serverVersion: string | null | undefined): ServerVersionDrift {
   if (!serverVersion || serverVersion === "dev" || serverVersion === "unknown") {
     return "unknown";
   }
