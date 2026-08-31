@@ -43,7 +43,12 @@ def build_authorize_url(server, frontend_origin: str) -> str:
         scope=" ".join(cfg.get("scopes", [])),
         redirect_uri=_redirect_uri(),
     )
-    url, _ = client.create_authorization_url(cfg["authorize_endpoint"], state=state)
+    # Extra provider-specific authorize params (Atlassian needs audience +
+    # prompt=consent, Google needs access_type=offline + prompt=consent) so
+    # the provider actually returns a refresh_token. Generic -- any auth-code
+    # provider works by supplying its own endpoints/scopes/params.
+    extra = {str(k): str(v) for k, v in (cfg.get("authorize_params") or {}).items()}
+    url, _ = client.create_authorization_url(cfg["authorize_endpoint"], state=state, **extra)
     return url
 
 
