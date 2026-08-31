@@ -142,6 +142,10 @@ export function Composer({ projectId, channelId, topicId, channelName, topicTitl
   // stale flag then eats the first real keystroke's ping).
   const progValueRef = useRef<string | null>(drafts.get(topicId) ?? "");
   const fileRef = useRef<HTMLInputElement>(null);
+  // Whether the editor currently has focus — survives editor recreation
+  // (destroying a focused element fires no blur), so the topic-switch effect
+  // can tell "recreated while in use" from "opened a channel/topic".
+  const editorFocusedRef = useRef(false);
   const placeholder = channelName
     ? topicTitle
       ? `Message #${channelName} › ${topicTitle}`
@@ -281,7 +285,12 @@ export function Composer({ projectId, channelId, topicId, channelName, topicTitl
       attributes: { class: "nx-editor-content", "aria-label": "Message", role: "textbox" },
       // Clicking outside the composer dismisses the mention/slash popovers.
       handleDOMEvents: {
+        focus: () => {
+          editorFocusedRef.current = true;
+          return false;
+        },
         blur: () => {
+          editorFocusedRef.current = false;
           setTrigger(null);
           setSlashDismissed(true);
           return false;
@@ -407,7 +416,9 @@ export function Composer({ projectId, channelId, topicId, channelName, topicTitl
     setTrigger(t ? { query: t.query, from: $from.pos - t.query.length - 1, to: $from.pos } : null);
   }
 
-  // Topic switch: load that topic's draft, focus, reset popovers.
+  // Topic switch: load that topic's draft, reset popovers. Opening a
+  // channel/topic must NOT steal focus — refocus only restores focus across
+  // an editor recreation (placeholder change after auto-rename) mid-typing.
   useEffect(() => {
     if (!editor) return;
     const raf = requestAnimationFrame(() => {
@@ -417,7 +428,7 @@ export function Composer({ projectId, channelId, topicId, channelName, topicTitl
       setValue(draft);
       setTrigger(null);
       setSlashDismissed(false);
-      editor.commands.focus("end");
+      if (editorFocusedRef.current) editor.commands.focus("end");
     });
     return () => cancelAnimationFrame(raf);
   }, [topicId, editor]);
@@ -858,6 +869,7 @@ export function Composer({ projectId, channelId, topicId, channelName, topicTitl
           )}
           <button
             aria-label="Send message"
+            onMouseDown={(e) => e.preventDefault()} /* keep editor focus — like the toolbar buttons */
             onClick={() => void submit()}
             disabled={disabled || sending || !value.trim() || over}
             className="flex h-7 w-9 flex-none items-center justify-center rounded-md bg-accent text-accent-ink transition-all hover:brightness-110 disabled:opacity-30 disabled:saturate-0"
