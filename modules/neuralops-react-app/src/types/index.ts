@@ -85,8 +85,10 @@ export interface MCPServer {
   description?: string;
   server_type: string;
   transport: string;
-  url?: string;
-  command?: string;
+  // Exactly one of url/command applies per transport; create/patch payloads
+  // send null for the unused one (the backend CHECK wants NULL, not "").
+  url?: string | null;
+  command?: string | null;
   docker_image?: string;
   config: Record<string, unknown>;
   timeout_seconds: number;
@@ -135,7 +137,6 @@ export interface Persona {
   model_id?: string;
   agent_id?: string;
   prompt?: Prompt;
-  is_active: boolean;
   is_active: boolean;
 }
 
