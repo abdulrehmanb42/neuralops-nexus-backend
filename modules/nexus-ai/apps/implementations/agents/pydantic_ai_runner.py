@@ -278,6 +278,14 @@ class PydanticAIRunner(AgentRunner):
                     msg = response.choices[0].message
                     tool_calls = getattr(msg, "tool_calls", None) or []
 
+                    if tool_calls and msg.content:
+                        full_response += msg.content
+                        yield AgentEvent(
+                            type="message_delta",
+                            id=job.msg_id,
+                            delta=msg.content + "\n\n",
+                        )
+
                     if not tool_calls:
                         # No more tool calls — stream the final answer
                         final_kwargs = _build_litellm_kwargs(

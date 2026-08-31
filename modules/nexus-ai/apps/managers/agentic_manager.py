@@ -257,6 +257,7 @@ class AgenticSwarmManager:
         while hops < MAX_HOPS:
             handoff_triggered = False
             delegation_triggered = False
+            continue_triggered = False
 
             if is_first_hop:
                 current_sub_msg_id = job.msg_id
@@ -318,6 +319,7 @@ class AgenticSwarmManager:
                 if event.type == "tool_call_start" and event.tool_call.name == "handoff_task":
                     target_name = event.tool_call.args.get("target_persona")
                     instructions = event.tool_call.args.get("instructions")
+                    reasoning = event.tool_call.args.get("reasoning")
                     target_id = next(
                         (p[0] for p in job.personas if p[1] == target_name),
                         None
@@ -327,6 +329,9 @@ class AgenticSwarmManager:
                         break
                     
                     handoff_text = f"Handing off to @{target_name}..."
+                    if reasoning:
+                        handoff_text += f"\n\n*Reasoning:* {reasoning}"
+                        
                     yield AgentEvent(
                         type="swarm_transition",
                         id=current_sub_msg_id,
@@ -346,6 +351,7 @@ class AgenticSwarmManager:
                 if event.type == "tool_call_start" and event.tool_call.name == "delegate_task":
                     target_name = event.tool_call.args.get("target_persona")
                     instructions = event.tool_call.args.get("instructions")
+                    reasoning = event.tool_call.args.get("reasoning")
                     target_id = next(
                         (p[0] for p in job.personas if p[1] == target_name),
                         None
@@ -355,6 +361,9 @@ class AgenticSwarmManager:
                         break
                     
                     delegate_text = f"Delegating task to @{target_name}..."
+                    if reasoning:
+                        delegate_text += f"\n\n*Reasoning:* {reasoning}"
+                        
                     yield AgentEvent(
                         type="swarm_transition",
                         id=current_sub_msg_id,
@@ -369,6 +378,26 @@ class AgenticSwarmManager:
                     stack.append(target_id)
                     active_persona_id = target_id
                     delegation_triggered = True
+                    break
+
+                if event.type == "tool_call_start" and event.tool_call.name == "continue_work":
+                    reasoning = event.tool_call.args.get("reasoning")
+                    continue_text = "Continuing work on next steps..."
+                    if reasoning:
+                        continue_text += f"\n\n*Reasoning:* {reasoning}"
+                        
+                    yield AgentEvent(
+                        type="swarm_transition",
+                        id=current_sub_msg_id,
+                        content=continue_text,
+                        metadata={
+                            "transition_type": "continue",
+                            "from_persona": persona.name,
+                            "to_persona": persona.name
+                        }
+                    )
+                    
+                    continue_triggered = True
                     break
 
             raw_hop = "".join(agent_response_content)
@@ -401,9 +430,12 @@ class AgenticSwarmManager:
                 ))
 
             if handoff_triggered:
+                hist_content = f"[Handed off task to @{target_name} with instructions: {instructions}]"
+                if reasoning:
+                    hist_content += f"\nReasoning: {reasoning}"
                 history.append(HistoryMessage(
                     role="assistant",
-                    content=f"[Handed off task to @{target_name} with instructions: {instructions}]",
+                    content=hist_content,
                     sender_name=persona.name
                 ))
                 history.append(HistoryMessage(
@@ -414,9 +446,12 @@ class AgenticSwarmManager:
                 continue
 
             if delegation_triggered:
+                hist_content = f"[Delegated task to @{target_name} with instructions: {instructions}]"
+                if reasoning:
+                    hist_content += f"\nReasoning: {reasoning}"
                 history.append(HistoryMessage(
                     role="assistant",
-                    content=f"[Delegated task to @{target_name} with instructions: {instructions}]",
+                    content=hist_content,
                     sender_name=persona.name
                 ))
                 history.append(HistoryMessage(
@@ -426,12 +461,32 @@ class AgenticSwarmManager:
                 hops += 1
                 continue
 
-            if not handoff_triggered and not delegation_triggered:
+            if continue_triggered:
+                hist_content = "[Called continue_work to proceed with next steps]"
+                if reasoning:
+                    hist_content += f"\nReasoning: {reasoning}"
+                history.append(HistoryMessage(
+                    role="assistant",
+                    content=hist_content,
+                    sender_name=persona.name
+                ))
+                history.append(HistoryMessage(
+                    role="user",
+                    content="You have been granted another turn. Please output the actual code/work for the next step now. CRITICAL: Do NOT call continue_work again until you have completed a substantial portion of the work in this turn.",
+                ))
+                hops += 1
+                continue
+
+            if not handoff_triggered and not delegation_triggered and not continue_triggered:
                 if len(stack) > 1:
                     stack.pop()
                     active_persona_id = stack[-1]
                     
-                    return_text = f"Returning control to @{persona.name}..."
+                    target_name = next(
+                        (p[1] for p in job.personas if p[0] == active_persona_id),
+                        "parent"
+                    )
+                    return_text = f"Returning control to @{target_name}..."
                     yield AgentEvent(
                         type="swarm_transition",
                         id=current_sub_msg_id,
@@ -439,13 +494,13 @@ class AgenticSwarmManager:
                         metadata={
                             "transition_type": "return_control",
                             "from_persona": persona.name,
-                            "to_persona": "parent"
+                            "to_persona": target_name
                         }
                     )
 
                     history.append(HistoryMessage(
                         role="user",
-                        content=f"The delegated task to @{persona.name} has been completed. You are back in control."
+                        content=f"The delegated task to @{persona.name} has been completed. You are back in control. Please continue fulfilling the user's original request if there are remaining steps."
                     ))
                     hops += 1
                     continue
@@ -484,6 +539,10 @@ class AgenticSwarmManager:
                 "parameters": {
                     "type": "object",
                     "properties": {
+                        "reasoning": {
+                            "type": "string",
+                            "description": "Explain why you are handing off, what you have accomplished so far, and why the target persona is best suited for the remaining work."
+                        },
                         "target_persona": {
                             "type": "string",
                             "enum": names,
@@ -493,11 +552,30 @@ class AgenticSwarmManager:
                             "description": "What the next persona/agent needs to do"
                         },
                     },
-                    "required": ["target_persona", "instructions"]
+                    "required": ["reasoning", "target_persona", "instructions"]
                 }
             }
         }
     
+    def build_continue_tool(self) -> dict:
+        return {
+            "type": "function",
+            "function": {
+                "name": "continue_work",
+                "description": "Use this tool to grant yourself another consecutive conversational turn without waiting for the user. Essential for breaking down large tasks (like writing multiple files) into manageable steps.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "reasoning": {
+                            "type": "string",
+                            "description": "Explain what you have accomplished in this turn and what you will do in the next turn."
+                        }
+                    },
+                    "required": ["reasoning"]
+                }
+            }
+        }
+
     def build_delegate_tool(self, names: list, descriptions: str) -> dict:
         return {
             "type": "function",
@@ -507,6 +585,10 @@ class AgenticSwarmManager:
                 "parameters": {
                     "type": "object",
                     "properties": {
+                        "reasoning": {
+                            "type": "string",
+                            "description": "Explain why you are delegating this subtask, and what you will do once control is returned to you."
+                        },
                         "target_persona": {
                             "type": "string",
                             "enum": names,
@@ -516,7 +598,7 @@ class AgenticSwarmManager:
                             "description": "What the next persona/agent needs to do, before returning control"
                         },
                     },
-                    "required": ["target_persona", "instructions"]
+                    "required": ["reasoning", "target_persona", "instructions"]
                 }
             }
         }
@@ -527,7 +609,8 @@ class AgenticSwarmManager:
         descriptions = "\n".join([f"- {persona[1]}:{persona[2]}" for persona in personas if persona[0] != active_persona_id])
         handoff_tool = self.build_handoff_tool(names, descriptions)
         delegate_tool = self.build_delegate_tool(names, descriptions)
+        continue_tool = self.build_continue_tool()
 
-        return [handoff_tool, delegate_tool]
+        return [handoff_tool, delegate_tool, continue_tool]
 
 

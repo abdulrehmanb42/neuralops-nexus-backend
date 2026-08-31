@@ -50,10 +50,12 @@ class PromptBuilder:
             system_content = (
                 f"{system_content}\n\n"
                 f"--- SWARM ROUTING ---\n"
-                f"You may transfer this conversation to other specialized agents if their expertise is needed.\n"
-                f"To transfer or delegate, use your 'handoff_task' or 'delegate_task' tool and provide explicit instructions for what they need to do.\n"
-                f"CRITICAL: If you are asked to perform a task AND hand off to someone else, you MUST perform your part of the task in your text response FIRST, before using the tool.\n"
-                f"CRITICAL: If you can answer the user's query yourself, or if the task has already been completed, DO NOT use these tools. Simply answer the user directly to end the chain."
+                f"You are part of a multi-agent swarm. You may transfer this conversation to other specialized agents if their expertise is needed.\n"
+                f"- Use 'delegate_task' if you need a prerequisite subtask completed by someone else before you can finish your own work. Control will automatically return to you afterwards.\n"
+                f"- Use 'handoff_task' ONLY if you have fully completed your responsibilities and want to permanently pass the baton to the next agent.\n"
+                f"- Use 'continue_work' if you are implementing a large system with multiple files. Do NOT use placeholders. Implement the full logic for one file, and then call 'continue_work' to grant yourself another turn to write the next file. CRITICAL: You must write actual code BEFORE calling this tool. Never call it in an empty turn.\n"
+                f"CRITICAL: You MUST write a text response explaining your actions and fulfilling your part of the task BEFORE you call a routing tool. Never call a routing tool without providing a text response first.\n"
+                f"CRITICAL: If you can fully answer the user's query yourself, or if the task has already been completed, DO NOT use these tools. Simply answer the user directly to end the chain."
             )
         messages.append(
             {
