@@ -40,4 +40,23 @@ describe("servers store", () => {
     useServersStore.getState().add("A again", "http://x:8096");
     expect(useServersStore.getState().removed["http://x:8096"]).toBeUndefined();
   });
+
+  // Regression: over http://<LAN-IP> (a non-secure context) crypto.randomUUID is
+  // undefined and add() used to throw "crypto.randomUUID is not a function",
+  // leaving the teammate unable to add any server. It must now mint an id via
+  // the getRandomValues fallback instead.
+  it("adds a server where crypto.randomUUID is unavailable (non-secure http context)", () => {
+    const realCrypto = globalThis.crypto;
+    const getRandomValues = <T extends Uint8Array>(a: T): T => {
+      for (let i = 0; i < a.length; i++) a[i] = (i * 37 + 11) & 0xff;
+      return a;
+    };
+    Object.defineProperty(globalThis, "crypto", { value: { getRandomValues }, configurable: true });
+    try {
+      expect(() => useServersStore.getState().add("HTTP box", "http://192.168.1.90:8096")).not.toThrow();
+      expect(useServersStore.getState().servers[0].id).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/);
+    } finally {
+      Object.defineProperty(globalThis, "crypto", { value: realCrypto, configurable: true });
+    }
+  });
 });

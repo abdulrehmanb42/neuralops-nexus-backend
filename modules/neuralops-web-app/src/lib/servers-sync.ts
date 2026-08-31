@@ -1,5 +1,6 @@
 "use client";
 
+import { randomId } from "@/lib/browser";
 import { supabase } from "@/lib/supabase";
 import { useServersStore, type SavedServer } from "@/stores/servers.store";
 
@@ -19,10 +20,19 @@ type RemoteServer = Partial<SavedServer> & { url?: string };
 let pulled = false;
 
 export async function pullServers(): Promise<void> {
+  // Only the network round-trip is caught as "offline" — the merge below runs
+  // outside it, so a real bug there surfaces instead of being silently
+  // swallowed (which would leave `pulled` false and kill mirroring all session).
+  let user;
   try {
     const { data, error } = await supabase().auth.getUser();
-    if (error || !data.user) return; // signed out — keep the push gate closed
-    const meta = data.user.user_metadata ?? {};
+    if (error || !data.user) return; // signed out / auth error — keep the push gate closed
+    user = data.user;
+  } catch {
+    return; // offline — the local list stands; push stays gated
+  }
+  {
+    const meta = user.user_metadata ?? {};
     const remote = (meta.nx_servers as RemoteServer[] | undefined) ?? [];
     const remoteRemoved = (meta.nx_servers_removed as Record<string, string> | undefined) ?? {};
     const { servers, removed } = useServersStore.getState();
@@ -42,7 +52,7 @@ export async function pullServers(): Promise<void> {
         const local = byUrl.get(key);
         if (!local) {
           byUrl.set(key, {
-            id: typeof r.id === "string" ? r.id : crypto.randomUUID(),
+            id: typeof r.id === "string" ? r.id : randomId(),
             name: typeof r.name === "string" && r.name ? r.name : url,
             url,
             lastConnected: typeof r.lastConnected === "string" ? r.lastConnected : undefined,
@@ -71,8 +81,6 @@ export async function pullServers(): Promise<void> {
     }
     if (changed) useServersStore.setState({ servers: [...byUrl.values()], removed: mergedRemoved });
     pulled = true;
-  } catch {
-    /* offline — the local list stands; push stays gated */
   }
 }
 
