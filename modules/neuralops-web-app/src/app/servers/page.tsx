@@ -10,6 +10,7 @@ import { Constellation } from "@/components/brand/constellation";
 import { Nebula } from "@/components/brand/nebula";
 import { Wordmark } from "@/components/brand/wordmark";
 import { ServerChooser, type ChooserEntry } from "@/components/servers/server-chooser";
+import { InsecureContextNotice } from "@/components/security/insecure-context-notice";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { Button } from "@/components/ui/button";
 import { ConfirmDialog, Dialog } from "@/components/ui/dialog";
@@ -183,6 +184,7 @@ export default function ServersPage() {
             <h1 className="mt-2 font-display text-[28px] font-extrabold">Where are you working today?</h1>
             <p className="mb-7 mt-1.5 text-[14px] text-ink2">Signed in as {email}</p>
 
+            <InsecureContextNotice className="mb-5" />
             <ServerChooser entries={entries} loading={syncing || showSync} onConnect={connect} onRemove={setRemoving} onAdd={() => setAdding(true)} />
 
             <p className="mt-5 text-center text-[12.5px] text-ink2">

@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { InsecureContextNotice } from "@/components/security/insecure-context-notice";
 import { Constellation } from "@/components/brand/constellation";
 import { Nebula } from "@/components/brand/nebula";
 import { Wordmark } from "@/components/brand/wordmark";
@@ -41,6 +42,7 @@ export function AuthShell({ children, title, subtitle }: { children: React.React
         </div>
         <div className="flex flex-1 items-center justify-center py-10">
           <div className="w-full max-w-sm">
+            <InsecureContextNotice className="mb-5" />
             <h1 className="font-display text-[26px] font-extrabold">{title}</h1>
             {subtitle && <p className="mt-1.5 text-[14px] text-ink2">{subtitle}</p>}
             <div className="mt-7">{children}</div>
