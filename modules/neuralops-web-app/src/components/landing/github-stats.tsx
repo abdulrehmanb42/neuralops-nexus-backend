@@ -92,46 +92,44 @@ export function GithubStatsCard() {
     { icon: GitCommitHorizontal, label: "Commits", value: commits, tint: "text-ink2", fill: false },
   ];
   return (
-    <div className="rounded-xl border border-line bg-surface p-6">
-      <div className="flex items-start gap-3">
-        <span className="mt-0.5 flex-none text-ink"><GithubMark size={24} /></span>
-        <div className="min-w-0 flex-1">
+    <div className="rounded-xl border border-line bg-surface p-6 text-center">
+      <div className="flex items-center justify-center gap-2.5">
+        <span className="flex-none text-ink"><GithubMark size={22} /></span>
+        <a
+          href={REPO_URL}
+          target="_blank"
+          rel="noreferrer noopener"
+          className="font-display text-[16px] font-bold text-ink hover:text-accent hover:underline"
+        >
+          mapax-io/neuralops-nexus
+        </a>
+      </div>
+      <p className="mt-1 text-[13px] text-ink2">AGPL-3.0 · open core · contributions welcome.</p>
+      <div className="mt-4 flex flex-wrap items-center justify-center gap-2">
+        {counts.map(({ icon: Icon, label, value, tint, fill }) => (
           <a
+            key={label}
             href={REPO_URL}
             target="_blank"
             rel="noreferrer noopener"
-            className="font-display text-[16px] font-bold text-ink hover:text-accent hover:underline"
+            className="inline-flex items-stretch overflow-hidden rounded-md border border-line text-[12px] font-semibold transition-colors hover:border-ink2"
           >
-            mapax-io/neuralops-nexus
+            <span className="flex items-center gap-1.5 bg-surface2 px-2.5 py-1 text-ink2">
+              <Icon size={13} strokeWidth={2} className={tint} fill={fill ? "currentColor" : "none"} /> {label}
+            </span>
+            <span className="flex items-center border-l border-line bg-surface px-2.5 py-1 tabular-nums text-ink">
+              {loaded ? fmt(value) : "···"}
+            </span>
           </a>
-          <p className="mt-0.5 text-[13px] text-ink2">AGPL-3.0 · open core · contributions welcome.</p>
-          <div className="mt-4 flex flex-wrap items-center gap-2">
-            {counts.map(({ icon: Icon, label, value, tint, fill }) => (
-              <a
-                key={label}
-                href={REPO_URL}
-                target="_blank"
-                rel="noreferrer noopener"
-                className="inline-flex items-stretch overflow-hidden rounded-md border border-line text-[12px] font-semibold transition-colors hover:border-ink2"
-              >
-                <span className="flex items-center gap-1.5 bg-surface2 px-2.5 py-1 text-ink2">
-                  <Icon size={13} strokeWidth={2} className={tint} fill={fill ? "currentColor" : "none"} /> {label}
-                </span>
-                <span className="flex items-center border-l border-line bg-surface px-2.5 py-1 tabular-nums text-ink">
-                  {loaded ? fmt(value) : "···"}
-                </span>
-              </a>
-            ))}
-            <a
-              href={REPO_URL}
-              target="_blank"
-              rel="noreferrer noopener"
-              className="inline-flex items-center gap-1.5 rounded-md border border-line bg-surface2 px-3 py-1 text-[12px] font-semibold text-ink transition-colors hover:border-ink2 hover:bg-surface"
-            >
-              <GithubMark size={13} /> View on GitHub
-            </a>
-          </div>
-        </div>
+        ))}
+        <a
+          href={REPO_URL}
+          target="_blank"
+          rel="noreferrer noopener"
+          className="inline-flex items-center gap-1.5 rounded-md border border-line bg-surface2 px-3 py-1 text-[12px] font-semibold text-ink transition-colors hover:border-ink2 hover:bg-surface"
+        >
+          <GithubMark size={13} /> View on GitHub
+        </a>
       </div>
     </div>
   );
