@@ -146,3 +146,19 @@ at all in the production profile, versus staying reachable only over
 need direct host access to either).
 
 ---
+
+## neuralops-react-app: 8 remaining eslint warnings
+
+**Where:** `modules/neuralops-react-app` (`npm run lint`).
+
+Left in place during the 2026-09 UI/build-fix pass because fixing them
+changes behavior, not just style:
+
+- 2× `react-hooks/exhaustive-deps` — `AddPersonaForm.tsx:87` (missing
+  `projectId`), `useChat.ts:448` (missing `channelId`/`projectId`). Adding
+  the deps re-runs those effects on channel/project switches; that needs a
+  deliberate review of the intended reset semantics, not a mechanical fix.
+- 6× `react-refresh/only-export-components` — shadcn/ui files exporting
+  variants/helpers alongside components (`badge`, `button`, `form`,
+  `navigation-menu`, `sidebar`, `toggle`). Standard shadcn layout; fixing
+  means splitting files and touching many imports for dev-only HMR benefit.
