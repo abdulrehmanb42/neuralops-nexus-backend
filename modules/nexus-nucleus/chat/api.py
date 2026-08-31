@@ -257,7 +257,21 @@ async def send_message(
         ))
 
     elif mentioned_personas and directives.has_session_open:
-        # Rule 2: @mentions + @session — open new session with mentioned personas
+        # Rule 2: @mentions + @session — open new session with mentioned personas.
+        # If a session is already open here, close it FIRST and announce it — so
+        # switching personas mid-topic shows the old session ending in chat.
+        # (create_session closes the previous one silently; the announce has to
+        # happen at the API layer, which is the only place that can publish.)
+        prior = await _close_session(user.id, topic.id)
+        if prior:
+            prior_names = ", ".join(f"@{n}" for n in prior)
+            close_msg = await _save_system_message(
+                company=company, project=project, topic=topic,
+                content=f"Session with {prior_names} closed.",
+            )
+            asyncio.create_task(chat_svc.publish_async(
+                centrifugo_channel, {**close_msg, "type": "message"}
+            ))
         timeout = await _get_session_timeout(company)
         await _create_session(user, topic, mentioned_personas, timeout)
         persona_names = ", ".join(f"@{p.name}" for p in mentioned_personas)
