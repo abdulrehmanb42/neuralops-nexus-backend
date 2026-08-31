@@ -1,7 +1,8 @@
 """
 Built-in context panel providers for M6.
 
-  FilePanelProvider  — shows files attached to a topic; each file is individually removable
+  FilePanelProvider  — shows uploaded files (ContextSource type=file); each is individually removable
+  WebPanelProvider   — shows web links (ContextSource type=web) in their own "Web Links" group
   ChatPanelProvider  — shows chat messages; individual messages can be excluded from context
 
 Each class is decorated with @ContextPanelRegistry.register so it is available
@@ -20,26 +21,24 @@ from .panel_provider import ContextPanelItem, ContextPanelProvider, ContextPanel
 logger = logging.getLogger(__name__)
 
 
-@ContextPanelRegistry.register
-class FilePanelProvider(ContextPanelProvider):
+class _ContextSourcePanelProvider(ContextPanelProvider):
     """
-    Shows ContextSource records (file / web) attached to a topic.
-
-    Deleting an item removes the entire ContextSource (file + vectors) —
-    the same operation as calling the detach_context_source() service.
+    Shared base for the file and web groups. Both back onto ContextSource records
+    and delete the same way (detach_context_source) — they differ only in the
+    source `type` they list, so web links get their own "Web Links" group instead
+    of being mixed into "Files". Not registered itself; subclasses set `directive`,
+    `label`, `icon`, and `source_type`.
     """
 
-    directive = "file"
-    label = "Files"
-    icon = "file-text"
-    can_delete_source = False   # no "delete all files at once" button
-    can_delete_items = True     # each file has its own delete button
+    source_type = ""            # "file" / "web" (a ContextSource.Type value)
+    can_delete_source = False   # no "delete all at once" button
+    can_delete_items = True     # each item has its own delete button
 
     def list_items(self, topic, company) -> list[ContextPanelItem]:
         from nucleus.models import ContextSource
 
         sources = (
-            ContextSource.objects.filter(topic=topic, is_active=True)
+            ContextSource.objects.filter(topic=topic, type=self.source_type, is_active=True)
             .order_by("created_at")
         )
         items = []
@@ -66,6 +65,26 @@ class FilePanelProvider(ContextPanelProvider):
         """Detach and delete the ContextSource record + its ChromaDB collection."""
         from context.services import detach_context_source
         detach_context_source(item_id)
+
+
+@ContextPanelRegistry.register
+class FilePanelProvider(_ContextSourcePanelProvider):
+    """Uploaded files attached to a topic (ContextSource type=file)."""
+
+    directive = "file"
+    label = "Files"
+    icon = "file-text"
+    source_type = "file"
+
+
+@ContextPanelRegistry.register
+class WebPanelProvider(_ContextSourcePanelProvider):
+    """Web links attached to a topic (ContextSource type=web) — its own group."""
+
+    directive = "web"
+    label = "Web Links"
+    icon = "globe"
+    source_type = "web"
 
 
 @ContextPanelRegistry.register
