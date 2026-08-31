@@ -26,13 +26,7 @@ const EMPTY: FormState = {
   licence_accepted: false,
 };
 
-export function AddModelForm({
-  open,
-  onClose,
-}: {
-  open: boolean;
-  onClose: () => void;
-}) {
+export function AddModelForm({ open, onClose }: { open: boolean; onClose: () => void }) {
   const [form, setForm] = useState<FormState>(EMPTY);
   const [saving, setSaving] = useState(false);
 
@@ -61,20 +55,11 @@ export function AddModelForm({
     <FormDialog title="Add AI Model" open={open} onClose={onClose}>
       <form onSubmit={submit} className="flex flex-col gap-4 mt-2">
         <Field label="Name *">
-          <Input
-            value={form.name}
-            onChange={set("name")}
-            placeholder="GPT-4o"
-            autoFocus
-          />
+          <Input value={form.name} onChange={set("name")} placeholder="GPT-4o" autoFocus />
         </Field>
 
         <Field label="Model ID * (LiteLLM format)">
-          <Input
-            value={form.model_id}
-            onChange={set("model_id")}
-            placeholder="gpt-4o"
-          />
+          <Input value={form.model_id} onChange={set("model_id")} placeholder="gpt-4o" />
         </Field>
 
         <Field label="API Base URL">

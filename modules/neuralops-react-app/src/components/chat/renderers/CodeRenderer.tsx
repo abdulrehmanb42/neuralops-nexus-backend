@@ -5,13 +5,7 @@ import rehypeHighlight from "rehype-highlight";
 import "highlight.js/styles/github-dark.css";
 import { Button } from "@/components/ui/button";
 
-export function CodeRenderer({
-  content,
-  language,
-}: {
-  content: string;
-  language?: string;
-}) {
+export function CodeRenderer({ content, language }: { content: string; language?: string }) {
   const [copied, setCopied] = useState(false);
 
   useEffect(() => {
@@ -36,9 +30,7 @@ export function CodeRenderer({
         className="flex items-center justify-between border-b px-3 py-1.5"
         style={{ backgroundColor: "var(--code-header-bg)", borderColor: "var(--code-border)" }}
       >
-        <span className="text-xs font-medium text-muted-foreground">
-          {language ?? "code"}
-        </span>
+        <span className="text-xs font-medium text-muted-foreground">{language ?? "code"}</span>
         <Button
           size="sm"
           variant="ghost"

@@ -14,19 +14,13 @@ export interface MessageSender {
  *   "image"    → ImageRenderer
  *   "web"      → WebRenderer    (URL in iframe)
  */
-export type MessageRenderType =
-  | "text"
-  | "code"
-  | "html"
-  | "terminal"
-  | "image"
-  | "web";
+export type MessageRenderType = "text" | "code" | "html" | "terminal" | "image" | "web";
 
 export interface ChatMessage {
   id: string;
   type: MessageRenderType;
   message_type?: string;
-  output_type?: string;           // M7: semantic type ("chart", "diagram", "table", etc.)
+  output_type?: string; // M7: semantic type ("chart", "diagram", "table", etc.)
   content: string;
   language?: string;
   metadata?: Record<string, unknown>;

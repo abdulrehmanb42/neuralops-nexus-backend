@@ -56,9 +56,7 @@ export function HtmlRenderer({ content }: { content: string }) {
           borderColor: "var(--code-border)",
         }}
       >
-        <span className="text-xs font-medium text-muted-foreground">
-          Interactive output
-        </span>
+        <span className="text-xs font-medium text-muted-foreground">Interactive output</span>
         <div className="flex items-center gap-1">
           <Button
             size="sm"

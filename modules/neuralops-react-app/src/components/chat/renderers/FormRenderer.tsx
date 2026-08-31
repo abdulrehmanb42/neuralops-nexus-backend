@@ -65,16 +65,9 @@ export function FormRenderer({
   }
 
   return (
-    <form
-      onSubmit={handleSubmit}
-      className="space-y-3 rounded-md border border-border bg-card p-4"
-    >
-      {schema.title && (
-        <div className="text-sm font-medium text-foreground">{schema.title}</div>
-      )}
-      {content && (
-        <div className="text-sm text-muted-foreground">{content}</div>
-      )}
+    <form onSubmit={handleSubmit} className="space-y-3 rounded-md border border-border bg-card p-4">
+      {schema.title && <div className="text-sm font-medium text-foreground">{schema.title}</div>}
+      {content && <div className="text-sm text-muted-foreground">{content}</div>}
       {fieldKeys.map((key) => {
         const prop = properties[key];
         const fieldType = deriveFieldType(prop);
@@ -84,10 +77,7 @@ export function FormRenderer({
           <div key={key} className="space-y-1.5">
             <Label htmlFor={key}>{label}</Label>
             {fieldType === "select" ? (
-              <Select
-                onValueChange={(v) => update(key, v)}
-                value={(values[key] as string) ?? ""}
-              >
+              <Select onValueChange={(v) => update(key, v)} value={(values[key] as string) ?? ""}>
                 <SelectTrigger id={key}>
                   <SelectValue placeholder="Select..." />
                 </SelectTrigger>

@@ -74,10 +74,7 @@ export function EditPersonaForm({
     <FormDialog title="Edit Persona" open={open} onClose={onClose}>
       <form onSubmit={submit} className="flex flex-col gap-4 mt-2">
         <Field label="Select Persona">
-          <Select
-            value={selectedPersonaId}
-            onValueChange={setSelectedPersonaId}
-          >
+          <Select value={selectedPersonaId} onValueChange={setSelectedPersonaId}>
             <SelectTrigger>
               <SelectValue placeholder="Select a persona to edit..." />
             </SelectTrigger>

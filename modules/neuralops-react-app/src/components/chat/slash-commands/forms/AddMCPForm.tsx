@@ -72,17 +72,13 @@ export function AddMCPForm({
       // Only send the field this transport actually uses -- avoid sending an
       // empty string for the other one, which would fail the backend's
       // CHECK constraint (it wants NULL, not "").
-      const payload = stdio
-        ? { ...form, url: null }
-        : { ...form, command: null };
+      const payload = stdio ? { ...form, url: null } : { ...form, command: null };
       await createMCPServer(projectId, payload);
       toast.success(`MCP server "${form.name}" registered`);
       setForm(EMPTY);
       onClose();
     } catch (err) {
-      toast.error(
-        err instanceof Error ? err.message : "Failed to register MCP server",
-      );
+      toast.error(err instanceof Error ? err.message : "Failed to register MCP server");
     } finally {
       setSaving(false);
     }
@@ -92,12 +88,7 @@ export function AddMCPForm({
     <FormDialog title="Register MCP Server" open={open} onClose={onClose}>
       <form onSubmit={submit} className="flex flex-col gap-4 mt-2">
         <Field label="Name *">
-          <Input
-            value={form.name}
-            onChange={set("name")}
-            placeholder="NeuralOps ERP"
-            autoFocus
-          />
+          <Input value={form.name} onChange={set("name")} placeholder="NeuralOps ERP" autoFocus />
         </Field>
 
         {isStdio(form.transport) ? (
@@ -133,10 +124,7 @@ export function AddMCPForm({
         </Field>
 
         <Field label="Server Type">
-          <Select
-            value={form.server_type}
-            onValueChange={setSel("server_type")}
-          >
+          <Select value={form.server_type} onValueChange={setSel("server_type")}>
             <SelectTrigger>
               <SelectValue />
             </SelectTrigger>
@@ -162,11 +150,7 @@ export function AddMCPForm({
           </Button>
           <Button
             type="submit"
-            disabled={
-              saving ||
-              !form.name ||
-              (isStdio(form.transport) ? !form.command : !form.url)
-            }
+            disabled={saving || !form.name || (isStdio(form.transport) ? !form.command : !form.url)}
           >
             {saving ? "Saving…" : "Register"}
           </Button>

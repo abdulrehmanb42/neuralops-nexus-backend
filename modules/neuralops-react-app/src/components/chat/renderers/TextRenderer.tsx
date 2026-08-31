@@ -34,9 +34,7 @@ function sanitizeMermaid(src: string): string {
         quoteLabel(id, "[", label, "]"),
       )
       // Rhombus nodes: A{label}
-      .replace(/([A-Za-z0-9_-]+)\{([^}\n]*)\}/g, (_m, id, label) =>
-        quoteLabel(id, "{", label, "}"),
-      )
+      .replace(/([A-Za-z0-9_-]+)\{([^}\n]*)\}/g, (_m, id, label) => quoteLabel(id, "{", label, "}"))
   );
 }
 
@@ -132,10 +130,7 @@ function InlineCode({ children }: { children: React.ReactNode }) {
 // The `pre` ref lets us grab plain innerText for the clipboard (works even
 // when rehype-highlight has wrapped the content in <span> elements).
 // ---------------------------------------------------------------------------
-function BlockCode({
-  children,
-  ...props
-}: React.ComponentPropsWithoutRef<"pre">) {
+function BlockCode({ children, ...props }: React.ComponentPropsWithoutRef<"pre">) {
   const preRef = useRef<HTMLPreElement>(null);
   const [copied, setCopied] = useState(false);
 
@@ -164,9 +159,7 @@ function BlockCode({
       if (typeof node === "string") return node;
       if (Array.isArray(node)) return node.map(extractText).join("");
       if (React.isValidElement(node))
-        return extractText(
-          (node.props as { children?: React.ReactNode }).children,
-        );
+        return extractText((node.props as { children?: React.ReactNode }).children);
       return "";
     };
     return <MermaidBlock code={extractText(codeEl?.props?.children)} />;
@@ -195,9 +188,7 @@ function BlockCode({
           borderColor: "var(--code-border)",
         }}
       >
-        <span className="text-xs font-medium text-muted-foreground">
-          {language}
-        </span>
+        <span className="text-xs font-medium text-muted-foreground">{language}</span>
         <Button
           size="sm"
           variant="ghost"
