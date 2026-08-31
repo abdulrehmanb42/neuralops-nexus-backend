@@ -244,10 +244,13 @@ async def send_message(
     if directives.is_session_close:
         # Rule 1: @session close — close session, no AI trigger
         closed = await _close_session(user.id, topic.id)
-        logger.warning("[chat/api] session closed user=%s topic=%s found=%s", user.id, topic_id, closed)
+        logger.warning("[chat/api] session closed user=%s topic=%s found=%s", user.id, topic_id, closed is not None)
+        # Name the personas the session was with (matches the open message), so
+        # the pill reads "Session with @X closed." not a bare "Session closed."
+        names = ", ".join(f"@{n}" for n in (closed or []))
         sys_msg = await _save_system_message(
             company=company, project=project, topic=topic,
-            content="Session closed.",
+            content=f"Session with {names} closed." if names else "Session closed.",
         )
         asyncio.create_task(chat_svc.publish_async(
             centrifugo_channel, {**sys_msg, "type": "message"}

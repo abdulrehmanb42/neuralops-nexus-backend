@@ -141,21 +141,26 @@ def create_session(user, topic, personas: list, timeout_minutes: int = 30):
     return session
 
 
-def close_session(user_id, topic_id) -> bool:
+def close_session(user_id, topic_id) -> list[str] | None:
     """
     Close the active session for this user+topic.
     Sessions are ephemeral state — hard-deleted, not soft-deleted,
     so the unique (user, topic) constraint stays clean for re-opens.
-    Returns True if a session was closed, False if none existed.
+    Returns the closed session's persona names (possibly empty), or None if
+    no session existed — so the caller can name them in the system message.
     """
     from nucleus.models import ChatSession
 
-    deleted_count, _ = ChatSession.objects.filter(
-        user_id=user_id,
-        topic_id=topic_id,
-    ).delete()
-
-    return deleted_count > 0
+    session = (
+        ChatSession.objects.filter(user_id=user_id, topic_id=topic_id)
+        .prefetch_related("personas")
+        .first()
+    )
+    if not session:
+        return None
+    names = [p.name for p in session.personas.all()]
+    session.delete()
+    return names
 
 
 def extract_output_type(message: str) -> tuple[str, str]:
