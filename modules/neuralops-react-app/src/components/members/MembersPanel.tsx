@@ -96,10 +96,7 @@ export function MembersPanel() {
             const isSelf = currentUserId === m.user_id;
             const canRemove = canManageMembers && !isSelf && m.role !== "owner";
             return (
-              <div
-                key={m.user_id}
-                className="flex items-center gap-3 px-4 py-3"
-              >
+              <div key={m.user_id} className="flex items-center gap-3 px-4 py-3">
                 <Avatar className="h-9 w-9">
                   {m.avatar && <AvatarImage src={m.avatar} alt={m.email} />}
                   <AvatarFallback className="text-xs font-medium">

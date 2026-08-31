@@ -23,10 +23,20 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { listAIModels, createAIModel, deleteAIModel } from "@/services/ai-models.service";
-import { listMCPServers, createMCPServer, patchMCPServer, deleteMCPServer } from "@/services/mcp-servers.service";
+import {
+  listMCPServers,
+  createMCPServer,
+  patchMCPServer,
+  deleteMCPServer,
+} from "@/services/mcp-servers.service";
 import { connectMcpOAuth } from "@/lib/mcpOAuth";
 import { listAgents, createAgent, patchAgent, deleteAgent } from "@/services/agents.service";
-import { listPersonas, createPersona, patchPersona, deletePersona } from "@/services/personas.service";
+import {
+  listPersonas,
+  createPersona,
+  patchPersona,
+  deletePersona,
+} from "@/services/personas.service";
 import { listProjects } from "@/services/projects.service";
 import type { AIModel, MCPServer, MCPAuthType, Agent, Persona, Project } from "@/types";
 
@@ -69,13 +79,7 @@ function Row({ children }: { children: React.ReactNode }) {
 
 // ── MCP OAuth2 connect ──────────────────────────────────────────────────────────
 
-function ConnectMcpButton({
-  server,
-  onConnected,
-}: {
-  server: MCPServer;
-  onConnected: () => void;
-}) {
+function ConnectMcpButton({ server, onConnected }: { server: MCPServer; onConnected: () => void }) {
   const [connecting, setConnecting] = useState(false);
   if (server.auth_type !== "oauth2") return null;
 
@@ -117,7 +121,9 @@ function ModelsTab() {
   });
 
   useEffect(() => {
-    listAIModels().then(setModels).catch(() => {});
+    listAIModels()
+      .then(setModels)
+      .catch(() => {});
   }, []);
 
   async function handleCreate() {
@@ -144,7 +150,15 @@ function ModelsTab() {
       });
       setModels((prev) => [...prev, m]);
       setOpen(false);
-      setForm({ name: "", model_id: "", api_key: "", temperature: "0.7", max_tokens: "4096", supports_tools: true, licence_accepted: false });
+      setForm({
+        name: "",
+        model_id: "",
+        api_key: "",
+        temperature: "0.7",
+        max_tokens: "4096",
+        supports_tools: true,
+        licence_accepted: false,
+      });
       toast.success(`Model "${m.name}" added.`);
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Failed to create model.");
@@ -183,7 +197,9 @@ function ModelsTab() {
               </div>
               <div className="flex items-center gap-2 shrink-0">
                 {m.has_api_key && (
-                  <span className="rounded-full bg-green-500/10 px-2 py-0.5 text-[10px] text-green-600">key set</span>
+                  <span className="rounded-full bg-green-500/10 px-2 py-0.5 text-[10px] text-green-600">
+                    key set
+                  </span>
                 )}
                 <span className="text-xs text-foreground-muted">{m.provider}</span>
                 <DeleteButton onDelete={() => handleDelete(m.id, m.name)} />
@@ -201,17 +217,32 @@ function ModelsTab() {
           <div className="space-y-3">
             <div>
               <Label>Display Name</Label>
-              <Input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} placeholder="GPT-4o" className="mt-1" />
+              <Input
+                value={form.name}
+                onChange={(e) => setForm({ ...form, name: e.target.value })}
+                placeholder="GPT-4o"
+                className="mt-1"
+              />
             </div>
             <div>
-              <Label>Model ID <span className="text-foreground-muted">(LiteLLM format)</span></Label>
-              <Input value={form.model_id} onChange={(e) => setForm({ ...form, model_id: e.target.value })} placeholder="openai/gpt-4o" className="mt-1" />
+              <Label>
+                Model ID <span className="text-foreground-muted">(LiteLLM format)</span>
+              </Label>
+              <Input
+                value={form.model_id}
+                onChange={(e) => setForm({ ...form, model_id: e.target.value })}
+                placeholder="openai/gpt-4o"
+                className="mt-1"
+              />
               <p className="mt-1 text-xs text-foreground-muted">
                 Examples: openai/gpt-4o · anthropic/claude-sonnet-4-6 · openai/o3-mini
               </p>
             </div>
             <div>
-              <Label>API Key <span className="text-foreground-muted">(optional — uses env var if blank)</span></Label>
+              <Label>
+                API Key{" "}
+                <span className="text-foreground-muted">(optional — uses env var if blank)</span>
+              </Label>
               <Input
                 type="password"
                 value={form.api_key}
@@ -223,25 +254,43 @@ function ModelsTab() {
             <div className="grid grid-cols-2 gap-3">
               <div>
                 <Label>Temperature</Label>
-                <Input value={form.temperature} onChange={(e) => setForm({ ...form, temperature: e.target.value })} className="mt-1" />
+                <Input
+                  value={form.temperature}
+                  onChange={(e) => setForm({ ...form, temperature: e.target.value })}
+                  className="mt-1"
+                />
               </div>
               <div>
                 <Label>Max Tokens</Label>
-                <Input value={form.max_tokens} onChange={(e) => setForm({ ...form, max_tokens: e.target.value })} className="mt-1" />
+                <Input
+                  value={form.max_tokens}
+                  onChange={(e) => setForm({ ...form, max_tokens: e.target.value })}
+                  className="mt-1"
+                />
               </div>
             </div>
             <div className="flex items-center gap-3">
-              <Switch checked={form.supports_tools} onCheckedChange={(v) => setForm({ ...form, supports_tools: v })} />
+              <Switch
+                checked={form.supports_tools}
+                onCheckedChange={(v) => setForm({ ...form, supports_tools: v })}
+              />
               <Label>Supports tool use (MCP)</Label>
             </div>
             <div className="flex items-center gap-3">
-              <Switch checked={form.licence_accepted} onCheckedChange={(v) => setForm({ ...form, licence_accepted: v })} />
+              <Switch
+                checked={form.licence_accepted}
+                onCheckedChange={(v) => setForm({ ...form, licence_accepted: v })}
+              />
               <Label>I accept the provider's terms of service</Label>
             </div>
           </div>
           <DialogFooter>
-            <Button variant="ghost" onClick={() => setOpen(false)}>Cancel</Button>
-            <Button onClick={handleCreate} disabled={saving}>{saving ? "Saving..." : "Add Model"}</Button>
+            <Button variant="ghost" onClick={() => setOpen(false)}>
+              Cancel
+            </Button>
+            <Button onClick={handleCreate} disabled={saving}>
+              {saving ? "Saving..." : "Add Model"}
+            </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
@@ -279,7 +328,9 @@ function MCPServersTab() {
   // Edit state
   const [editTarget, setEditTarget] = useState<MCPServer | null>(null);
   const [editForm, setEditForm] = useState({
-    name: "", description: "", url: "",
+    name: "",
+    description: "",
+    url: "",
     auth_type: "static_secrets" as MCPAuthType,
     client_secret: "",
     oauth_client_id: "",
@@ -291,7 +342,9 @@ function MCPServersTab() {
   const [editSaving, setEditSaving] = useState(false);
 
   function refreshServers() {
-    listMCPServers().then(setServers).catch(() => {});
+    listMCPServers()
+      .then(setServers)
+      .catch(() => {});
   }
 
   function openEdit(s: MCPServer) {
@@ -326,12 +379,15 @@ function MCPServersTab() {
               client_id: editForm.oauth_client_id,
               authorize_endpoint: editForm.oauth_authorize_endpoint,
               token_endpoint: editForm.oauth_token_endpoint,
-              scopes: editForm.oauth_scopes.split(",").map((s) => s.trim()).filter(Boolean),
+              scopes: editForm.oauth_scopes
+                .split(",")
+                .map((s) => s.trim())
+                .filter(Boolean),
               token_env_var: editForm.oauth_token_env_var || "OAUTH_ACCESS_TOKEN",
             }
           : undefined,
       });
-      setServers((prev) => prev.map((s) => s.id === updated.id ? updated : s));
+      setServers((prev) => prev.map((s) => (s.id === updated.id ? updated : s)));
       setEditTarget(null);
       toast.success(`MCP server "${updated.name}" updated.`);
     } catch (e) {
@@ -343,30 +399,46 @@ function MCPServersTab() {
 
   useEffect(() => {
     refreshServers();
-    listProjects().then((pr) => {
-      setProjects(pr);
-      if (pr.length > 0) setProjectId((prev) => prev || pr[0].id);
-    }).catch(() => {});
+    listProjects()
+      .then((pr) => {
+        setProjects(pr);
+        if (pr.length > 0) setProjectId((prev) => prev || pr[0].id);
+      })
+      .catch(() => {});
   }, []);
 
   function resetCreateForm() {
     setForm({
-      name: "", description: "", transport: "http", url: "",
-      is_first_party: true, embed_output: true,
-      auth_type: "static_secrets", client_secret: "",
-      oauth_client_id: "", oauth_authorize_endpoint: "", oauth_token_endpoint: "",
-      oauth_scopes: "", oauth_token_env_var: "OAUTH_ACCESS_TOKEN",
+      name: "",
+      description: "",
+      transport: "http",
+      url: "",
+      is_first_party: true,
+      embed_output: true,
+      auth_type: "static_secrets",
+      client_secret: "",
+      oauth_client_id: "",
+      oauth_authorize_endpoint: "",
+      oauth_token_endpoint: "",
+      oauth_scopes: "",
+      oauth_token_env_var: "OAUTH_ACCESS_TOKEN",
     });
   }
 
   async function handleCreate() {
-    if (!projectId) { toast.error("Select a project first."); return; }
+    if (!projectId) {
+      toast.error("Select a project first.");
+      return;
+    }
     if (!form.name || !form.url) {
       toast.error("Name and URL are required.");
       return;
     }
     const isOAuth = form.auth_type === "oauth2";
-    if (isOAuth && (!form.oauth_client_id || !form.oauth_authorize_endpoint || !form.oauth_token_endpoint)) {
+    if (
+      isOAuth &&
+      (!form.oauth_client_id || !form.oauth_authorize_endpoint || !form.oauth_token_endpoint)
+    ) {
       toast.error("Client ID, authorize endpoint, and token endpoint are required for OAuth2.");
       return;
     }
@@ -390,7 +462,10 @@ function MCPServersTab() {
               client_id: form.oauth_client_id,
               authorize_endpoint: form.oauth_authorize_endpoint,
               token_endpoint: form.oauth_token_endpoint,
-              scopes: form.oauth_scopes.split(",").map((s) => s.trim()).filter(Boolean),
+              scopes: form.oauth_scopes
+                .split(",")
+                .map((s) => s.trim())
+                .filter(Boolean),
               token_env_var: form.oauth_token_env_var || "OAUTH_ACCESS_TOKEN",
             }
           : undefined,
@@ -398,7 +473,9 @@ function MCPServersTab() {
       setServers((prev) => [...prev, s]);
       setOpen(false);
       resetCreateForm();
-      toast.success(`MCP server "${s.name}" added.${isOAuth ? " Connect it from the list to finish OAuth setup." : ""}`);
+      toast.success(
+        `MCP server "${s.name}" added.${isOAuth ? " Connect it from the list to finish OAuth setup." : ""}`,
+      );
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Failed to create MCP server.");
     } finally {
@@ -421,10 +498,14 @@ function MCPServersTab() {
       <div className="flex items-center justify-between gap-3">
         <div className="w-56">
           <Select value={projectId} onValueChange={setProjectId}>
-            <SelectTrigger><SelectValue placeholder="Select a project..." /></SelectTrigger>
+            <SelectTrigger>
+              <SelectValue placeholder="Select a project..." />
+            </SelectTrigger>
             <SelectContent>
               {projects.map((pr) => (
-                <SelectItem key={pr.id} value={pr.id}>{pr.name}</SelectItem>
+                <SelectItem key={pr.id} value={pr.id}>
+                  {pr.name}
+                </SelectItem>
               ))}
             </SelectContent>
           </Select>
@@ -445,9 +526,13 @@ function MCPServersTab() {
                 <p className="text-xs text-foreground-muted truncate">{s.url}</p>
               </div>
               <div className="flex items-center gap-2 shrink-0">
-                <span className="rounded-full bg-accent px-2 py-0.5 text-[10px]">{s.transport}</span>
+                <span className="rounded-full bg-accent px-2 py-0.5 text-[10px]">
+                  {s.transport}
+                </span>
                 {s.is_first_party && (
-                  <span className="rounded-full bg-blue-500/10 px-2 py-0.5 text-[10px] text-blue-600">first-party</span>
+                  <span className="rounded-full bg-blue-500/10 px-2 py-0.5 text-[10px] text-blue-600">
+                    first-party
+                  </span>
                 )}
                 {s.auth_type === "oauth2" && (
                   <span
@@ -485,23 +570,44 @@ function MCPServersTab() {
           <div className="space-y-3">
             <div>
               <Label>Name</Label>
-              <Input value={editForm.name} onChange={(e) => setEditForm({ ...editForm, name: e.target.value })} className="mt-1" />
+              <Input
+                value={editForm.name}
+                onChange={(e) => setEditForm({ ...editForm, name: e.target.value })}
+                className="mt-1"
+              />
             </div>
             <div>
-              <Label>Description <span className="text-foreground-muted">(optional)</span></Label>
-              <Input value={editForm.description} onChange={(e) => setEditForm({ ...editForm, description: e.target.value })} className="mt-1" />
+              <Label>
+                Description <span className="text-foreground-muted">(optional)</span>
+              </Label>
+              <Input
+                value={editForm.description}
+                onChange={(e) => setEditForm({ ...editForm, description: e.target.value })}
+                className="mt-1"
+              />
             </div>
             <div>
               <Label>URL</Label>
-              <Input value={editForm.url} onChange={(e) => setEditForm({ ...editForm, url: e.target.value })} placeholder="http://nexus-erp-mcp:8000/mcp" className="mt-1" />
+              <Input
+                value={editForm.url}
+                onChange={(e) => setEditForm({ ...editForm, url: e.target.value })}
+                placeholder="http://nexus-erp-mcp:8000/mcp"
+                className="mt-1"
+              />
               <p className="mt-1 text-xs text-foreground-muted">
-                Transport/server type can't be changed after creation -- delete and re-add if you need a different one.
+                Transport/server type can't be changed after creation -- delete and re-add if you
+                need a different one.
               </p>
             </div>
             <div>
               <Label>Authentication</Label>
-              <Select value={editForm.auth_type} onValueChange={(v) => setEditForm({ ...editForm, auth_type: v as MCPAuthType })}>
-                <SelectTrigger className="mt-1"><SelectValue /></SelectTrigger>
+              <Select
+                value={editForm.auth_type}
+                onValueChange={(v) => setEditForm({ ...editForm, auth_type: v as MCPAuthType })}
+              >
+                <SelectTrigger className="mt-1">
+                  <SelectValue />
+                </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="none">None</SelectItem>
                   <SelectItem value="static_secrets">Static secret</SelectItem>
@@ -511,45 +617,102 @@ function MCPServersTab() {
             </div>
             {editForm.auth_type === "static_secrets" && (
               <div>
-                <Label>Client Secret <span className="text-foreground-muted">(leave blank to keep current)</span></Label>
-                <Input type="password" value={editForm.client_secret} onChange={(e) => setEditForm({ ...editForm, client_secret: e.target.value })} className="mt-1" />
+                <Label>
+                  Client Secret{" "}
+                  <span className="text-foreground-muted">(leave blank to keep current)</span>
+                </Label>
+                <Input
+                  type="password"
+                  value={editForm.client_secret}
+                  onChange={(e) => setEditForm({ ...editForm, client_secret: e.target.value })}
+                  className="mt-1"
+                />
               </div>
             )}
             {editForm.auth_type === "oauth2" && (
               <>
                 <div>
                   <Label>Client ID</Label>
-                  <Input value={editForm.oauth_client_id} onChange={(e) => setEditForm({ ...editForm, oauth_client_id: e.target.value })} className="mt-1" />
+                  <Input
+                    value={editForm.oauth_client_id}
+                    onChange={(e) => setEditForm({ ...editForm, oauth_client_id: e.target.value })}
+                    className="mt-1"
+                  />
                 </div>
                 <div>
-                  <Label>Client Secret <span className="text-foreground-muted">(leave blank to keep current)</span></Label>
-                  <Input type="password" value={editForm.client_secret} onChange={(e) => setEditForm({ ...editForm, client_secret: e.target.value })} className="mt-1" />
+                  <Label>
+                    Client Secret{" "}
+                    <span className="text-foreground-muted">(leave blank to keep current)</span>
+                  </Label>
+                  <Input
+                    type="password"
+                    value={editForm.client_secret}
+                    onChange={(e) => setEditForm({ ...editForm, client_secret: e.target.value })}
+                    className="mt-1"
+                  />
                 </div>
                 <div>
                   <Label>Authorize Endpoint</Label>
-                  <Input value={editForm.oauth_authorize_endpoint} onChange={(e) => setEditForm({ ...editForm, oauth_authorize_endpoint: e.target.value })} placeholder="https://provider.example.com/oauth/authorize" className="mt-1" />
+                  <Input
+                    value={editForm.oauth_authorize_endpoint}
+                    onChange={(e) =>
+                      setEditForm({ ...editForm, oauth_authorize_endpoint: e.target.value })
+                    }
+                    placeholder="https://provider.example.com/oauth/authorize"
+                    className="mt-1"
+                  />
                 </div>
                 <div>
                   <Label>Token Endpoint</Label>
-                  <Input value={editForm.oauth_token_endpoint} onChange={(e) => setEditForm({ ...editForm, oauth_token_endpoint: e.target.value })} placeholder="https://provider.example.com/oauth/token" className="mt-1" />
+                  <Input
+                    value={editForm.oauth_token_endpoint}
+                    onChange={(e) =>
+                      setEditForm({ ...editForm, oauth_token_endpoint: e.target.value })
+                    }
+                    placeholder="https://provider.example.com/oauth/token"
+                    className="mt-1"
+                  />
                 </div>
                 <div>
-                  <Label>Scopes <span className="text-foreground-muted">(comma-separated)</span></Label>
-                  <Input value={editForm.oauth_scopes} onChange={(e) => setEditForm({ ...editForm, oauth_scopes: e.target.value })} placeholder="read, write" className="mt-1" />
+                  <Label>
+                    Scopes <span className="text-foreground-muted">(comma-separated)</span>
+                  </Label>
+                  <Input
+                    value={editForm.oauth_scopes}
+                    onChange={(e) => setEditForm({ ...editForm, oauth_scopes: e.target.value })}
+                    placeholder="read, write"
+                    className="mt-1"
+                  />
                 </div>
                 <div>
-                  <Label>Token Env Var <span className="text-foreground-muted">(how the access token reaches the MCP process)</span></Label>
-                  <Input value={editForm.oauth_token_env_var} onChange={(e) => setEditForm({ ...editForm, oauth_token_env_var: e.target.value })} className="mt-1" />
+                  <Label>
+                    Token Env Var{" "}
+                    <span className="text-foreground-muted">
+                      (how the access token reaches the MCP process)
+                    </span>
+                  </Label>
+                  <Input
+                    value={editForm.oauth_token_env_var}
+                    onChange={(e) =>
+                      setEditForm({ ...editForm, oauth_token_env_var: e.target.value })
+                    }
+                    className="mt-1"
+                  />
                 </div>
                 <p className="text-xs text-foreground-muted">
-                  After saving, use the {editTarget?.oauth_connected ? "Reconnect" : "Connect"} button in the list to complete the OAuth flow.
+                  After saving, use the {editTarget?.oauth_connected ? "Reconnect" : "Connect"}{" "}
+                  button in the list to complete the OAuth flow.
                 </p>
               </>
             )}
           </div>
           <DialogFooter>
-            <Button variant="ghost" onClick={() => setEditTarget(null)}>Cancel</Button>
-            <Button onClick={handleEdit} disabled={editSaving}>{editSaving ? "Saving..." : "Save Changes"}</Button>
+            <Button variant="ghost" onClick={() => setEditTarget(null)}>
+              Cancel
+            </Button>
+            <Button onClick={handleEdit} disabled={editSaving}>
+              {editSaving ? "Saving..." : "Save Changes"}
+            </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
@@ -562,16 +725,33 @@ function MCPServersTab() {
           <div className="space-y-3">
             <div>
               <Label>Name</Label>
-              <Input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} placeholder="NeuralOps ERP" className="mt-1" />
+              <Input
+                value={form.name}
+                onChange={(e) => setForm({ ...form, name: e.target.value })}
+                placeholder="NeuralOps ERP"
+                className="mt-1"
+              />
             </div>
             <div>
-              <Label>Description <span className="text-foreground-muted">(optional)</span></Label>
-              <Input value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} placeholder="Odoo ERP tools" className="mt-1" />
+              <Label>
+                Description <span className="text-foreground-muted">(optional)</span>
+              </Label>
+              <Input
+                value={form.description}
+                onChange={(e) => setForm({ ...form, description: e.target.value })}
+                placeholder="Odoo ERP tools"
+                className="mt-1"
+              />
             </div>
             <div>
               <Label>Transport</Label>
-              <Select value={form.transport} onValueChange={(v) => setForm({ ...form, transport: v })}>
-                <SelectTrigger className="mt-1"><SelectValue /></SelectTrigger>
+              <Select
+                value={form.transport}
+                onValueChange={(v) => setForm({ ...form, transport: v })}
+              >
+                <SelectTrigger className="mt-1">
+                  <SelectValue />
+                </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="http">HTTP (Streamable)</SelectItem>
                   <SelectItem value="sse">SSE</SelectItem>
@@ -582,20 +762,36 @@ function MCPServersTab() {
             </div>
             <div>
               <Label>URL</Label>
-              <Input value={form.url} onChange={(e) => setForm({ ...form, url: e.target.value })} placeholder="http://nexus-erp-mcp:8000/mcp" className="mt-1" />
+              <Input
+                value={form.url}
+                onChange={(e) => setForm({ ...form, url: e.target.value })}
+                placeholder="http://nexus-erp-mcp:8000/mcp"
+                className="mt-1"
+              />
             </div>
             <div className="flex items-center gap-3">
-              <Switch checked={form.is_first_party} onCheckedChange={(v) => setForm({ ...form, is_first_party: v })} />
+              <Switch
+                checked={form.is_first_party}
+                onCheckedChange={(v) => setForm({ ...form, is_first_party: v })}
+              />
               <Label>First-party (we own this server)</Label>
             </div>
             <div className="flex items-center gap-3">
-              <Switch checked={form.embed_output} onCheckedChange={(v) => setForm({ ...form, embed_output: v })} />
+              <Switch
+                checked={form.embed_output}
+                onCheckedChange={(v) => setForm({ ...form, embed_output: v })}
+              />
               <Label>Embed tool results to vector DB</Label>
             </div>
             <div>
               <Label>Authentication</Label>
-              <Select value={form.auth_type} onValueChange={(v) => setForm({ ...form, auth_type: v as MCPAuthType })}>
-                <SelectTrigger className="mt-1"><SelectValue /></SelectTrigger>
+              <Select
+                value={form.auth_type}
+                onValueChange={(v) => setForm({ ...form, auth_type: v as MCPAuthType })}
+              >
+                <SelectTrigger className="mt-1">
+                  <SelectValue />
+                </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="none">None</SelectItem>
                   <SelectItem value="static_secrets">Static secret</SelectItem>
@@ -605,35 +801,77 @@ function MCPServersTab() {
             </div>
             {form.auth_type === "static_secrets" && (
               <div>
-                <Label>Client Secret <span className="text-foreground-muted">(optional)</span></Label>
-                <Input type="password" value={form.client_secret} onChange={(e) => setForm({ ...form, client_secret: e.target.value })} className="mt-1" />
+                <Label>
+                  Client Secret <span className="text-foreground-muted">(optional)</span>
+                </Label>
+                <Input
+                  type="password"
+                  value={form.client_secret}
+                  onChange={(e) => setForm({ ...form, client_secret: e.target.value })}
+                  className="mt-1"
+                />
               </div>
             )}
             {form.auth_type === "oauth2" && (
               <>
                 <div>
                   <Label>Client ID</Label>
-                  <Input value={form.oauth_client_id} onChange={(e) => setForm({ ...form, oauth_client_id: e.target.value })} className="mt-1" />
+                  <Input
+                    value={form.oauth_client_id}
+                    onChange={(e) => setForm({ ...form, oauth_client_id: e.target.value })}
+                    className="mt-1"
+                  />
                 </div>
                 <div>
                   <Label>Client Secret</Label>
-                  <Input type="password" value={form.client_secret} onChange={(e) => setForm({ ...form, client_secret: e.target.value })} className="mt-1" />
+                  <Input
+                    type="password"
+                    value={form.client_secret}
+                    onChange={(e) => setForm({ ...form, client_secret: e.target.value })}
+                    className="mt-1"
+                  />
                 </div>
                 <div>
                   <Label>Authorize Endpoint</Label>
-                  <Input value={form.oauth_authorize_endpoint} onChange={(e) => setForm({ ...form, oauth_authorize_endpoint: e.target.value })} placeholder="https://provider.example.com/oauth/authorize" className="mt-1" />
+                  <Input
+                    value={form.oauth_authorize_endpoint}
+                    onChange={(e) => setForm({ ...form, oauth_authorize_endpoint: e.target.value })}
+                    placeholder="https://provider.example.com/oauth/authorize"
+                    className="mt-1"
+                  />
                 </div>
                 <div>
                   <Label>Token Endpoint</Label>
-                  <Input value={form.oauth_token_endpoint} onChange={(e) => setForm({ ...form, oauth_token_endpoint: e.target.value })} placeholder="https://provider.example.com/oauth/token" className="mt-1" />
+                  <Input
+                    value={form.oauth_token_endpoint}
+                    onChange={(e) => setForm({ ...form, oauth_token_endpoint: e.target.value })}
+                    placeholder="https://provider.example.com/oauth/token"
+                    className="mt-1"
+                  />
                 </div>
                 <div>
-                  <Label>Scopes <span className="text-foreground-muted">(comma-separated)</span></Label>
-                  <Input value={form.oauth_scopes} onChange={(e) => setForm({ ...form, oauth_scopes: e.target.value })} placeholder="read, write" className="mt-1" />
+                  <Label>
+                    Scopes <span className="text-foreground-muted">(comma-separated)</span>
+                  </Label>
+                  <Input
+                    value={form.oauth_scopes}
+                    onChange={(e) => setForm({ ...form, oauth_scopes: e.target.value })}
+                    placeholder="read, write"
+                    className="mt-1"
+                  />
                 </div>
                 <div>
-                  <Label>Token Env Var <span className="text-foreground-muted">(how the access token reaches the MCP process)</span></Label>
-                  <Input value={form.oauth_token_env_var} onChange={(e) => setForm({ ...form, oauth_token_env_var: e.target.value })} className="mt-1" />
+                  <Label>
+                    Token Env Var{" "}
+                    <span className="text-foreground-muted">
+                      (how the access token reaches the MCP process)
+                    </span>
+                  </Label>
+                  <Input
+                    value={form.oauth_token_env_var}
+                    onChange={(e) => setForm({ ...form, oauth_token_env_var: e.target.value })}
+                    className="mt-1"
+                  />
                 </div>
                 <p className="text-xs text-foreground-muted">
                   After creating, use the Connect button in the list to complete the OAuth flow.
@@ -642,8 +880,12 @@ function MCPServersTab() {
             )}
           </div>
           <DialogFooter>
-            <Button variant="ghost" onClick={() => setOpen(false)}>Cancel</Button>
-            <Button onClick={handleCreate} disabled={saving}>{saving ? "Saving..." : "Add Server"}</Button>
+            <Button variant="ghost" onClick={() => setOpen(false)}>
+              Cancel
+            </Button>
+            <Button onClick={handleCreate} disabled={saving}>
+              {saving ? "Saving..." : "Add Server"}
+            </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
@@ -674,7 +916,10 @@ function AgentsTab() {
   // Edit state
   const [editTarget, setEditTarget] = useState<Agent | null>(null);
   const [editForm, setEditForm] = useState({
-    name: "", description: "", model_id: "", mcp_server_id: "",
+    name: "",
+    description: "",
+    model_id: "",
+    mcp_server_id: "",
   });
   const [editSaving, setEditSaving] = useState(false);
 
@@ -698,7 +943,7 @@ function AgentsTab() {
         model_id: editForm.model_id || undefined,
         mcp_server_id: editForm.mcp_server_id || undefined,
       });
-      setAgents((prev) => prev.map((a) => a.id === updated.id ? updated : a));
+      setAgents((prev) => prev.map((a) => (a.id === updated.id ? updated : a)));
       setEditTarget(null);
       toast.success(`Agent "${updated.name}" updated.`);
     } catch (e) {
@@ -711,14 +956,20 @@ function AgentsTab() {
   useEffect(() => {
     Promise.all([listAgents(), listAIModels(), listMCPServers(), listProjects()])
       .then(([a, m, s, pr]) => {
-        setAgents(a); setModels(m); setMcps(s); setProjects(pr);
+        setAgents(a);
+        setModels(m);
+        setMcps(s);
+        setProjects(pr);
         if (pr.length > 0) setProjectId((prev) => prev || pr[0].id);
       })
       .catch(() => {});
   }, []);
 
   async function handleCreate() {
-    if (!projectId) { toast.error("Select a project first."); return; }
+    if (!projectId) {
+      toast.error("Select a project first.");
+      return;
+    }
     if (!form.name || !form.model_id) {
       toast.error("Name and Model are required.");
       return;
@@ -758,10 +1009,14 @@ function AgentsTab() {
       <div className="flex items-center justify-between gap-3">
         <div className="w-56">
           <Select value={projectId} onValueChange={setProjectId}>
-            <SelectTrigger><SelectValue placeholder="Select a project..." /></SelectTrigger>
+            <SelectTrigger>
+              <SelectValue placeholder="Select a project..." />
+            </SelectTrigger>
             <SelectContent>
               {projects.map((pr) => (
-                <SelectItem key={pr.id} value={pr.id}>{pr.name}</SelectItem>
+                <SelectItem key={pr.id} value={pr.id}>
+                  {pr.name}
+                </SelectItem>
               ))}
             </SelectContent>
           </Select>
@@ -780,11 +1035,14 @@ function AgentsTab() {
               <div className="min-w-0">
                 <p className="text-sm font-medium truncate">{a.name}</p>
                 <p className="text-xs text-foreground-muted truncate">
-                  {a.model_name ?? "—"}{a.mcp_server_name ? ` · ${a.mcp_server_name}` : ""}
+                  {a.model_name ?? "—"}
+                  {a.mcp_server_name ? ` · ${a.mcp_server_name}` : ""}
                 </p>
               </div>
               <div className="flex items-center gap-2 shrink-0">
-                <span className="rounded-full bg-accent px-2 py-0.5 text-[10px]">{a.agent_type}</span>
+                <span className="rounded-full bg-accent px-2 py-0.5 text-[10px]">
+                  {a.agent_type}
+                </span>
                 <Button
                   size="icon"
                   variant="ghost"
@@ -809,39 +1067,69 @@ function AgentsTab() {
           <div className="space-y-3">
             <div>
               <Label>Agent Name</Label>
-              <Input value={editForm.name} onChange={(e) => setEditForm({ ...editForm, name: e.target.value })} className="mt-1" />
+              <Input
+                value={editForm.name}
+                onChange={(e) => setEditForm({ ...editForm, name: e.target.value })}
+                className="mt-1"
+              />
             </div>
             <div>
-              <Label>Description <span className="text-foreground-muted">(optional)</span></Label>
-              <Input value={editForm.description} onChange={(e) => setEditForm({ ...editForm, description: e.target.value })} className="mt-1" />
+              <Label>
+                Description <span className="text-foreground-muted">(optional)</span>
+              </Label>
+              <Input
+                value={editForm.description}
+                onChange={(e) => setEditForm({ ...editForm, description: e.target.value })}
+                className="mt-1"
+              />
             </div>
             <div>
               <Label>AI Model</Label>
-              <Select value={editForm.model_id} onValueChange={(v) => setEditForm({ ...editForm, model_id: v })}>
-                <SelectTrigger className="mt-1"><SelectValue placeholder="Select a model..." /></SelectTrigger>
+              <Select
+                value={editForm.model_id}
+                onValueChange={(v) => setEditForm({ ...editForm, model_id: v })}
+              >
+                <SelectTrigger className="mt-1">
+                  <SelectValue placeholder="Select a model..." />
+                </SelectTrigger>
                 <SelectContent>
                   {models.map((m) => (
-                    <SelectItem key={m.id} value={m.id}>{m.name}</SelectItem>
+                    <SelectItem key={m.id} value={m.id}>
+                      {m.name}
+                    </SelectItem>
                   ))}
                 </SelectContent>
               </Select>
             </div>
             <div>
-              <Label>MCP Server <span className="text-foreground-muted">(optional)</span></Label>
-              <Select value={editForm.mcp_server_id} onValueChange={(v) => setEditForm({ ...editForm, mcp_server_id: v })}>
-                <SelectTrigger className="mt-1"><SelectValue placeholder="None (model only)" /></SelectTrigger>
+              <Label>
+                MCP Server <span className="text-foreground-muted">(optional)</span>
+              </Label>
+              <Select
+                value={editForm.mcp_server_id}
+                onValueChange={(v) => setEditForm({ ...editForm, mcp_server_id: v })}
+              >
+                <SelectTrigger className="mt-1">
+                  <SelectValue placeholder="None (model only)" />
+                </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="">None</SelectItem>
                   {mcps.map((s) => (
-                    <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>
+                    <SelectItem key={s.id} value={s.id}>
+                      {s.name}
+                    </SelectItem>
                   ))}
                 </SelectContent>
               </Select>
             </div>
           </div>
           <DialogFooter>
-            <Button variant="ghost" onClick={() => setEditTarget(null)}>Cancel</Button>
-            <Button onClick={handleEdit} disabled={editSaving}>{editSaving ? "Saving..." : "Save Changes"}</Button>
+            <Button variant="ghost" onClick={() => setEditTarget(null)}>
+              Cancel
+            </Button>
+            <Button onClick={handleEdit} disabled={editSaving}>
+              {editSaving ? "Saving..." : "Save Changes"}
+            </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
@@ -854,39 +1142,71 @@ function AgentsTab() {
           <div className="space-y-3">
             <div>
               <Label>Agent Name</Label>
-              <Input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} placeholder="ERP Agent" className="mt-1" />
+              <Input
+                value={form.name}
+                onChange={(e) => setForm({ ...form, name: e.target.value })}
+                placeholder="ERP Agent"
+                className="mt-1"
+              />
             </div>
             <div>
-              <Label>Description <span className="text-foreground-muted">(optional)</span></Label>
-              <Input value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} placeholder="Handles Odoo ERP queries" className="mt-1" />
+              <Label>
+                Description <span className="text-foreground-muted">(optional)</span>
+              </Label>
+              <Input
+                value={form.description}
+                onChange={(e) => setForm({ ...form, description: e.target.value })}
+                placeholder="Handles Odoo ERP queries"
+                className="mt-1"
+              />
             </div>
             <div>
               <Label>AI Model</Label>
-              <Select value={form.model_id} onValueChange={(v) => setForm({ ...form, model_id: v })}>
-                <SelectTrigger className="mt-1"><SelectValue placeholder="Select a model..." /></SelectTrigger>
+              <Select
+                value={form.model_id}
+                onValueChange={(v) => setForm({ ...form, model_id: v })}
+              >
+                <SelectTrigger className="mt-1">
+                  <SelectValue placeholder="Select a model..." />
+                </SelectTrigger>
                 <SelectContent>
                   {models.map((m) => (
-                    <SelectItem key={m.id} value={m.id}>{m.name}</SelectItem>
+                    <SelectItem key={m.id} value={m.id}>
+                      {m.name}
+                    </SelectItem>
                   ))}
                 </SelectContent>
               </Select>
             </div>
             <div>
-              <Label>MCP Server <span className="text-foreground-muted">(optional)</span></Label>
-              <Select value={form.mcp_server_id} onValueChange={(v) => setForm({ ...form, mcp_server_id: v })}>
-                <SelectTrigger className="mt-1"><SelectValue placeholder="None (model only)" /></SelectTrigger>
+              <Label>
+                MCP Server <span className="text-foreground-muted">(optional)</span>
+              </Label>
+              <Select
+                value={form.mcp_server_id}
+                onValueChange={(v) => setForm({ ...form, mcp_server_id: v })}
+              >
+                <SelectTrigger className="mt-1">
+                  <SelectValue placeholder="None (model only)" />
+                </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="">None</SelectItem>
                   {mcps.map((s) => (
-                    <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>
+                    <SelectItem key={s.id} value={s.id}>
+                      {s.name}
+                    </SelectItem>
                   ))}
                 </SelectContent>
               </Select>
             </div>
           </div>
           <DialogFooter>
-            <Button variant="ghost" onClick={() => setOpen(false)}>Cancel</Button>
-            <Button onClick={handleCreate} disabled={saving}>{saving ? "Saving..." : "Create Agent"}</Button>
+            <Button variant="ghost" onClick={() => setOpen(false)}>
+              Cancel
+            </Button>
+            <Button onClick={handleCreate} disabled={saving}>
+              {saving ? "Saving..." : "Create Agent"}
+            </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
@@ -919,7 +1239,12 @@ function PersonasTab() {
 
   // Edit state
   const [editTarget, setEditTarget] = useState<Persona | null>(null);
-  const [editForm, setEditForm] = useState({ name: "", description: "", system_prompt: "", output_type: "text" });
+  const [editForm, setEditForm] = useState({
+    name: "",
+    description: "",
+    system_prompt: "",
+    output_type: "text",
+  });
   const [editSaving, setEditSaving] = useState(false);
 
   function openEdit(p: Persona) {
@@ -939,9 +1264,12 @@ function PersonasTab() {
       const updated = await patchPersona(editTarget.id, {
         name: editForm.name || undefined,
         description: editForm.description || undefined,
-        prompt: { system_prompt: editForm.system_prompt, output_type: editForm.output_type } as Persona["prompt"],
+        prompt: {
+          system_prompt: editForm.system_prompt,
+          output_type: editForm.output_type,
+        } as Persona["prompt"],
       });
-      setPersonas((prev) => prev.map((p) => p.id === updated.id ? updated : p));
+      setPersonas((prev) => prev.map((p) => (p.id === updated.id ? updated : p)));
       setEditTarget(null);
       toast.success(`Persona "@${updated.name}" updated.`);
     } catch (e) {
@@ -963,15 +1291,32 @@ function PersonasTab() {
   }, []);
 
   useEffect(() => {
-    if (!projectId) { setPersonas([]); return; }
-    listPersonas(projectId).then(setPersonas).catch(() => {});
+    if (!projectId) {
+      setPersonas([]);
+      return;
+    }
+    listPersonas(projectId)
+      .then(setPersonas)
+      .catch(() => {});
   }, [projectId]);
 
   async function handleCreate() {
-    if (!projectId) { toast.error("Select a project first."); return; }
-    if (!form.name) { toast.error("Name is required."); return; }
-    if (form.source_type === "model" && !form.model_id) { toast.error("Select a model."); return; }
-    if (form.source_type === "agent" && !form.agent_id) { toast.error("Select an agent."); return; }
+    if (!projectId) {
+      toast.error("Select a project first.");
+      return;
+    }
+    if (!form.name) {
+      toast.error("Name is required.");
+      return;
+    }
+    if (form.source_type === "model" && !form.model_id) {
+      toast.error("Select a model.");
+      return;
+    }
+    if (form.source_type === "agent" && !form.agent_id) {
+      toast.error("Select an agent.");
+      return;
+    }
     setSaving(true);
     try {
       const p = await createPersona(projectId, {
@@ -987,7 +1332,15 @@ function PersonasTab() {
       });
       setPersonas((prev) => [...prev, p]);
       setOpen(false);
-      setForm({ name: "", description: "", source_type: "agent", model_id: "", agent_id: "", system_prompt: "", output_type: "text" });
+      setForm({
+        name: "",
+        description: "",
+        source_type: "agent",
+        model_id: "",
+        agent_id: "",
+        system_prompt: "",
+        output_type: "text",
+      });
       toast.success(`Persona "@${p.name}" created.`);
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Failed to create persona.");
@@ -1011,10 +1364,14 @@ function PersonasTab() {
       <div className="flex items-center justify-between gap-3">
         <div className="w-56">
           <Select value={projectId} onValueChange={setProjectId}>
-            <SelectTrigger><SelectValue placeholder="Select a project..." /></SelectTrigger>
+            <SelectTrigger>
+              <SelectValue placeholder="Select a project..." />
+            </SelectTrigger>
             <SelectContent>
               {projects.map((pr) => (
-                <SelectItem key={pr.id} value={pr.id}>{pr.name}</SelectItem>
+                <SelectItem key={pr.id} value={pr.id}>
+                  {pr.name}
+                </SelectItem>
               ))}
             </SelectContent>
           </Select>
@@ -1036,11 +1393,15 @@ function PersonasTab() {
                 <p className="text-sm font-medium truncate">@{p.name}</p>
                 <p className="text-xs text-foreground-muted truncate">
                   {p.source_type === "model" ? "Model persona" : "Agent persona"}
-                  {p.prompt?.output_type && p.prompt.output_type !== "text" ? ` · ${p.prompt.output_type}` : ""}
+                  {p.prompt?.output_type && p.prompt.output_type !== "text"
+                    ? ` · ${p.prompt.output_type}`
+                    : ""}
                 </p>
               </div>
               <div className="flex items-center gap-2 shrink-0">
-                <span className="rounded-full bg-accent px-2 py-0.5 text-[10px]">{p.source_type}</span>
+                <span className="rounded-full bg-accent px-2 py-0.5 text-[10px]">
+                  {p.source_type}
+                </span>
                 <Button
                   size="icon"
                   variant="ghost"
@@ -1065,16 +1426,31 @@ function PersonasTab() {
           <div className="space-y-3">
             <div>
               <Label>Name</Label>
-              <Input value={editForm.name} onChange={(e) => setEditForm({ ...editForm, name: e.target.value })} className="mt-1" />
+              <Input
+                value={editForm.name}
+                onChange={(e) => setEditForm({ ...editForm, name: e.target.value })}
+                className="mt-1"
+              />
             </div>
             <div>
-              <Label>Description <span className="text-foreground-muted">(optional)</span></Label>
-              <Input value={editForm.description} onChange={(e) => setEditForm({ ...editForm, description: e.target.value })} className="mt-1" />
+              <Label>
+                Description <span className="text-foreground-muted">(optional)</span>
+              </Label>
+              <Input
+                value={editForm.description}
+                onChange={(e) => setEditForm({ ...editForm, description: e.target.value })}
+                className="mt-1"
+              />
             </div>
             <div>
               <Label>Default Output Type</Label>
-              <Select value={editForm.output_type} onValueChange={(v) => setEditForm({ ...editForm, output_type: v })}>
-                <SelectTrigger className="mt-1"><SelectValue /></SelectTrigger>
+              <Select
+                value={editForm.output_type}
+                onValueChange={(v) => setEditForm({ ...editForm, output_type: v })}
+              >
+                <SelectTrigger className="mt-1">
+                  <SelectValue />
+                </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="text">Text</SelectItem>
                   <SelectItem value="html">HTML</SelectItem>
@@ -1094,8 +1470,12 @@ function PersonasTab() {
             </div>
           </div>
           <DialogFooter>
-            <Button variant="ghost" onClick={() => setEditTarget(null)}>Cancel</Button>
-            <Button onClick={handleEdit} disabled={editSaving}>{editSaving ? "Saving..." : "Save Changes"}</Button>
+            <Button variant="ghost" onClick={() => setEditTarget(null)}>
+              Cancel
+            </Button>
+            <Button onClick={handleEdit} disabled={editSaving}>
+              {editSaving ? "Saving..." : "Save Changes"}
+            </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
@@ -1108,18 +1488,46 @@ function PersonasTab() {
           </DialogHeader>
           <div className="space-y-3">
             <div>
-              <Label>Persona Name <span className="text-foreground-muted">(used as @mention)</span></Label>
-              <Input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} placeholder="ERP" className="mt-1" />
-              <p className="mt-1 text-xs text-foreground-muted">Users will mention this as @{form.name || "Name"} in chat.</p>
+              <Label>
+                Persona Name <span className="text-foreground-muted">(used as @mention)</span>
+              </Label>
+              <Input
+                value={form.name}
+                onChange={(e) => setForm({ ...form, name: e.target.value })}
+                placeholder="ERP"
+                className="mt-1"
+              />
+              <p className="mt-1 text-xs text-foreground-muted">
+                Users will mention this as @{form.name || "Name"} in chat.
+              </p>
             </div>
             <div>
-              <Label>Description <span className="text-foreground-muted">(optional)</span></Label>
-              <Input value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} placeholder="ERP assistant with Odoo access" className="mt-1" />
+              <Label>
+                Description <span className="text-foreground-muted">(optional)</span>
+              </Label>
+              <Input
+                value={form.description}
+                onChange={(e) => setForm({ ...form, description: e.target.value })}
+                placeholder="ERP assistant with Odoo access"
+                className="mt-1"
+              />
             </div>
             <div>
               <Label>Backed by</Label>
-              <Select value={form.source_type} onValueChange={(v) => setForm({ ...form, source_type: v as "agent" | "model", model_id: "", agent_id: "" })}>
-                <SelectTrigger className="mt-1"><SelectValue /></SelectTrigger>
+              <Select
+                value={form.source_type}
+                onValueChange={(v) =>
+                  setForm({
+                    ...form,
+                    source_type: v as "agent" | "model",
+                    model_id: "",
+                    agent_id: "",
+                  })
+                }
+              >
+                <SelectTrigger className="mt-1">
+                  <SelectValue />
+                </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="agent">Agent (model + MCP tools)</SelectItem>
                   <SelectItem value="model">Model only (no tools)</SelectItem>
@@ -1129,11 +1537,18 @@ function PersonasTab() {
             {form.source_type === "model" ? (
               <div>
                 <Label>AI Model</Label>
-                <Select value={form.model_id} onValueChange={(v) => setForm({ ...form, model_id: v })}>
-                  <SelectTrigger className="mt-1"><SelectValue placeholder="Select a model..." /></SelectTrigger>
+                <Select
+                  value={form.model_id}
+                  onValueChange={(v) => setForm({ ...form, model_id: v })}
+                >
+                  <SelectTrigger className="mt-1">
+                    <SelectValue placeholder="Select a model..." />
+                  </SelectTrigger>
                   <SelectContent>
                     {models.map((m) => (
-                      <SelectItem key={m.id} value={m.id}>{m.name}</SelectItem>
+                      <SelectItem key={m.id} value={m.id}>
+                        {m.name}
+                      </SelectItem>
                     ))}
                   </SelectContent>
                 </Select>
@@ -1141,12 +1556,18 @@ function PersonasTab() {
             ) : (
               <div>
                 <Label>Agent</Label>
-                <Select value={form.agent_id} onValueChange={(v) => setForm({ ...form, agent_id: v })}>
-                  <SelectTrigger className="mt-1"><SelectValue placeholder="Select an agent..." /></SelectTrigger>
+                <Select
+                  value={form.agent_id}
+                  onValueChange={(v) => setForm({ ...form, agent_id: v })}
+                >
+                  <SelectTrigger className="mt-1">
+                    <SelectValue placeholder="Select an agent..." />
+                  </SelectTrigger>
                   <SelectContent>
                     {agents.map((a) => (
                       <SelectItem key={a.id} value={a.id}>
-                        {a.name}{a.mcp_server_name ? ` (${a.mcp_server_name})` : ""}
+                        {a.name}
+                        {a.mcp_server_name ? ` (${a.mcp_server_name})` : ""}
                       </SelectItem>
                     ))}
                   </SelectContent>
@@ -1155,8 +1576,13 @@ function PersonasTab() {
             )}
             <div>
               <Label>Default Output Type</Label>
-              <Select value={form.output_type} onValueChange={(v) => setForm({ ...form, output_type: v })}>
-                <SelectTrigger className="mt-1"><SelectValue /></SelectTrigger>
+              <Select
+                value={form.output_type}
+                onValueChange={(v) => setForm({ ...form, output_type: v })}
+              >
+                <SelectTrigger className="mt-1">
+                  <SelectValue />
+                </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="text">Text</SelectItem>
                   <SelectItem value="html">HTML</SelectItem>
@@ -1167,7 +1593,9 @@ function PersonasTab() {
               </Select>
             </div>
             <div>
-              <Label>System Prompt <span className="text-foreground-muted">(optional)</span></Label>
+              <Label>
+                System Prompt <span className="text-foreground-muted">(optional)</span>
+              </Label>
               <Textarea
                 value={form.system_prompt}
                 onChange={(e) => setForm({ ...form, system_prompt: e.target.value })}
@@ -1177,8 +1605,12 @@ function PersonasTab() {
             </div>
           </div>
           <DialogFooter>
-            <Button variant="ghost" onClick={() => setOpen(false)}>Cancel</Button>
-            <Button onClick={handleCreate} disabled={saving}>{saving ? "Saving..." : "Create Persona"}</Button>
+            <Button variant="ghost" onClick={() => setOpen(false)}>
+              Cancel
+            </Button>
+            <Button onClick={handleCreate} disabled={saving}>
+              {saving ? "Saving..." : "Create Persona"}
+            </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
@@ -1195,7 +1627,8 @@ function AgentsPage() {
       <div className="mx-auto max-w-3xl p-8">
         <h1 className="text-lg font-semibold text-foreground">AI Intelligence</h1>
         <p className="mt-1 text-sm text-foreground-muted">
-          Manage models, MCP servers, agents, and personas. All resources are company-wide and shared across all projects.
+          Manage models, MCP servers, agents, and personas. All resources are company-wide and
+          shared across all projects.
         </p>
 
         <Tabs value={tab} className="mt-6">
@@ -1206,10 +1639,18 @@ function AgentsPage() {
             <TabsTrigger value="personas">Personas</TabsTrigger>
           </TabsList>
 
-          <TabsContent value="models"><ModelsTab /></TabsContent>
-          <TabsContent value="mcps"><MCPServersTab /></TabsContent>
-          <TabsContent value="agents"><AgentsTab /></TabsContent>
-          <TabsContent value="personas"><PersonasTab /></TabsContent>
+          <TabsContent value="models">
+            <ModelsTab />
+          </TabsContent>
+          <TabsContent value="mcps">
+            <MCPServersTab />
+          </TabsContent>
+          <TabsContent value="agents">
+            <AgentsTab />
+          </TabsContent>
+          <TabsContent value="personas">
+            <PersonasTab />
+          </TabsContent>
         </Tabs>
       </div>
     </div>

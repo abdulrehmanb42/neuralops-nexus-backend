@@ -2,19 +2,10 @@ import { useState } from "react";
 import { Bot, User, Search, Plus, Mail } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Skeleton } from "@/components/ui/skeleton";
 import { toast } from "sonner";
-import {
-  useAddTeamMember,
-  useAvailableUsers,
-  useAvailablePersonas,
-} from "@/hooks/useWorkspace";
+import { useAddTeamMember, useAvailableUsers, useAvailablePersonas } from "@/hooks/useWorkspace";
 import { inviteToProject } from "@/services/workspace.service";
 
 type Tab = "human" | "persona";
@@ -33,12 +24,8 @@ export function AddTeamMemberDialog({ open, onOpenChange, projectId }: Props) {
 
   const addMember = useAddTeamMember(projectId, () => onOpenChange(false));
 
-  const { data: users, isLoading: usersLoading } = useAvailableUsers(
-    projectId,
-    search,
-  );
-  const { data: personas, isLoading: personasLoading } =
-    useAvailablePersonas(projectId);
+  const { data: users, isLoading: usersLoading } = useAvailableUsers(projectId, search);
+  const { data: personas, isLoading: personasLoading } = useAvailablePersonas(projectId);
 
   function handleAdd(userId: string) {
     addMember.mutate({ user_id: userId, role: "member" });
@@ -83,11 +70,7 @@ export function AddTeamMemberDialog({ open, onOpenChange, projectId }: Props) {
                   : "text-muted-foreground hover:text-foreground"
               }`}
             >
-              {t === "human" ? (
-                <User className="h-3.5 w-3.5" />
-              ) : (
-                <Bot className="h-3.5 w-3.5" />
-              )}
+              {t === "human" ? <User className="h-3.5 w-3.5" /> : <Bot className="h-3.5 w-3.5" />}
               {t === "human" ? "Add Human" : "Add Persona"}
             </button>
           ))}
@@ -180,7 +163,13 @@ function MemberList({
 }: {
   loading: boolean;
   empty: string;
-  items?: { id: string; name: string; subtitle: string; avatar: string | null; type: "human" | "persona" }[];
+  items?: {
+    id: string;
+    name: string;
+    subtitle: string;
+    avatar: string | null;
+    type: "human" | "persona";
+  }[];
   onAdd: (id: string) => void;
   adding: boolean;
 }) {
@@ -195,26 +184,17 @@ function MemberList({
   }
 
   if (!items || items.length === 0) {
-    return (
-      <p className="py-6 text-center text-sm text-muted-foreground">{empty}</p>
-    );
+    return <p className="py-6 text-center text-sm text-muted-foreground">{empty}</p>;
   }
 
   return (
     <div className="max-h-64 space-y-1 overflow-y-auto">
       {items.map((item) => (
-        <div
-          key={item.id}
-          className="flex items-center gap-3 rounded-md px-2 py-2 hover:bg-muted"
-        >
+        <div key={item.id} className="flex items-center gap-3 rounded-md px-2 py-2 hover:bg-muted">
           <Avatar name={item.name} avatar={item.avatar} type={item.type} />
           <div className="min-w-0 flex-1">
-            <div className="truncate text-sm font-medium text-foreground">
-              {item.name}
-            </div>
-            <div className="truncate text-xs text-muted-foreground">
-              {item.subtitle}
-            </div>
+            <div className="truncate text-sm font-medium text-foreground">{item.name}</div>
+            <div className="truncate text-xs text-muted-foreground">{item.subtitle}</div>
           </div>
           <Button
             size="sm"
@@ -241,27 +221,15 @@ function Avatar({
   type: "human" | "persona";
 }) {
   if (avatar) {
-    return (
-      <img
-        src={avatar}
-        alt={name}
-        className="h-8 w-8 rounded-full object-cover"
-      />
-    );
+    return <img src={avatar} alt={name} className="h-8 w-8 rounded-full object-cover" />;
   }
   return (
     <div
       className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-xs font-semibold ${
-        type === "persona"
-          ? "bg-accent text-accent-foreground"
-          : "bg-primary-tint text-primary"
+        type === "persona" ? "bg-accent text-accent-foreground" : "bg-primary-tint text-primary"
       }`}
     >
-      {type === "persona" ? (
-        <Bot className="h-4 w-4" />
-      ) : (
-        name.slice(0, 1).toUpperCase()
-      )}
+      {type === "persona" ? <Bot className="h-4 w-4" /> : name.slice(0, 1).toUpperCase()}
     </div>
   );
 }
