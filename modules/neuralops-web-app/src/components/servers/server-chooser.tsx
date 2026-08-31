@@ -4,6 +4,7 @@ import { useMemo, useState } from "react";
 import { ChevronRight, Copy, Plus, Search, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import type { ServerConfig } from "@/lib/api/servers";
+import { copyText } from "@/lib/browser";
 import { Skeleton } from "@/components/ui/surfaces";
 import { compareServerVersion } from "@/lib/version";
 import type { SavedServer } from "@/stores/servers.store";
@@ -169,12 +170,11 @@ export function ServerChooser({ entries, onConnect, onRemove, onAdd, loading }: 
               <button
                 aria-label={`Copy the address of ${server.name}`}
                 title="Copy server address"
-                onClick={() => {
-                  navigator.clipboard
-                    .writeText(server.url)
-                    .then(() => toast.success("Server address copied."))
-                    .catch(() => toast.error("Couldn't copy the address."));
-                }}
+                onClick={() =>
+                  void copyText(server.url).then((ok) =>
+                    ok ? toast.success("Server address copied.") : toast.error("Couldn't copy the address."),
+                  )
+                }
                 className="flex size-9 flex-none items-center justify-center rounded-lg text-ink2 transition-opacity hover:bg-surface2 hover:text-ink opacity-100 [@media(hover:hover)]:opacity-0 [@media(hover:hover)]:group-hover:opacity-100 focus-visible:opacity-100"
               >
                 <Copy size={15} strokeWidth={2} />
