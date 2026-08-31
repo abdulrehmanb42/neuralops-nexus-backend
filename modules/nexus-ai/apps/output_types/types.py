@@ -33,36 +33,7 @@ OutputTypeRegistry.register(
     )
 )
 
-# ── code ─────────────────────────────────────────────────────────────────────
 
-OutputTypeRegistry.register(
-    OutputTypeSpec(
-        name="code",
-        render_as="code",
-        label="Code",
-        icon="code-2",
-        system_instruction=(
-            "Respond with code only. Wrap your entire response in output markers:\n\n"
-            "<<<OUTPUT:code>>>\n"
-            "```<language>\n"
-            "<your code here>\n"
-            "```\n"
-            "<<<END_OUTPUT>>>\n\n"
-            "Replace <language> with the correct language (python, javascript, bash, sql, etc.). "
-            "Include only the code — no explanation text outside the markers."
-        ),
-        example_prompts=[
-            "Write a Python function to sort a list",
-            "Give me a bash script to backup files",
-            "Implement binary search in JavaScript",
-            "Write a SQL query to find duplicate rows",
-            "Create a TypeScript interface for a user object",
-            "Write a regex to validate email addresses",
-            "Show me a React component for a button",
-            "Write a Dockerfile for a Node.js app",
-        ],
-    )
-)
 
 # ── html ─────────────────────────────────────────────────────────────────────
 
