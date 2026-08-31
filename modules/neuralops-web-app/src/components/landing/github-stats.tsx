@@ -80,47 +80,58 @@ export function GithubNavLink() {
   );
 }
 
-// Full "open source" card with the three headline numbers.
+// GitHub-native "social count" widget: the repo header plus bordered
+// two-segment counters (icon+label | count), the way GitHub renders its own
+// Star/Fork buttons — neutral, not the app accent.
 export function GithubStatsCard() {
   const { stars, forks, commits, loaded } = useRepoStats();
-  const items = [
-    { icon: Star, label: "Stars", value: stars },
-    { icon: GitFork, label: "Forks", value: forks },
+  const counts = [
+    { icon: Star, label: "Star", value: stars },
+    { icon: GitFork, label: "Fork", value: forks },
     { icon: GitCommitHorizontal, label: "Commits", value: commits },
   ];
   return (
-    <div className="rounded-2xl border border-line bg-surface p-7 sm:p-9">
-      <div className="flex flex-col items-start gap-6 sm:flex-row sm:items-center sm:justify-between">
-        <div className="flex items-start gap-3.5">
-          <span className="flex size-11 flex-none items-center justify-center rounded-xl border border-accent/30 bg-accent/10 text-accent">
-            <GithubMark size={22} />
-          </span>
-          <div>
-            <h3 className="font-display text-[18px] font-bold">mapax-io/neuralops-nexus</h3>
-            <p className="mt-0.5 text-[13.5px] text-ink2">AGPL-3.0 · open core · contributions welcome.</p>
+    <div className="rounded-xl border border-line bg-surface p-6">
+      <div className="flex items-start gap-3">
+        <span className="mt-0.5 flex-none text-ink"><GithubMark size={24} /></span>
+        <div className="min-w-0 flex-1">
+          <a
+            href={REPO_URL}
+            target="_blank"
+            rel="noreferrer noopener"
+            className="font-display text-[16px] font-bold text-ink hover:text-accent hover:underline"
+          >
+            mapax-io/neuralops-nexus
+          </a>
+          <p className="mt-0.5 text-[13px] text-ink2">AGPL-3.0 · open core · contributions welcome.</p>
+          <div className="mt-4 flex flex-wrap items-center gap-2">
+            {counts.map(({ icon: Icon, label, value }) => (
+              <a
+                key={label}
+                href={REPO_URL}
+                target="_blank"
+                rel="noreferrer noopener"
+                className="inline-flex items-stretch overflow-hidden rounded-md border border-line text-[12px] font-semibold transition-colors hover:border-ink2"
+              >
+                <span className="flex items-center gap-1.5 bg-surface2 px-2.5 py-1 text-ink2">
+                  <Icon size={13} strokeWidth={2} /> {label}
+                </span>
+                <span className="flex items-center border-l border-line bg-surface px-2.5 py-1 tabular-nums text-ink">
+                  {loaded ? fmt(value) : "···"}
+                </span>
+              </a>
+            ))}
+            <a
+              href={REPO_URL}
+              target="_blank"
+              rel="noreferrer noopener"
+              className="inline-flex items-center gap-1.5 rounded-md border border-line bg-surface2 px-3 py-1 text-[12px] font-semibold text-ink transition-colors hover:border-ink2 hover:bg-surface"
+            >
+              <Star size={13} strokeWidth={2} /> Star on GitHub
+            </a>
           </div>
         </div>
-        <a
-          href={REPO_URL}
-          target="_blank"
-          rel="noreferrer noopener"
-          className="inline-flex h-10 flex-none items-center gap-2 rounded-[10px] bg-accent px-5 text-[14px] font-semibold text-accent-ink shadow-[0_8px_24px_-10px_var(--accent-deep)] transition-transform hover:-translate-y-0.5 hover:brightness-110"
-        >
-          <Star size={15} strokeWidth={2} /> Star on GitHub
-        </a>
       </div>
-      <dl className="mt-7 grid grid-cols-3 gap-3">
-        {items.map(({ icon: Icon, label, value }) => (
-          <div key={label} className="rounded-xl border border-line bg-bg2 px-3 py-4 text-center">
-            <dt className="flex items-center justify-center gap-1.5 text-[11.5px] font-semibold uppercase tracking-[.08em] text-ink2">
-              <Icon size={13} strokeWidth={2} /> {label}
-            </dt>
-            <dd className={`mt-1.5 font-display text-[24px] font-extrabold tabular-nums ${loaded ? "" : "text-ink2"}`}>
-              {loaded ? fmt(value) : "···"}
-            </dd>
-          </div>
-        ))}
-      </dl>
     </div>
   );
 }
