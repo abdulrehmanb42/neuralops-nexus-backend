@@ -5,11 +5,7 @@ export interface UIState {
   activeChannelId: string | null;
   activeTopicId: string | null;
   sidebarCollapsed: boolean;
-  setActiveTopic: (
-    projectId: string,
-    channelId: string,
-    topicId: string,
-  ) => void;
+  setActiveTopic: (projectId: string, channelId: string, topicId: string) => void;
   clearActiveTopic: () => void;
   setActiveTopicId: (id: string | null) => void;
   toggleSidebar: () => void;
@@ -30,7 +26,6 @@ export const useUIStore = create<UIState>((set) => ({
       activeTopicId: null,
     }),
   setActiveTopicId: (activeTopicId) => set({ activeTopicId }),
-  toggleSidebar: () =>
-    set((s) => ({ sidebarCollapsed: !s.sidebarCollapsed })),
+  toggleSidebar: () => set((s) => ({ sidebarCollapsed: !s.sidebarCollapsed })),
   setSidebarCollapsed: (sidebarCollapsed) => set({ sidebarCollapsed }),
 }));

@@ -68,7 +68,9 @@ export function ChatArea() {
             <Clock className="h-3.5 w-3.5" />
             Schedules
             {activeScheduleCount > 0 && (
-              <Badge variant="secondary" className="h-4 px-1.5 text-[10px]">{activeScheduleCount}</Badge>
+              <Badge variant="secondary" className="h-4 px-1.5 text-[10px]">
+                {activeScheduleCount}
+              </Badge>
             )}
           </Button>
           <Button
@@ -113,9 +115,7 @@ export function ChatArea() {
               channelId={activeChannelId}
               topicId={activeTopicId}
               disabled={!activeTopicId}
-              placeholder={
-                activeTopicId ? undefined : "Select a conversation to start messaging"
-              }
+              placeholder={activeTopicId ? undefined : "Select a conversation to start messaging"}
             />
           </div>
 

@@ -1,9 +1,4 @@
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { APP_NAME, APP_STAGE, APP_VERSION } from "@/lib/version";
 import { useAuthStore } from "@/store/auth.store";
 

@@ -5,9 +5,7 @@ export async function listKnowledge(): Promise<KnowledgeItem[]> {
   return apiJson<KnowledgeItem[]>("/api/v1/knowledge/");
 }
 
-export async function createKnowledge(
-  input: Partial<KnowledgeItem>,
-): Promise<KnowledgeItem> {
+export async function createKnowledge(input: Partial<KnowledgeItem>): Promise<KnowledgeItem> {
   return apiJson<KnowledgeItem>("/api/v1/knowledge/", {
     method: "POST",
     body: JSON.stringify(input),

@@ -34,12 +34,8 @@ function LoginPage() {
           <div className="mb-4 flex h-12 w-12 items-center justify-center rounded-xl bg-primary text-primary-foreground">
             <Sparkles className="h-6 w-6" />
           </div>
-          <h1 className="text-2xl font-semibold tracking-tight text-foreground">
-            NeuralOps
-          </h1>
-          <p className="mt-1 text-sm text-foreground-muted">
-            Sign in to access your AI workspace
-          </p>
+          <h1 className="text-2xl font-semibold tracking-tight text-foreground">NeuralOps</h1>
+          <p className="mt-1 text-sm text-foreground-muted">Sign in to access your AI workspace</p>
         </div>
         <div className="rounded-xl border border-border bg-card p-6">
           <LoginForm />

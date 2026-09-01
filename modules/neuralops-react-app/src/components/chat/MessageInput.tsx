@@ -1,8 +1,25 @@
 import { useEffect, useRef, useState } from "react";
 import {
-  Paperclip, Send, X, UserPlus, FileText,
-  BarChart2, Code, Globe, Terminal, Table2, GitBranch, ClipboardList, AlignLeft,
-  Cpu, Plug, Bot, User, List, Clock, Users,
+  Paperclip,
+  Send,
+  X,
+  UserPlus,
+  FileText,
+  BarChart2,
+  Code,
+  Globe,
+  Terminal,
+  Table2,
+  GitBranch,
+  ClipboardList,
+  AlignLeft,
+  Cpu,
+  Plug,
+  Bot,
+  User,
+  List,
+  Clock,
+  Users,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
@@ -26,56 +43,85 @@ import {
 } from "./slash-commands/forms/ListCards";
 
 const CONTEXT_DIRECTIVES = [
-  { directive: "file", label: "@file", help: "Attach a file to context — @file report.pdf", icon: FileText },
+  {
+    directive: "file",
+    label: "@file",
+    help: "Attach a file to context — @file report.pdf",
+    icon: FileText,
+  },
 ];
 
 const OUTPUT_TYPE_DIRECTIVES = [
-  { directive: "chart",    label: "@chart",    help: "Respond with a Chart.js chart",    icon: BarChart2 },
-  { directive: "table",    label: "@table",    help: "Respond with a data table",        icon: Table2 },
-  { directive: "diagram",  label: "@diagram",  help: "Respond with a Mermaid diagram",   icon: GitBranch },
-  { directive: "form",     label: "@form",     help: "Respond with an interactive form", icon: ClipboardList },
-  { directive: "code",     label: "@code",     help: "Respond with code only",           icon: Code },
-  { directive: "terminal", label: "@terminal", help: "Respond as terminal output",       icon: Terminal },
-  { directive: "html",     label: "@html",     help: "Respond as an HTML page",          icon: Globe },
-  { directive: "text",     label: "@text",     help: "Respond as plain text",            icon: AlignLeft },
+  { directive: "chart", label: "@chart", help: "Respond with a Chart.js chart", icon: BarChart2 },
+  { directive: "table", label: "@table", help: "Respond with a data table", icon: Table2 },
+  {
+    directive: "diagram",
+    label: "@diagram",
+    help: "Respond with a Mermaid diagram",
+    icon: GitBranch,
+  },
+  {
+    directive: "form",
+    label: "@form",
+    help: "Respond with an interactive form",
+    icon: ClipboardList,
+  },
+  { directive: "code", label: "@code", help: "Respond with code only", icon: Code },
+  { directive: "terminal", label: "@terminal", help: "Respond as terminal output", icon: Terminal },
+  { directive: "html", label: "@html", help: "Respond as an HTML page", icon: Globe },
+  { directive: "text", label: "@text", help: "Respond as plain text", icon: AlignLeft },
 ];
 
 const SLASH_COMMANDS = [
-  { command: "/invite",         description: "Invite someone to this topic or project", icon: UserPlus },
-  { command: "/changeusername", description: "Change your display name on this server", icon: UserPlus },
-  { command: "/swarm",          description: "Trigger a swarm of agents to tackle this task", icon: Users },
-  { command: "/add-model",      description: "Add an AI model",                        icon: Cpu },
-  { command: "/list-models",    description: "List all AI models",                     icon: List },
-  { command: "/add-mcp",        description: "Register an MCP tool server",            icon: Plug },
-  { command: "/list-mcps",      description: "List all MCP servers",                   icon: List },
-  { command: "/add-agent",      description: "Create an agent (model + MCP)",          icon: Bot },
-  { command: "/list-agents",    description: "List all agents",                        icon: List },
-  { command: "/add-persona",    description: "Create a persona (@mention)",            icon: User },
-  { command: "/list-personas",  description: "List and manage personas",               icon: List },
-  { command: "/edit-persona",   description: "Edit an existing persona",               icon: User },
-  { command: "/schedule",       description: "Automate a persona on a schedule",       icon: Clock },
-  { command: "/list-schedules", description: "List and manage schedules in this topic", icon: List },
+  { command: "/invite", description: "Invite someone to this topic or project", icon: UserPlus },
+  {
+    command: "/changeusername",
+    description: "Change your display name on this server",
+    icon: UserPlus,
+  },
+  { command: "/swarm", description: "Trigger a swarm of agents to tackle this task", icon: Users },
+  { command: "/add-model", description: "Add an AI model", icon: Cpu },
+  { command: "/list-models", description: "List all AI models", icon: List },
+  { command: "/add-mcp", description: "Register an MCP tool server", icon: Plug },
+  { command: "/list-mcps", description: "List all MCP servers", icon: List },
+  { command: "/add-agent", description: "Create an agent (model + MCP)", icon: Bot },
+  { command: "/list-agents", description: "List all agents", icon: List },
+  { command: "/add-persona", description: "Create a persona (@mention)", icon: User },
+  { command: "/list-personas", description: "List and manage personas", icon: List },
+  { command: "/edit-persona", description: "Edit an existing persona", icon: User },
+  { command: "/schedule", description: "Automate a persona on a schedule", icon: Clock },
+  {
+    command: "/list-schedules",
+    description: "List and manage schedules in this topic",
+    icon: List,
+  },
 ];
 
 type ActiveForm =
-  | "add-model" | "list-models"
-  | "add-mcp"   | "list-mcps"
-  | "add-agent" | "list-agents"
-  | "add-persona" | "list-personas" | "edit-persona"
-  | "schedule"  | "list-schedules"
+  | "add-model"
+  | "list-models"
+  | "add-mcp"
+  | "list-mcps"
+  | "add-agent"
+  | "list-agents"
+  | "add-persona"
+  | "list-personas"
+  | "edit-persona"
+  | "schedule"
+  | "list-schedules"
   | null;
 
 const FORM_MAP: Record<string, ActiveForm> = {
-  "/add-model":     "add-model",
-  "/list-models":   "list-models",
-  "/add-mcp":       "add-mcp",
-  "/list-mcps":     "list-mcps",
-  "/add-agent":     "add-agent",
-  "/list-agents":   "list-agents",
-  "/add-persona":   "add-persona",
+  "/add-model": "add-model",
+  "/list-models": "list-models",
+  "/add-mcp": "add-mcp",
+  "/list-mcps": "list-mcps",
+  "/add-agent": "add-agent",
+  "/list-agents": "list-agents",
+  "/add-persona": "add-persona",
   "/list-personas": "list-personas",
-  "/edit-persona":  "edit-persona",
-  "/schedule":       "schedule",
+  "/edit-persona": "edit-persona",
+  "/schedule": "schedule",
   "/list-schedules": "list-schedules",
 };
 
@@ -84,7 +130,12 @@ const FORM_MAP: Record<string, ActiveForm> = {
 const TYPING_THROTTLE_MS = 2500;
 
 export function MessageInput({
-  disabled, onSend, placeholder, projectId, channelId, topicId,
+  disabled,
+  onSend,
+  placeholder,
+  projectId,
+  channelId,
+  topicId,
 }: {
   disabled?: boolean;
   onSend?: (text: string, file?: File) => void;
@@ -145,8 +196,12 @@ export function MessageInput({
     }
     setMentionOpen(false);
     const slashMatch = v.match(/^(\/[\w-]*)$/);
-    if (slashMatch) { setSlashOpen(true); setSlashQuery(slashMatch[1].toLowerCase()); }
-    else { setSlashOpen(false); }
+    if (slashMatch) {
+      setSlashOpen(true);
+      setSlashQuery(slashMatch[1].toLowerCase());
+    } else {
+      setSlashOpen(false);
+    }
   }
 
   function pickMention(name: string) {
@@ -172,11 +227,15 @@ export function MessageInput({
       if (source.status === "ready") {
         toast.success(`${selected.name} added to context`);
       } else {
-        toast.error(`Failed to embed ${selected.name}`, { description: source.error ?? "Unknown error" });
+        toast.error(`Failed to embed ${selected.name}`, {
+          description: source.error ?? "Unknown error",
+        });
       }
     } catch (err) {
       toast.dismiss(toastId);
-      toast.error("Failed to upload file", { description: err instanceof Error ? err.message : String(err) });
+      toast.error("Failed to upload file", {
+        description: err instanceof Error ? err.message : String(err),
+      });
     } finally {
       setUploadingContext(false);
       if (contextFileInputRef.current) contextFileInputRef.current.value = "";
@@ -196,15 +255,28 @@ export function MessageInput({
   }
 
   function handleKey(e: React.KeyboardEvent<HTMLTextAreaElement>) {
-    if (e.key === "Escape") { setSlashOpen(false); setMentionOpen(false); return; }
-    if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); submit(); }
+    if (e.key === "Escape") {
+      setSlashOpen(false);
+      setMentionOpen(false);
+      return;
+    }
+    if (e.key === "Enter" && !e.shiftKey) {
+      e.preventDefault();
+      submit();
+    }
   }
 
   async function handleInviteCommand(trimmed: string) {
-    if (!projectId) { toast.error("No active project — cannot send invite."); return; }
+    if (!projectId) {
+      toast.error("No active project — cannot send invite.");
+      return;
+    }
     const parts = trimmed.split(/\s+/);
     const arg = parts[1];
-    if (!arg) { toast.error("Usage: /invite @PersonaName  or  /invite email@example.com"); return; }
+    if (!arg) {
+      toast.error("Usage: /invite @PersonaName  or  /invite email@example.com");
+      return;
+    }
 
     // Detect persona: starts with @ OR has no @ in it at all (not an email)
     const isPersona = arg.startsWith("@") || !arg.includes("@");
@@ -221,7 +293,8 @@ export function MessageInput({
       } else {
         const scope = parts[2]?.toLowerCase() === "project" ? "project" : "topic";
         const result = await inviteToProject(projectId, {
-          email: arg, scope,
+          email: arg,
+          scope,
           topic_id: scope === "topic" ? (topicId ?? undefined) : undefined,
           role: "member",
         });
@@ -237,35 +310,62 @@ export function MessageInput({
             },
             duration: 30_000,
           });
-        } else { toast.success(result.message); }
+        } else {
+          toast.success(result.message);
+        }
       }
       setText("");
-    } catch (err) { toast.error(err instanceof Error ? err.message : "Invite failed"); }
-    finally { setInviting(false); }
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Invite failed");
+    } finally {
+      setInviting(false);
+    }
   }
 
   async function handleChangeUsernameCommand(trimmed: string) {
-    if (!topicId) { toast.error("No active topic."); return; }
+    if (!topicId) {
+      toast.error("No active topic.");
+      return;
+    }
     const newName = trimmed.split(/\s+/)[1];
-    if (!newName) { toast.error("Usage: /changeusername newname"); return; }
+    if (!newName) {
+      toast.error("Usage: /changeusername newname");
+      return;
+    }
     try {
       const result = await changeUsername(newName, topicId);
       setText("");
       toast.success(`Username changed to ${result.display_name}`);
-    } catch (err) { toast.error(err instanceof Error ? err.message : "Failed to change username"); }
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Failed to change username");
+    }
   }
 
   function submit() {
     const trimmed = text.trim();
     if (!trimmed && !file) return;
-    if (trimmed.startsWith("/invite")) { handleInviteCommand(trimmed); return; }
-    if (trimmed.startsWith("/changeusername")) { handleChangeUsernameCommand(trimmed); return; }
+    if (trimmed.startsWith("/invite")) {
+      handleInviteCommand(trimmed);
+      return;
+    }
+    if (trimmed.startsWith("/changeusername")) {
+      handleChangeUsernameCommand(trimmed);
+      return;
+    }
     const cmd = trimmed.split(" ")[0];
-    if (FORM_MAP[cmd]) { setText(""); setSlashOpen(false); setActiveForm(FORM_MAP[cmd]); return; }
-    
+    if (FORM_MAP[cmd]) {
+      setText("");
+      setSlashOpen(false);
+      setActiveForm(FORM_MAP[cmd]);
+      return;
+    }
+
     const BACKEND_COMMANDS = ["/swarm"];
-    if (trimmed.startsWith("/") && !trimmed.includes(" ") && !BACKEND_COMMANDS.includes(trimmed)) { toast.info(`Unknown command: ${trimmed}`); return; }
-    
+    if (trimmed.startsWith("/") && !trimmed.includes(" ") && !BACKEND_COMMANDS.includes(trimmed)) {
+      toast.info(`Unknown command: ${trimmed}`);
+      return;
+    }
+
     onSend?.(trimmed, file ?? undefined);
     setText("");
     setFile(null);
@@ -280,8 +380,12 @@ export function MessageInput({
   }
 
   const personaSuggestions = personas.filter((p) => p.name.toLowerCase().startsWith(mentionQuery));
-  const directiveSuggestions = CONTEXT_DIRECTIVES.filter((d) => d.directive.startsWith(mentionQuery));
-  const outputTypeSuggestions = OUTPUT_TYPE_DIRECTIVES.filter((d) => d.directive.startsWith(mentionQuery));
+  const directiveSuggestions = CONTEXT_DIRECTIVES.filter((d) =>
+    d.directive.startsWith(mentionQuery),
+  );
+  const outputTypeSuggestions = OUTPUT_TYPE_DIRECTIVES.filter((d) =>
+    d.directive.startsWith(mentionQuery),
+  );
   const slashSuggestions = SLASH_COMMANDS.filter((c) => c.command.startsWith(slashQuery));
   const isTypingInvite = text.startsWith("/invite ");
   const inviteParts = text.trim().split(/\s+/);
@@ -289,25 +393,59 @@ export function MessageInput({
 
   return (
     <>
-      <AddModelForm    open={activeForm === "add-model"}     onClose={() => setActiveForm(null)} />
-      <ListModelsDialog open={activeForm === "list-models"}  onClose={() => setActiveForm(null)} />
-      <AddMCPForm      open={activeForm === "add-mcp"}       onClose={() => setActiveForm(null)} projectId={projectId} />
-      <ListMCPsDialog  open={activeForm === "list-mcps"}     onClose={() => setActiveForm(null)} />
-      <AddAgentForm    open={activeForm === "add-agent"}     onClose={() => setActiveForm(null)} projectId={projectId} />
-      <ListAgentsDialog open={activeForm === "list-agents"}  onClose={() => setActiveForm(null)} />
-      <AddPersonaForm  open={activeForm === "add-persona"}   onClose={() => setActiveForm(null)} projectId={projectId} />
-      <EditPersonaForm open={activeForm === "edit-persona"}  onClose={() => setActiveForm(null)} projectId={projectId} />
-      <ListPersonasDialog open={activeForm === "list-personas"} onClose={() => setActiveForm(null)} projectId={projectId} />
-      <AddScheduleForm open={activeForm === "schedule"} onClose={() => setActiveForm(null)}
-        projectId={projectId} channelId={channelId} topicId={topicId} />
-      <ListSchedulesDialog open={activeForm === "list-schedules"} onClose={() => setActiveForm(null)}
-        projectId={projectId} channelId={channelId} topicId={topicId} />
+      <AddModelForm open={activeForm === "add-model"} onClose={() => setActiveForm(null)} />
+      <ListModelsDialog open={activeForm === "list-models"} onClose={() => setActiveForm(null)} />
+      <AddMCPForm
+        open={activeForm === "add-mcp"}
+        onClose={() => setActiveForm(null)}
+        projectId={projectId}
+      />
+      <ListMCPsDialog open={activeForm === "list-mcps"} onClose={() => setActiveForm(null)} />
+      <AddAgentForm
+        open={activeForm === "add-agent"}
+        onClose={() => setActiveForm(null)}
+        projectId={projectId}
+      />
+      <ListAgentsDialog open={activeForm === "list-agents"} onClose={() => setActiveForm(null)} />
+      <AddPersonaForm
+        open={activeForm === "add-persona"}
+        onClose={() => setActiveForm(null)}
+        projectId={projectId}
+      />
+      <EditPersonaForm
+        open={activeForm === "edit-persona"}
+        onClose={() => setActiveForm(null)}
+        projectId={projectId}
+      />
+      <ListPersonasDialog
+        open={activeForm === "list-personas"}
+        onClose={() => setActiveForm(null)}
+        projectId={projectId}
+      />
+      <AddScheduleForm
+        open={activeForm === "schedule"}
+        onClose={() => setActiveForm(null)}
+        projectId={projectId}
+        channelId={channelId}
+        topicId={topicId}
+      />
+      <ListSchedulesDialog
+        open={activeForm === "list-schedules"}
+        onClose={() => setActiveForm(null)}
+        projectId={projectId}
+        channelId={channelId}
+        topicId={topicId}
+      />
 
       <div className="relative border-t border-sidebar-border bg-sidebar px-3 py-3">
         {file && (
           <div className="mb-2 inline-flex items-center gap-2 rounded-md border border-border bg-card px-2 py-1 text-xs">
             <span className="max-w-[240px] truncate">{file.name}</span>
-            <button type="button" onClick={() => setFile(null)} className="text-foreground-muted hover:text-foreground">
+            <button
+              type="button"
+              onClick={() => setFile(null)}
+              className="text-foreground-muted hover:text-foreground"
+            >
               <X className="h-3 w-3" />
             </button>
           </div>
@@ -316,8 +454,12 @@ export function MessageInput({
         {slashOpen && slashSuggestions.length > 0 && (
           <div className="absolute bottom-full left-3 mb-2 w-72 rounded-md border border-border bg-popover p-1 shadow-md">
             {slashSuggestions.map((cmd) => (
-              <button key={cmd.command} type="button" onClick={() => pickSlashCommand(cmd.command)}
-                className="flex w-full items-start gap-2 rounded px-2 py-2 text-left hover:bg-accent hover:text-accent-foreground">
+              <button
+                key={cmd.command}
+                type="button"
+                onClick={() => pickSlashCommand(cmd.command)}
+                className="flex w-full items-start gap-2 rounded px-2 py-2 text-left hover:bg-accent hover:text-accent-foreground"
+              >
                 <cmd.icon className="mt-0.5 h-4 w-4 shrink-0 text-primary" />
                 <div>
                   <div className="text-sm font-medium">{cmd.command}</div>
@@ -334,78 +476,132 @@ export function MessageInput({
               <UserPlus className="h-4 w-4 shrink-0 text-primary" />
               <div className="space-y-0.5">
                 <div className="text-xs font-medium text-foreground">Invite to this project</div>
-                <div className="text-xs text-muted-foreground"><code>/invite @Ryan</code> — add a persona</div>
-                <div className="text-xs text-muted-foreground"><code>/invite email@example.com</code> — add to this topic</div>
-                <div className="text-xs text-muted-foreground"><code>/invite email@example.com project</code> — add to project</div>
+                <div className="text-xs text-muted-foreground">
+                  <code>/invite @Ryan</code> — add a persona
+                </div>
+                <div className="text-xs text-muted-foreground">
+                  <code>/invite email@example.com</code> — add to this topic
+                </div>
+                <div className="text-xs text-muted-foreground">
+                  <code>/invite email@example.com project</code> — add to project
+                </div>
               </div>
             </div>
           </div>
         )}
 
-        {mentionOpen && (personaSuggestions.length > 0 || directiveSuggestions.length > 0 || outputTypeSuggestions.length > 0) && (
-          <div className="absolute bottom-full left-3 mb-2 w-72 rounded-md border border-border bg-popover p-1 shadow-md">
-            {personaSuggestions.length > 0 && (
-              <>
-                <div className="px-2 py-1 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">Personas</div>
-                {personaSuggestions.map((s) => (
-                  <button key={s.id} type="button" onClick={() => pickMention(s.name)}
-                    className="flex w-full items-center gap-2 rounded px-2 py-1.5 text-left text-sm hover:bg-accent hover:text-accent-foreground">
-                    <span className="flex h-6 w-6 items-center justify-center rounded-full bg-accent text-[10px] font-semibold text-accent-foreground">
-                      {s.name.slice(0, 1)}
-                    </span>
-                    {s.name}
-                  </button>
-                ))}
-              </>
-            )}
-            {directiveSuggestions.length > 0 && (
-              <>
-                <div className="mt-1 px-2 py-1 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">Context</div>
-                {directiveSuggestions.map((d) => (
-                  <button key={d.directive} type="button" onClick={pickFileDirective}
-                    className="flex w-full items-start gap-2 rounded px-2 py-1.5 text-left hover:bg-accent hover:text-accent-foreground">
-                    <d.icon className="mt-0.5 h-4 w-4 shrink-0 text-primary" />
-                    <div>
-                      <div className="text-sm font-medium">{d.label}</div>
-                      <div className="text-xs text-muted-foreground">{d.help}</div>
-                    </div>
-                  </button>
-                ))}
-              </>
-            )}
-            {outputTypeSuggestions.length > 0 && (
-              <>
-                <div className="mt-1 px-2 py-1 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">Output Format</div>
-                {outputTypeSuggestions.map((d) => (
-                  <button key={d.directive} type="button" onClick={() => pickMention(d.directive)}
-                    className="flex w-full items-start gap-2 rounded px-2 py-1.5 text-left hover:bg-accent hover:text-accent-foreground">
-                    <d.icon className="mt-0.5 h-4 w-4 shrink-0 text-primary" />
-                    <div>
-                      <div className="text-sm font-medium">{d.label}</div>
-                      <div className="text-xs text-muted-foreground">{d.help}</div>
-                    </div>
-                  </button>
-                ))}
-              </>
-            )}
-          </div>
-        )}
+        {mentionOpen &&
+          (personaSuggestions.length > 0 ||
+            directiveSuggestions.length > 0 ||
+            outputTypeSuggestions.length > 0) && (
+            <div className="absolute bottom-full left-3 mb-2 w-72 rounded-md border border-border bg-popover p-1 shadow-md">
+              {personaSuggestions.length > 0 && (
+                <>
+                  <div className="px-2 py-1 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
+                    Personas
+                  </div>
+                  {personaSuggestions.map((s) => (
+                    <button
+                      key={s.id}
+                      type="button"
+                      onClick={() => pickMention(s.name)}
+                      className="flex w-full items-center gap-2 rounded px-2 py-1.5 text-left text-sm hover:bg-accent hover:text-accent-foreground"
+                    >
+                      <span className="flex h-6 w-6 items-center justify-center rounded-full bg-accent text-[10px] font-semibold text-accent-foreground">
+                        {s.name.slice(0, 1)}
+                      </span>
+                      {s.name}
+                    </button>
+                  ))}
+                </>
+              )}
+              {directiveSuggestions.length > 0 && (
+                <>
+                  <div className="mt-1 px-2 py-1 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
+                    Context
+                  </div>
+                  {directiveSuggestions.map((d) => (
+                    <button
+                      key={d.directive}
+                      type="button"
+                      onClick={pickFileDirective}
+                      className="flex w-full items-start gap-2 rounded px-2 py-1.5 text-left hover:bg-accent hover:text-accent-foreground"
+                    >
+                      <d.icon className="mt-0.5 h-4 w-4 shrink-0 text-primary" />
+                      <div>
+                        <div className="text-sm font-medium">{d.label}</div>
+                        <div className="text-xs text-muted-foreground">{d.help}</div>
+                      </div>
+                    </button>
+                  ))}
+                </>
+              )}
+              {outputTypeSuggestions.length > 0 && (
+                <>
+                  <div className="mt-1 px-2 py-1 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
+                    Output Format
+                  </div>
+                  {outputTypeSuggestions.map((d) => (
+                    <button
+                      key={d.directive}
+                      type="button"
+                      onClick={() => pickMention(d.directive)}
+                      className="flex w-full items-start gap-2 rounded px-2 py-1.5 text-left hover:bg-accent hover:text-accent-foreground"
+                    >
+                      <d.icon className="mt-0.5 h-4 w-4 shrink-0 text-primary" />
+                      <div>
+                        <div className="text-sm font-medium">{d.label}</div>
+                        <div className="text-xs text-muted-foreground">{d.help}</div>
+                      </div>
+                    </button>
+                  ))}
+                </>
+              )}
+            </div>
+          )}
 
         <div className="flex items-end gap-2 rounded-md border border-border bg-background px-2 py-1.5">
-          <input ref={fileInputRef} type="file" className="hidden" accept="image/*,.pdf,.doc,.docx,.txt,.csv"
-            onChange={(e) => setFile(e.target.files?.[0] ?? null)} />
-          <input ref={contextFileInputRef} type="file" className="hidden"
+          <input
+            ref={fileInputRef}
+            type="file"
+            className="hidden"
+            accept="image/*,.pdf,.doc,.docx,.txt,.csv"
+            onChange={(e) => setFile(e.target.files?.[0] ?? null)}
+          />
+          <input
+            ref={contextFileInputRef}
+            type="file"
+            className="hidden"
             accept=".pdf,.doc,.docx,.txt,.md,.py,.ts,.js,.json,.csv,.xml,.yaml,.yml"
-            onChange={handleContextFileSelected} />
-          <Button type="button" size="icon" variant="ghost" className="h-8 w-8 shrink-0"
-            onClick={() => fileInputRef.current?.click()} aria-label="Attach file">
+            onChange={handleContextFileSelected}
+          />
+          <Button
+            type="button"
+            size="icon"
+            variant="ghost"
+            className="h-8 w-8 shrink-0"
+            onClick={() => fileInputRef.current?.click()}
+            aria-label="Attach file"
+          >
             <Paperclip className="h-4 w-4" />
           </Button>
-          <textarea ref={textareaRef} value={text} onChange={handleChange} onKeyDown={handleKey} rows={1}
+          <textarea
+            ref={textareaRef}
+            value={text}
+            onChange={handleChange}
+            onKeyDown={handleKey}
+            rows={1}
             placeholder="Message... (/ for commands, @ to mention or add context)"
-            className="max-h-36 min-h-[24px] flex-1 resize-none bg-transparent py-1.5 text-sm outline-none placeholder:text-foreground-muted" />
-          <Button type="button" size="icon" className="h-8 w-8 shrink-0" onClick={submit}
-            disabled={(!text.trim() && !file) || inviting || uploadingContext} aria-label="Send">
+            className="max-h-36 min-h-[24px] flex-1 resize-none bg-transparent py-1.5 text-sm outline-none placeholder:text-foreground-muted"
+          />
+          <Button
+            type="button"
+            size="icon"
+            className="h-8 w-8 shrink-0"
+            onClick={submit}
+            disabled={(!text.trim() && !file) || inviting || uploadingContext}
+            aria-label="Send"
+          >
             <Send className="h-4 w-4" />
           </Button>
         </div>

@@ -55,15 +55,25 @@ export function AddPersonaForm({
 
   useEffect(() => {
     if (!open) return;
-    listAIModels().then(setModels).catch(() => {});
-    listAgents().then(setAgents).catch(() => {});
+    listAIModels()
+      .then(setModels)
+      .catch(() => {});
+    listAgents()
+      .then(setAgents)
+      .catch(() => {});
     if (projectId) {
-      listPersonas(projectId).then(setAllPersonas).catch(() => {});
+      listPersonas(projectId)
+        .then(setAllPersonas)
+        .catch(() => {});
     }
     listPrompts()
       .then((res) => {
         const arr = Object.entries(res.prompts).map(([id, path]) => {
-          const name = path.split('/').pop()?.replace(/\.[^/.]+$/, "") || path;
+          const name =
+            path
+              .split("/")
+              .pop()
+              ?.replace(/\.[^/.]+$/, "") || path;
           return { id, name: name.replace(/_/g, " "), isFeatured: path.startsWith("featured/") };
         });
         arr.sort((a, b) => {
@@ -90,9 +100,9 @@ export function AddPersonaForm({
     setLoadingPrompt(true);
     try {
       const res = await getPromptContent(id);
-      setForm((f) => ({ 
-        ...f, 
-        system_prompt: res.content.replace(/\{PERSONA_NAME\}/g, f.name || "{PERSONA_NAME}") 
+      setForm((f) => ({
+        ...f,
+        system_prompt: res.content.replace(/\{PERSONA_NAME\}/g, f.name || "{PERSONA_NAME}"),
       }));
     } catch (err) {
       toast.error("Failed to load prompt template");
@@ -103,16 +113,13 @@ export function AddPersonaForm({
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
-    const hasTarget =
-      form.source_type === "agent" ? !!form.agent_id : !!form.model_id;
+    const hasTarget = form.source_type === "agent" ? !!form.agent_id : !!form.model_id;
     if (!projectId) {
       toast.error("Open a project first -- personas belong to a project.");
       return;
     }
     if (!form.name || !hasTarget) {
-      toast.error(
-        !form.name ? "Name is required" : `Select a ${form.source_type}`,
-      );
+      toast.error(!form.name ? "Name is required" : `Select a ${form.source_type}`);
       return;
     }
     setSaving(true);
@@ -132,9 +139,7 @@ export function AddPersonaForm({
       setForm(EMPTY);
       onClose();
     } catch (err) {
-      toast.error(
-        err instanceof Error ? err.message : "Failed to create persona",
-      );
+      toast.error(err instanceof Error ? err.message : "Failed to create persona");
     } finally {
       setSaving(false);
     }
@@ -144,12 +149,7 @@ export function AddPersonaForm({
     <FormDialog title="Create Persona" open={open} onClose={onClose}>
       <form onSubmit={submit} className="flex flex-col gap-4 mt-2">
         <Field label="Name * (used as @mention)">
-          <Input
-            value={form.name}
-            onChange={set("name")}
-            placeholder="Layla"
-            autoFocus
-          />
+          <Input value={form.name} onChange={set("name")} placeholder="Layla" autoFocus />
         </Field>
 
         <Field label="Backed by">
@@ -216,9 +216,7 @@ export function AddPersonaForm({
                 <SelectItem key={p.id} value={p.id}>
                   <div className="flex items-center gap-1.5">
                     {p.name}
-                    {p.isFeatured && (
-                      <Star className="w-3.5 h-3.5 fill-amber-400 text-amber-400" />
-                    )}
+                    {p.isFeatured && <Star className="w-3.5 h-3.5 fill-amber-400 text-amber-400" />}
                   </div>
                 </SelectItem>
               ))}
@@ -235,14 +233,8 @@ export function AddPersonaForm({
           />
         </Field>
 
-
-
         <Field label="Description">
-          <Input
-            value={form.description}
-            onChange={set("description")}
-            placeholder="Optional"
-          />
+          <Input value={form.description} onChange={set("description")} placeholder="Optional" />
         </Field>
 
         <div className="flex justify-end gap-2 pt-1">

@@ -13,6 +13,7 @@ import { Button } from "@/components/ui/button";
 import { ConfirmDialog, Dialog } from "@/components/ui/dialog";
 import { FieldError, Input, Label } from "@/components/ui/field";
 import { EmptyState, Skeleton } from "@/components/ui/surfaces";
+import { FullPageLoader } from "@/components/ui/full-page-loader";
 import { absolutizeMedia } from "@/lib/api/client";
 import { inviteMember, removeMember, type Member } from "@/lib/api/members";
 import { useMembers } from "@/hooks/use-workspace";
@@ -55,9 +56,7 @@ export default function MembersPage() {
 
   if (!hydrated || !token || !serverUrl) {
     return (
-      <div className="flex min-h-screen items-center justify-center bg-bg">
-        <Skeleton className="h-40 w-80" />
-      </div>
+      <FullPageLoader />
     );
   }
 

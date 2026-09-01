@@ -49,11 +49,7 @@ export function LoginForm() {
       const data = await fn(values.email, values.password);
       const session = data.session;
       if (session?.access_token && session.user) {
-        setIdentity(
-          session.access_token,
-          session.user.id,
-          session.user.email ?? values.email,
-        );
+        setIdentity(session.access_token, session.user.id, session.user.email ?? values.email);
         navigate({ to: "/servers" });
       } else {
         setError("Check your email to confirm your account.");
@@ -93,16 +89,11 @@ export function LoginForm() {
   }
 
   return (
-    <form
-      onSubmit={handleSubmit(onSubmit)}
-      className="flex w-full flex-col gap-4"
-    >
+    <form onSubmit={handleSubmit(onSubmit)} className="flex w-full flex-col gap-4">
       <div className="flex flex-col gap-2">
         <Label htmlFor="email">Email</Label>
         <Input id="email" type="email" autoComplete="email" {...register("email")} />
-        {errors.email && (
-          <p className="text-xs text-destructive">{errors.email.message}</p>
-        )}
+        {errors.email && <p className="text-xs text-destructive">{errors.email.message}</p>}
       </div>
       <div className="flex flex-col gap-2">
         <Label htmlFor="password">Password</Label>
@@ -112,9 +103,7 @@ export function LoginForm() {
           autoComplete={mode === "signin" ? "current-password" : "new-password"}
           {...register("password")}
         />
-        {errors.password && (
-          <p className="text-xs text-destructive">{errors.password.message}</p>
-        )}
+        {errors.password && <p className="text-xs text-destructive">{errors.password.message}</p>}
       </div>
 
       {mode === "signin" && (
@@ -140,12 +129,7 @@ export function LoginForm() {
                 onChange={(e) => setResetEmail(e.target.value)}
               />
               <div className="flex items-center gap-2">
-                <Button
-                  type="button"
-                  size="sm"
-                  onClick={onSendReset}
-                  disabled={resetLoading}
-                >
+                <Button type="button" size="sm" onClick={onSendReset} disabled={resetLoading}>
                   {resetLoading ? "Sending…" : "Send reset link"}
                 </Button>
                 <Button
@@ -161,12 +145,8 @@ export function LoginForm() {
                   Cancel
                 </Button>
               </div>
-              {resetMsg && (
-                <p className="text-xs text-foreground-muted">{resetMsg}</p>
-              )}
-              {resetErr && (
-                <p className="text-xs text-destructive">{resetErr}</p>
-              )}
+              {resetMsg && <p className="text-xs text-foreground-muted">{resetMsg}</p>}
+              {resetErr && <p className="text-xs text-destructive">{resetErr}</p>}
             </div>
           )}
         </div>
@@ -179,19 +159,10 @@ export function LoginForm() {
       )}
 
       <Button type="submit" disabled={loading} className="w-full">
-        {loading
-          ? "Please wait…"
-          : mode === "signin"
-            ? "Sign in"
-            : "Create account"}
+        {loading ? "Please wait…" : mode === "signin" ? "Sign in" : "Create account"}
       </Button>
 
-      <Button
-        type="button"
-        variant="outline"
-        onClick={onGitHub}
-        className="w-full"
-      >
+      <Button type="button" variant="outline" onClick={onGitHub} className="w-full">
         <Github className="mr-2 h-4 w-4" />
         Continue with GitHub
       </Button>
@@ -201,9 +172,7 @@ export function LoginForm() {
         onClick={() => setMode(mode === "signin" ? "signup" : "signin")}
         className="text-xs text-foreground-muted hover:text-foreground"
       >
-        {mode === "signin"
-          ? "Don't have an account? Sign up"
-          : "Already have an account? Sign in"}
+        {mode === "signin" ? "Don't have an account? Sign up" : "Already have an account? Sign in"}
       </button>
     </form>
   );

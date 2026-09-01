@@ -46,9 +46,7 @@ function ServersPage() {
                 Select a server
               </h1>
               {email && (
-                <p className="mt-0.5 text-xs text-foreground-muted">
-                  Welcome back, {email}
-                </p>
+                <p className="mt-0.5 text-xs text-foreground-muted">Welcome back, {email}</p>
               )}
             </div>
           </div>

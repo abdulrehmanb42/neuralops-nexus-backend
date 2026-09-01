@@ -11,9 +11,7 @@ export function TypingIndicator({ actors }: { actors: TypingActor[] }) {
   const hasActors = actors.length > 0;
 
   const names = actors.map((a) => a.name);
-  const anyThinking = actors.some(
-    (a) => a.type === "persona" || a.type === "agent",
-  );
+  const anyThinking = actors.some((a) => a.type === "persona" || a.type === "agent");
   const verb = anyThinking ? "thinking" : "typing";
 
   const label =

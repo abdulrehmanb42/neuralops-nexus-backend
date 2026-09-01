@@ -2,6 +2,7 @@
 Built-in context panel providers for M6.
 
   FilePanelProvider  — shows files attached to a topic; each file is individually removable
+  WebPanelProvider   — shows web links attached to a topic, in their own "Web Links" group
   ChatPanelProvider  — shows chat messages; individual messages can be excluded from context
 
 Each class is decorated with @ContextPanelRegistry.register so it is available
@@ -23,7 +24,7 @@ logger = logging.getLogger(__name__)
 @ContextPanelRegistry.register
 class FilePanelProvider(ContextPanelProvider):
     """
-    Shows ContextSource records (file / web) attached to a topic.
+    Shows file ContextSource records attached to a topic.
 
     Deleting an item removes the entire ContextSource (file + vectors) —
     the same operation as calling the detach_context_source() service.
@@ -32,6 +33,7 @@ class FilePanelProvider(ContextPanelProvider):
     directive = "file"
     label = "Files"
     icon = "file-text"
+    source_type = "file"        # the ContextSource.Type this group lists
     can_delete_source = False   # no "delete all files at once" button
     can_delete_items = True     # each file has its own delete button
 
@@ -39,7 +41,7 @@ class FilePanelProvider(ContextPanelProvider):
         from nucleus.models import ContextSource
 
         sources = (
-            ContextSource.objects.filter(topic=topic, is_active=True)
+            ContextSource.objects.filter(topic=topic, type=self.source_type, is_active=True)
             .order_by("created_at")
         )
         items = []
@@ -66,6 +68,16 @@ class FilePanelProvider(ContextPanelProvider):
         """Detach and delete the ContextSource record + its ChromaDB collection."""
         from context.services import detach_context_source
         detach_context_source(item_id)
+
+
+@ContextPanelRegistry.register
+class WebPanelProvider(FilePanelProvider):
+    """Same as FilePanelProvider, but lists web links as their own group."""
+
+    directive = "web"
+    label = "Web Links"
+    icon = "globe"
+    source_type = "web"
 
 
 @ContextPanelRegistry.register

@@ -37,11 +37,7 @@ export interface AddChannelDialogProps {
   projectId: string;
 }
 
-export function AddChannelDialog({
-  open,
-  onOpenChange,
-  projectId,
-}: AddChannelDialogProps) {
+export function AddChannelDialog({ open, onOpenChange, projectId }: AddChannelDialogProps) {
   const form = useForm<FormValues>({
     resolver: zodResolver(schema),
     defaultValues: { name: "", description: "" },
@@ -91,11 +87,7 @@ export function AddChannelDialog({
                 <FormItem>
                   <FormLabel>Description</FormLabel>
                   <FormControl>
-                    <Textarea
-                      placeholder="Optional description"
-                      rows={3}
-                      {...field}
-                    />
+                    <Textarea placeholder="Optional description" rows={3} {...field} />
                   </FormControl>
                   <FormMessage />
                 </FormItem>

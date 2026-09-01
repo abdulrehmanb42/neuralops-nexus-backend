@@ -34,9 +34,7 @@ function sanitizeMermaid(src: string): string {
         quoteLabel(id, "[", label, "]"),
       )
       // Rhombus nodes: A{label}
-      .replace(/([A-Za-z0-9_-]+)\{([^}\n]*)\}/g, (_m, id, label) =>
-        quoteLabel(id, "{", label, "}"),
-      )
+      .replace(/([A-Za-z0-9_-]+)\{([^}\n]*)\}/g, (_m, id, label) => quoteLabel(id, "{", label, "}"))
   );
 }
 
@@ -132,10 +130,7 @@ function InlineCode({ children }: { children: React.ReactNode }) {
 // The `pre` ref lets us grab plain innerText for the clipboard (works even
 // when rehype-highlight has wrapped the content in <span> elements).
 // ---------------------------------------------------------------------------
-function BlockCode({
-  children,
-  ...props
-}: React.ComponentPropsWithoutRef<"pre">) {
+function BlockCode({ children, ...props }: React.ComponentPropsWithoutRef<"pre">) {
   const preRef = useRef<HTMLPreElement>(null);
   const [copied, setCopied] = useState(false);
 
@@ -164,9 +159,7 @@ function BlockCode({
       if (typeof node === "string") return node;
       if (Array.isArray(node)) return node.map(extractText).join("");
       if (React.isValidElement(node))
-        return extractText(
-          (node.props as { children?: React.ReactNode }).children,
-        );
+        return extractText((node.props as { children?: React.ReactNode }).children);
       return "";
     };
     return <MermaidBlock code={extractText(codeEl?.props?.children)} />;
@@ -195,9 +188,7 @@ function BlockCode({
           borderColor: "var(--code-border)",
         }}
       >
-        <span className="text-xs font-medium text-muted-foreground">
-          {language}
-        </span>
+        <span className="text-xs font-medium text-muted-foreground">{language}</span>
         <Button
           size="sm"
           variant="ghost"
@@ -235,7 +226,9 @@ export function TextRenderer({ content }: { content: string }) {
   return (
     <div
       className={[
-        "prose prose-sm max-w-none text-foreground",
+        // break-words keeps long unbroken strings (URLs, tokens) inside the
+        // message column instead of blowing out the layout horizontally.
+        "prose prose-sm max-w-none break-words text-foreground",
         // Links
         "[&_a]:text-primary [&_a]:underline",
         // Headings
@@ -244,8 +237,9 @@ export function TextRenderer({ content }: { content: string }) {
         "[&_ul]:my-1 [&_ol]:my-1 [&_li]:my-0.5",
         // Blockquote
         "[&_blockquote]:border-l-2 [&_blockquote]:border-muted-foreground/40 [&_blockquote]:pl-3 [&_blockquote]:text-muted-foreground [&_blockquote]:italic",
-        // Tables (GFM)
-        "[&_table]:text-sm [&_th]:border [&_th]:border-border [&_th]:px-2 [&_th]:py-1 [&_td]:border [&_td]:border-border [&_td]:px-2 [&_td]:py-1",
+        // Tables (GFM) — display:block + overflow so a wide table scrolls
+        // inside the message column instead of stretching the whole chat.
+        "[&_table]:block [&_table]:max-w-full [&_table]:overflow-x-auto [&_table]:text-sm [&_th]:border [&_th]:border-border [&_th]:px-2 [&_th]:py-1 [&_td]:border [&_td]:border-border [&_td]:px-2 [&_td]:py-1",
         // Reset prose's default background on code so our custom components control it
         "[&_pre]:!bg-transparent [&_pre]:!p-0 [&_pre]:!m-0",
       ].join(" ")}

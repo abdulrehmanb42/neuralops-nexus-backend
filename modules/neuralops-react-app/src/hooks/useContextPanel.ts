@@ -45,19 +45,22 @@ export function useContextPanel(projectId: string | null, topicId: string | null
     });
   }, []);
 
-  const toggleGroup = useCallback((directive: string, ids: string[]) => {
-    const keys = ids.map((id) => itemKey(directive, id));
-    const allSelected = keys.every((k) => selected.has(k));
-    setSelected((prev) => {
-      const next = new Set(prev);
-      if (allSelected) {
-        keys.forEach((k) => next.delete(k));
-      } else {
-        keys.forEach((k) => next.add(k));
-      }
-      return next;
-    });
-  }, [selected]);
+  const toggleGroup = useCallback(
+    (directive: string, ids: string[]) => {
+      const keys = ids.map((id) => itemKey(directive, id));
+      const allSelected = keys.every((k) => selected.has(k));
+      setSelected((prev) => {
+        const next = new Set(prev);
+        if (allSelected) {
+          keys.forEach((k) => next.delete(k));
+        } else {
+          keys.forEach((k) => next.add(k));
+        }
+        return next;
+      });
+    },
+    [selected],
+  );
 
   const clearSelection = useCallback(() => setSelected(new Set()), []);
 

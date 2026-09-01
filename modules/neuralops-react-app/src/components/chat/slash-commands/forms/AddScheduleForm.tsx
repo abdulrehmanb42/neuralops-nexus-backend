@@ -80,7 +80,12 @@ function buildPayload(f: FormState): CreateScheduleInput | { error: string } {
   if (f.repeatMode === "interval") {
     const n = Number(f.intervalEvery);
     if (!n || n <= 0) return { error: "Interval must be a positive number." };
-    return { ...common, schedule_kind: "interval", interval_every: n, interval_period: f.intervalPeriod };
+    return {
+      ...common,
+      schedule_kind: "interval",
+      interval_every: n,
+      interval_period: f.intervalPeriod,
+    };
   }
 
   if (f.repeatMode === "once") {
@@ -96,7 +101,10 @@ function buildPayload(f: FormState): CreateScheduleInput | { error: string } {
   if (f.repeatMode === "weekly" && f.weekdays.length === 0) {
     return { error: "Pick at least one day of the week." };
   }
-  if (f.repeatMode === "monthly" && (!f.dayOfMonth || Number(f.dayOfMonth) < 1 || Number(f.dayOfMonth) > 31)) {
+  if (
+    f.repeatMode === "monthly" &&
+    (!f.dayOfMonth || Number(f.dayOfMonth) < 1 || Number(f.dayOfMonth) > 31)
+  ) {
     return { error: "Day of month must be 1-31." };
   }
   return {
@@ -131,7 +139,9 @@ export function AddScheduleForm({
 
   useEffect(() => {
     if (!open) return;
-    listPersonas(projectId).then(setPersonas).catch(() => {});
+    listPersonas(projectId)
+      .then(setPersonas)
+      .catch(() => {});
   }, [open, projectId]);
 
   function set<K extends keyof FormState>(key: K) {
@@ -168,13 +178,18 @@ export function AddScheduleForm({
     <FormDialog title="Schedule a Persona" open={open} onClose={onClose}>
       <form onSubmit={submit} className="flex flex-col gap-4 mt-2">
         <Field label="Persona *">
-          <Select value={form.personaId} onValueChange={(v) => setForm((f) => ({ ...f, personaId: v }))}>
+          <Select
+            value={form.personaId}
+            onValueChange={(v) => setForm((f) => ({ ...f, personaId: v }))}
+          >
             <SelectTrigger>
               <SelectValue placeholder="Pick a persona" />
             </SelectTrigger>
             <SelectContent>
               {personas.map((p) => (
-                <SelectItem key={p.id} value={p.id}>@{p.name}</SelectItem>
+                <SelectItem key={p.id} value={p.id}>
+                  @{p.name}
+                </SelectItem>
               ))}
             </SelectContent>
           </Select>
@@ -191,11 +206,18 @@ export function AddScheduleForm({
         </Field>
 
         <Field label="Label">
-          <Input value={form.label} onChange={set("label")} placeholder={'Optional, e.g. "Daily standup digest"'} />
+          <Input
+            value={form.label}
+            onChange={set("label")}
+            placeholder={'Optional, e.g. "Daily standup digest"'}
+          />
         </Field>
 
         <Field label="Repeat">
-          <Select value={form.repeatMode} onValueChange={(v) => setForm((f) => ({ ...f, repeatMode: v as RepeatMode }))}>
+          <Select
+            value={form.repeatMode}
+            onValueChange={(v) => setForm((f) => ({ ...f, repeatMode: v as RepeatMode }))}
+          >
             <SelectTrigger>
               <SelectValue />
             </SelectTrigger>
@@ -223,7 +245,9 @@ export function AddScheduleForm({
             <Field label="Unit">
               <Select
                 value={form.intervalPeriod}
-                onValueChange={(v) => setForm((f) => ({ ...f, intervalPeriod: v as FormState["intervalPeriod"] }))}
+                onValueChange={(v) =>
+                  setForm((f) => ({ ...f, intervalPeriod: v as FormState["intervalPeriod"] }))
+                }
               >
                 <SelectTrigger>
                   <SelectValue />
@@ -239,7 +263,9 @@ export function AddScheduleForm({
           </div>
         )}
 
-        {(form.repeatMode === "daily" || form.repeatMode === "weekly" || form.repeatMode === "monthly") && (
+        {(form.repeatMode === "daily" ||
+          form.repeatMode === "weekly" ||
+          form.repeatMode === "monthly") && (
           <Field label={`Time (${BROWSER_TZ})`}>
             <Input type="time" value={form.time} onChange={set("time")} className="w-32" />
           </Field>
@@ -264,7 +290,14 @@ export function AddScheduleForm({
 
         {form.repeatMode === "monthly" && (
           <Field label="Day of month">
-            <Input type="number" min={1} max={31} value={form.dayOfMonth} onChange={set("dayOfMonth")} className="w-24" />
+            <Input
+              type="number"
+              min={1}
+              max={31}
+              value={form.dayOfMonth}
+              onChange={set("dayOfMonth")}
+              className="w-24"
+            />
           </Field>
         )}
 
@@ -281,13 +314,17 @@ export function AddScheduleForm({
               onCheckedChange={(v) => setForm((f) => ({ ...f, triggerVisible: v }))}
             />
             <span className="text-xs text-muted-foreground">
-              {form.triggerVisible ? "Yes -- posts \"Scheduled: ...\" before the persona replies" : "No -- fires silently"}
+              {form.triggerVisible
+                ? 'Yes -- posts "Scheduled: ..." before the persona replies'
+                : "No -- fires silently"}
             </span>
           </div>
         </Field>
 
         <div className="flex justify-end gap-2 pt-1">
-          <Button type="button" variant="outline" onClick={onClose}>Cancel</Button>
+          <Button type="button" variant="outline" onClick={onClose}>
+            Cancel
+          </Button>
           <Button type="submit" disabled={saving || !form.personaId || !form.queryText.trim()}>
             {saving ? "Saving…" : "Create schedule"}
           </Button>

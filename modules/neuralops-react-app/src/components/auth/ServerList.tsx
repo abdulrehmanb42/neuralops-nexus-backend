@@ -7,7 +7,11 @@ import { ServerCard } from "./ServerCard";
 import { useServers } from "./use-servers";
 import { useAuthStore } from "@/store/auth.store";
 import { verifyServerAccess, fetchServerConfig } from "@/services/auth.service";
-import { COMPATIBLE_SERVER_VERSION, compareServerVersion, type ServerVersionDrift } from "@/lib/version";
+import {
+  COMPATIBLE_SERVER_VERSION,
+  compareServerVersion,
+  type ServerVersionDrift,
+} from "@/lib/version";
 import type { ServerEntry } from "@/types";
 import { Plus, Server } from "lucide-react";
 
@@ -126,12 +130,10 @@ export function ServerList() {
           <div className="flex h-12 w-12 items-center justify-center rounded-full bg-muted text-muted-foreground">
             <Server className="h-6 w-6" />
           </div>
-          <div className="text-sm font-medium text-foreground">
-            No servers connected yet
-          </div>
+          <div className="text-sm font-medium text-foreground">No servers connected yet</div>
           <p className="max-w-sm text-xs text-foreground-muted">
-            Add your NeuralOps backend URL to get started. This is usually your
-            local IP or Tailscale address.
+            Add your NeuralOps backend URL to get started. This is usually your local IP or
+            Tailscale address.
           </p>
         </div>
       )}

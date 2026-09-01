@@ -4,13 +4,7 @@ import { useTopics, useMarkTopicRead, useCreateTopic } from "@/hooks/useWorkspac
 import { useUIStore } from "@/store/ui.store";
 import { useProjects } from "@/hooks/useWorkspace";
 
-export function TopicList({
-  projectId,
-  channelId,
-}: {
-  projectId: string;
-  channelId: string;
-}) {
+export function TopicList({ projectId, channelId }: { projectId: string; channelId: string }) {
   const { data: topics, isLoading } = useTopics(projectId, channelId);
   const { data: projects } = useProjects();
   const activeTopicId = useUIStore((s) => s.activeTopicId);

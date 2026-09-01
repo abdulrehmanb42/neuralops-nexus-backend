@@ -27,8 +27,11 @@ const securityHeaders = [
 ];
 
 const nextConfig: NextConfig = {
-  // Emits .next/standalone for the minimal production Docker image.
-  output: "standalone",
+  // Emits .next/standalone for the minimal production Docker image. Skipped on
+  // Vercel (VERCEL=1): the platform packages the default output itself, and
+  // standalone breaks its post-build packaging on Next 16.3 (onBuildComplete
+  // ENOENT on next-server.js.nft.json).
+  output: process.env.VERCEL ? undefined : "standalone",
   allowedDevOrigins: devAllowedOrigins(),
   // Bottom-left would sit on top of the profile button in the server rail.
   devIndicators: { position: "bottom-right" },

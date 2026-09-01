@@ -30,3 +30,7 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+# The repo-root .gitignore's Python "lib/" rule also matches src/lib/ —
+# re-include it so frontend lib files can't silently drop out of commits.
+!src/lib/
