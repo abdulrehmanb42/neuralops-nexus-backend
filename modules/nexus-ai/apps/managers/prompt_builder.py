@@ -14,13 +14,18 @@ Returns a clean list[dict] ready for the LLM call.
 from __future__ import annotations
 
 from apps.interfaces.vectorstore import Chunk
-from apps.schemas.trigger import HistoryMessage, PersonaConfig, TriggerJob
+from apps.schemas.trigger import (
+    HistoryMessage,
+    PersonaConfig,
+    TriggerJob,
+    TriggerSwarmJob,
+)
 
 
 class PromptBuilder:
     def build(
         self,
-        job: TriggerJob,
+        job: TriggerJob | TriggerSwarmJob,
         persona: PersonaConfig,
         history: list[HistoryMessage],
         context_chunks: list[Chunk],
@@ -45,7 +50,7 @@ class PromptBuilder:
                 f"--- OUTPUT FORMAT INSTRUCTION ---\n"
                 f"{output_type_instruction}"
             )
-            
+
         if swarm_mode:
             system_content = (
                 f"{system_content}\n\n"
@@ -106,10 +111,12 @@ class PromptBuilder:
             ):
                 content = f"[Another Agent: {msg.sender_name}]\n{content}"
 
-            messages.append({
-                "role": msg.role,
-                "content": content,
-            })
+            messages.append(
+                {
+                    "role": msg.role,
+                    "content": content,
+                }
+            )
 
         # 4. Current user message
         if job.message:

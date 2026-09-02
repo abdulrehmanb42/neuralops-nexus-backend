@@ -1,6 +1,7 @@
 """Schemas for the /trigger/ endpoint (nexus-nucleus → nexus-ai) and SSE events."""
 
-import typing
+from enum import Enum
+from typing import Any
 from pydantic import BaseModel, Field
 
 
@@ -42,12 +43,38 @@ class MCPServerConfig(BaseModel):
     token_env_var: str = "OAUTH_ACCESS_TOKEN"
 
 
+class NativePydanticAICapabilities(str, Enum):
+    FILESYSTEM = "Filesystem"
+    SHELL = "Shell"
+    MCP = "MCP"
+    STACK_ONE = "Stack One"
+    LOCAL_STACK = "Local Stack"
+    WEB_SEARCH = "Web Search"
+    WEB_FETCH = "Web Fetch"
+    X_SEARCH = "X Search"
+    THINKING = "Thinking"
+    PLANNING = "Planning"
+    SUBAGENTS = "Sub Agents"
+    DYNAMIC_WORKFLOW = "Dynamic Workflow"
+    ADVISOR = "Advisor"
+    TOOL_SEARCH = "Tool Search"
+    COMPACTION = "Compaction"
+    MEMORY = "Memory"
+    SKILLS = "Skills"
+    REPO_CONTEXT = "Repo Context"
+    GAURDRAILS = "Gaurdrails"
+    SPEND_LIMITS = "Spend Limits"
+    TOOL_APPROVAL = "Tool Approval"
+    CAPABILITY_CREATION = "Capability Creation"
+
+
 class PersonaConfig(BaseModel):
     id: str
     name: str  # "NeuralBot"
     system_prompt: str
     model: ModelConfig
     mcp_servers: list[MCPServerConfig] = Field(default_factory=list)
+    capabilites: list[NativePydanticAICapabilities] = Field(default_factory=list)
 
 
 class HistoryMessage(BaseModel):
@@ -73,21 +100,23 @@ class TriggerJob(BaseModel):
     context_sources is the one exception still pushed by nucleus -- see
     the comment on trigger_ai_response_async in chat/services.py for why.
     """
+
     job_id: str
     msg_id: str  # pre-generated UUID — used in SSE events + DB save
 
     persona_id: str
     topic_id: str
-    user_message_id: str             # the human message this is replying to --
-                                      # excluded when nucleus_client fetches history,
-                                      # since it's sent separately as `message` below
-    message: str                     # the user's current message (mentions stripped)
+    user_message_id: str  # the human message this is replying to --
+    # excluded when nucleus_client fetches history,
+    # since it's sent separately as `message` below
+    message: str  # the user's current message (mentions stripped)
     context_sources: list[ContextSourceRef] = Field(default_factory=list)
 
     # M7: output type — resolved in nexus-nucleus from @mention detection.
     # "auto" = nexus-ai should classify intent via cosine similarity.
     # Any other value = explicit override (e.g. "chart", "terminal", "code").
     output_type: str = "auto"
+
 
 class TriggerSwarmJob(BaseModel):
     """
@@ -98,15 +127,16 @@ class TriggerSwarmJob(BaseModel):
     context_sources is the one exception still pushed by nucleus -- see
     the comment on trigger_ai_response_async in chat/services.py for why.
     """
+
     job_id: str
     msg_id: str  # pre-generated UUID — used in SSE events + DB save
 
-    personas: list[list[str, str, str]]
+    personas: list[list[str]]
     topic_id: str
-    user_message_id: str             # the human message this is replying to --
-                                      # excluded when nucleus_client fetches history,
-                                      # since it's sent separately as `message` below
-    message: str                     # the user's current message (mentions stripped)
+    user_message_id: str  # the human message this is replying to --
+    # excluded when nucleus_client fetches history,
+    # since it's sent separately as `message` below
+    message: str  # the user's current message (mentions stripped)
     context_sources: list[ContextSourceRef] = Field(default_factory=list)
 
     # M7: output type — resolved in nexus-nucleus from @mention detection.
@@ -114,23 +144,33 @@ class TriggerSwarmJob(BaseModel):
     # Any other value = explicit override (e.g. "chart", "terminal", "code").
     output_type: str = "auto"
 
+
 # ── Outbound SSE events (nexus-ai → nexus-nucleus) ────────────────────────────
 
 
 class ToolCallData(BaseModel):
     name: str
-    args: dict
+    args: dict[str, Any]
+
+
+class AgentEventType(str, Enum):
+    START = "message_start"
+    DELTA = "message_delta"
+    END = "message_done"
+    ERROR = "message_error"
+    TOOL_CALL_START = "tool_call_start"
+    SWARM_TRANSITION = "swarm_transition"
 
 
 class AgentEvent(BaseModel):
-    type: str                        # "message_start" | "message_delta" | "message_done" | "message_error"
-    id: str                          # msg_id
+    type: AgentEventType
+    id: str  # msg_id
 
     # message_start only
     created_at: str | None = None
     persona_id: str | None = None
     persona_name: str | None = None
-    
+
     # message_delta only
     delta: str | None = None
 
