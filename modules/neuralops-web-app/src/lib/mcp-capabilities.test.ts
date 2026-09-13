@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { CAPABILITIES, DEFAULT_CAPABILITY_KEYS, capabilityLabels, defaultCapabilityConfig, formatCapabilityConfig, parseCapabilityConfig, shellListsProblem } from "./mcp-capabilities";
+import { CAPABILITIES, DEFAULT_CAPABILITY_KEYS, SHELL_COMMANDS, capabilityLabels, defaultCapabilityConfig, formatCapabilityConfig, parseCapabilityConfig, shellListsProblem } from "./mcp-capabilities";
 
 describe("capability catalogue", () => {
   it("uses the worker's capability names as keys — every key is unique and non-empty", () => {
@@ -8,6 +8,10 @@ describe("capability catalogue", () => {
     expect(keys.every((k) => k.trim().length > 0)).toBe(true);
     // The four every project is provisioned with are in the catalogue.
     for (const k of DEFAULT_CAPABILITY_KEYS) expect(keys).toContain(k);
+  });
+
+  it("lists the worker's shell commands verbatim, sed and wget included", () => {
+    expect([...SHELL_COMMANDS]).toEqual(["ls", "touch", "rm", "git", "cd", "cat", "echo", "grep", "sed", "pwd", "mkdir", "cp", "mv", "head", "tail", "curl", "wget"]);
   });
 
   it("builds the default config for the project four, with the template's defaults", () => {

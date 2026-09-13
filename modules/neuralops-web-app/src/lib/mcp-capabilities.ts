@@ -22,7 +22,7 @@ export interface CapabilitySpec {
 }
 
 // Valid Shell commands — trigger.py's ShellCommands enum, verbatim.
-export const SHELL_COMMANDS = ["ls", "touch", "rm", "git", "cd", "cat", "echo", "grep", "pwd", "mkdir", "cp", "mv", "head", "tail", "curl"] as const;
+export const SHELL_COMMANDS = ["ls", "touch", "rm", "git", "cd", "cat", "echo", "grep", "sed", "pwd", "mkdir", "cp", "mv", "head", "tail", "curl", "wget"] as const;
 export const THINKING_EFFORTS = ["minimal", "low", "medium", "high", "xhigh"] as const;
 
 // Read-only globs the worker protects by default.
