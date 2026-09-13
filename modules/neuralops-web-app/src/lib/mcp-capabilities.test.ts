@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { CAPABILITIES, DEFAULT_CAPABILITY_KEYS, capabilityLabels, defaultCapabilityConfig, formatCapabilityConfig, parseCapabilityConfig } from "./mcp-capabilities";
+import { CAPABILITIES, DEFAULT_CAPABILITY_KEYS, SHELL_COMMANDS, capabilityLabels, defaultCapabilityConfig, formatCapabilityConfig, parseCapabilityConfig, shellListsProblem } from "./mcp-capabilities";
 
 describe("capability catalogue", () => {
   it("uses the worker's capability names as keys — every key is unique and non-empty", () => {
@@ -8,6 +8,16 @@ describe("capability catalogue", () => {
     expect(keys.every((k) => k.trim().length > 0)).toBe(true);
     // The four every project is provisioned with are in the catalogue.
     for (const k of DEFAULT_CAPABILITY_KEYS) expect(keys).toContain(k);
+  });
+
+  it("offers no Advisor row — the persona dialog's advisor-model slot is that feature", () => {
+    expect(CAPABILITIES.map((c) => c.key)).not.toContain("advisor");
+    // A row that already holds the key still shows it, verbatim, so it can be turned off.
+    expect(capabilityLabels({ advisor: {} })).toEqual(["advisor"]);
+  });
+
+  it("lists the worker's shell commands verbatim, sed and wget included", () => {
+    expect([...SHELL_COMMANDS]).toEqual(["ls", "touch", "rm", "git", "cd", "cat", "echo", "grep", "sed", "pwd", "mkdir", "cp", "mv", "head", "tail", "curl", "wget"]);
   });
 
   it("builds the default config for the project four, with the template's defaults", () => {
@@ -37,5 +47,20 @@ describe("capability catalogue", () => {
   it("formats an empty config as an empty editor, not {}", () => {
     expect(formatCapabilityConfig({})).toBe("");
     expect(formatCapabilityConfig({ planning: {} })).toBe(JSON.stringify({ planning: {} }, null, 2));
+  });
+});
+
+// The AI worker's Shell refuses to start with both an allow list and a block
+// list; the editor never writes both, but the JSON view and older rows can.
+describe("shellListsProblem", () => {
+  it("flags a shell with both lists filled, and nothing else", () => {
+    expect(shellListsProblem({ shell: { allowed_commands: ["ls"], denied_commands: ["rm"] } })).toMatch(/both an allow list and a block list/i);
+    expect(shellListsProblem({ shell: { allowed_commands: ["ls"], denied_commands: [] } })).toBeNull();
+    expect(shellListsProblem({ shell: { allowed_commands: [], denied_commands: ["rm"] } })).toBeNull();
+    expect(shellListsProblem({ shell: {} })).toBeNull();
+    expect(shellListsProblem({ filesystem: { root_dir: "." } })).toBeNull();
+    expect(shellListsProblem({})).toBeNull();
+    // Not lists at all: the worker's own validation speaks to that, not this rule.
+    expect(shellListsProblem({ shell: { allowed_commands: "ls", denied_commands: ["rm"] } })).toBeNull();
   });
 });
