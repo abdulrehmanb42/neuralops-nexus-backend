@@ -4,6 +4,17 @@ import { CapabilityEditor } from "./capability-editor";
 import { useState } from "react";
 import { defaultCapabilityConfig, type CapabilityConfig } from "@/lib/mcp-capabilities";
 
+function Host({ initial }: { initial: CapabilityConfig }) {
+  const [value, setValue] = useState<CapabilityConfig>(initial);
+  return (
+    <>
+      <CapabilityEditor idPrefix="t" value={value} onChange={setValue} />
+      <output data-testid="value">{JSON.stringify(value)}</output>
+    </>
+  );
+}
+const current = () => JSON.parse(screen.getByTestId("value").textContent ?? "{}") as CapabilityConfig;
+
 describe("CapabilityEditor — the checklist", () => {
   it("ticks the capabilities present in the value and counts them", () => {
     render(<CapabilityEditor idPrefix="t" value={defaultCapabilityConfig()} onChange={() => {}} />);
@@ -33,30 +44,31 @@ describe("CapabilityEditor — the checklist", () => {
     expect(onChange).toHaveBeenLastCalledWith({ shell: { cwd: "src", allowed_commands: ["ls"], denied_commands: [], extra: 1 } });
   });
 
-  it("splits glob lists one per line and reads the thinking effort from a select", () => {
+  it("collects globs as chips and reads the thinking effort from a select", () => {
     const onChange = vi.fn();
-    render(<CapabilityEditor idPrefix="t" value={{ filesystem: { root_dir: "." }, thinking: { effort: "low" } }} onChange={onChange} />);
-    fireEvent.change(screen.getByLabelText(/denied globs/i), { target: { value: "*.pem\n secrets/**" } });
+    render(<CapabilityEditor idPrefix="t" value={{ filesystem: { root_dir: ".", denied_patterns: ["*.pem"] }, thinking: { effort: "low" } }} onChange={onChange} />);
+    const denied = screen.getByRole("textbox", { name: "Denied globs" });
+    fireEvent.change(denied, { target: { value: "secrets/**" } });
+    fireEvent.keyDown(denied, { key: "Enter" });
     expect(onChange).toHaveBeenLastCalledWith(expect.objectContaining({ filesystem: { root_dir: ".", denied_patterns: ["*.pem", "secrets/**"] } }));
+    fireEvent.click(within(screen.getByRole("group", { name: "Denied globs" })).getByRole("button", { name: "Remove *.pem" }));
+    expect(onChange).toHaveBeenLastCalledWith(expect.objectContaining({ filesystem: { root_dir: ".", denied_patterns: [] } }));
+    expect(screen.getByRole("group", { name: "Allowed globs" })).toBeInTheDocument();
+    expect(screen.getByRole("group", { name: "Read-only globs" })).toBeInTheDocument();
     expect(screen.getByLabelText("Effort")).toHaveValue("low");
     fireEvent.change(screen.getByLabelText("Effort"), { target: { value: "high" } });
     expect(onChange).toHaveBeenLastCalledWith(expect.objectContaining({ thinking: { effort: "high" } }));
   });
 
-  it("keeps a newline the user just typed in a globs field, so a second line can be started", () => {
-    // The stored list has no trailing empty line, so a value re-derived from
-    // it after every keystroke ate the newline before the next glob was typed.
-    function Host() {
-      const [value, setValue] = useState<CapabilityConfig>({ filesystem: { root_dir: "." } });
-      return <CapabilityEditor idPrefix="t" value={value} onChange={setValue} />;
-    }
-    render(<Host />);
-    const area = screen.getByLabelText(/denied globs/i);
-    fireEvent.change(area, { target: { value: "*.pem" } });
-    fireEvent.change(area, { target: { value: "*.pem\n" } });
-    expect(area).toHaveValue("*.pem\n");
-    fireEvent.change(area, { target: { value: "*.pem\nsecrets/**" } });
-    expect(area).toHaveValue("*.pem\nsecrets/**");
+  it("a glob typed but not yet entered survives an edit elsewhere in the row", () => {
+    // The stored list has no room for a half-typed entry, so a value re-derived
+    // from it on every parent render used to eat what was being typed.
+    render(<Host initial={{ filesystem: { root_dir: "." } }} />);
+    const denied = screen.getByRole("textbox", { name: "Denied globs" });
+    fireEvent.change(denied, { target: { value: "*.pe" } });
+    fireEvent.change(screen.getByLabelText("Root folder"), { target: { value: "src" } });
+    expect(denied).toHaveValue("*.pe");
+    expect(current()).toEqual({ filesystem: { root_dir: "src" } });
   });
 
   it("lists a capability the catalogue does not know and keeps it verbatim", () => {

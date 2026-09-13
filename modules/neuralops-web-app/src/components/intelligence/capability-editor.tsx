@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { ChipInput } from "@/components/ui/chip-input";
 import { Label, FieldError } from "@/components/ui/field";
 import {
   CAPABILITIES,
@@ -19,8 +20,6 @@ import {
 // worker may know capabilities this copy of the catalogue does not — are
 // listed and kept verbatim, never dropped.
 const slug = (k: string) => k.toLowerCase().replace(/[^a-z0-9]+/g, "-");
-const lines = (v: unknown): string => (Array.isArray(v) ? v.map(String).join("\n") : "");
-const splitLines = (t: string): string[] => t.split(/[\n,]/).map((x) => x.trim()).filter(Boolean);
 const list = (v: unknown): string[] => (Array.isArray(v) ? v.map(String) : []);
 const inputClass = "h-9 w-full rounded-[8px] border border-line bg-surface px-2.5 text-[13px] outline-none focus:border-accent";
 const areaClass = "w-full resize-y rounded-[8px] border border-line bg-surface px-2.5 py-1.5 font-mono text-[12.5px] leading-relaxed outline-none focus:border-accent";
@@ -125,32 +124,11 @@ export function CapabilityEditor({ idPrefix, value, onChange, onError }: {
   );
 }
 
-function LinesTextarea({ id, value, onChange }: { id: string; value: unknown; onChange: (v: string[]) => void }) {
-  const incoming = lines(value);
-  const [local, setLocal] = useState(incoming);
-  const [lastIncoming, setLastIncoming] = useState(incoming);
-
-  if (incoming !== lastIncoming) {
-    setLastIncoming(incoming);
-    if (incoming !== lines(splitLines(local))) {
-      setLocal(incoming);
-    }
-  }
-
-  return (
-    <textarea
-      id={id}
-      rows={2}
-      value={local}
-      onChange={(e) => {
-        setLocal(e.target.value);
-        onChange(splitLines(e.target.value));
-      }}
-      spellCheck={false}
-      className={areaClass}
-    />
-  );
-}
+const GLOB_FIELDS = [
+  ["allowed_patterns", "Allowed globs"],
+  ["denied_patterns", "Denied globs"],
+  ["protected_patterns", "Read-only globs"],
+] as const;
 
 function CapabilityFields({ kind, idPrefix, args, onArgs }: {
   kind: NonNullable<(typeof CAPABILITIES)[number]["editor"]>;
@@ -166,12 +144,10 @@ function CapabilityFields({ kind, idPrefix, args, onArgs }: {
           <input id={`${idPrefix}-root`} value={String(args.root_dir ?? "")} onChange={(e) => onArgs({ root_dir: e.target.value })} className={`${inputClass} font-mono`} />
           <p className="mt-1 text-[11.5px] text-ink2">Relative to the project folder; the project&apos;s default row points at the folder itself.</p>
         </div>
-        {(["allowed_patterns", "denied_patterns", "protected_patterns"] as const).map((f) => (
+        {GLOB_FIELDS.map(([f, label]) => (
           <div key={f} className={f === "protected_patterns" ? "sm:col-span-2" : ""}>
-            <Label htmlFor={`${idPrefix}-${f}`} className="mb-1 text-[12px]">
-              {f === "allowed_patterns" ? "Allowed globs" : f === "denied_patterns" ? "Denied globs" : "Read-only globs"} <span className="text-ink2">(one per line)</span>
-            </Label>
-            <LinesTextarea id={`${idPrefix}-${f}`} value={args[f]} onChange={(v) => onArgs({ [f]: v })} />
+            <Label htmlFor={`${idPrefix}-${f}`} className="mb-1 text-[12px]">{label}</Label>
+            <ChipInput id={`${idPrefix}-${f}`} label={label} value={list(args[f])} onChange={(v) => onArgs({ [f]: v })} placeholder="Type a glob and press Enter" />
           </div>
         ))}
       </div>
@@ -248,3 +224,4 @@ function CapabilityFields({ kind, idPrefix, args, onArgs }: {
     </div>
   );
 }
+
