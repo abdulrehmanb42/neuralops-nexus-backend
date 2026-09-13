@@ -71,10 +71,11 @@ describe("CapabilityEditor — the checklist", () => {
     expect(current()).toEqual({ filesystem: { root_dir: "src" } });
   });
 
-  it("lists a capability the catalogue does not know and keeps it verbatim", () => {
+  it("lists a capability the catalogue does not know, keeps it verbatim, and says how to edit it", () => {
     const onChange = vi.fn();
     render(<CapabilityEditor idPrefix="t" value={{ "Brand New": { a: 1 } }} onChange={onChange} />);
     expect(screen.getByLabelText(/^Brand New/)).toBeChecked();
+    expect(screen.getByText("Not in this list — its settings are editable as JSON.")).toBeInTheDocument();
     fireEvent.click(screen.getByLabelText(/^Brand New/));
     expect(onChange).toHaveBeenLastCalledWith({});
   });

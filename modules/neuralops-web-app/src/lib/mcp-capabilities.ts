@@ -28,6 +28,8 @@ export const THINKING_EFFORTS = ["minimal", "low", "medium", "high", "xhigh"] as
 // Read-only globs the worker protects by default.
 export const DEFAULT_PROTECTED_PATTERNS = [".git/*", ".env", ".env.*", "*.pem", "*.key", "**/secrets*"];
 
+// Not offered: the worker's "advisor" key — the persona dialog's advisor-model
+// slot is that feature. A row that already holds the key still shows it, verbatim.
 export const CAPABILITIES: readonly CapabilitySpec[] = [
   { key: "filesystem", label: "Filesystem", blurb: "Read and write files under the project folder.", editor: "filesystem",
     defaults: { root_dir: ".", allowed_patterns: [], denied_patterns: [], protected_patterns: [...DEFAULT_PROTECTED_PATTERNS] } },
@@ -40,7 +42,6 @@ export const CAPABILITIES: readonly CapabilitySpec[] = [
   { key: "memory", label: "Memory", blurb: "Remember across conversations.", defaults: {} },
   { key: "sub_agents", label: "Sub-agents", blurb: "Delegate sub-tasks to helper agents.", defaults: {} },
   { key: "dynamic_workflow", label: "Dynamic workflow", blurb: "Build and run multi-step workflows.", defaults: {} },
-  { key: "advisor", label: "Advisor", blurb: "Ask a second model when stuck.", defaults: {} },
   { key: "tool_search", label: "Tool search", blurb: "Find the right tool among many.", defaults: {} },
   { key: "compaction", label: "Compaction", blurb: "Summarise long conversations to stay within context.", defaults: {} },
   { key: "skills", label: "Skills", blurb: "Load reusable skill documents.", defaults: {} },

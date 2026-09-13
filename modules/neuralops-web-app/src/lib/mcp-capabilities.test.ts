@@ -10,6 +10,12 @@ describe("capability catalogue", () => {
     for (const k of DEFAULT_CAPABILITY_KEYS) expect(keys).toContain(k);
   });
 
+  it("offers no Advisor row — the persona dialog's advisor-model slot is that feature", () => {
+    expect(CAPABILITIES.map((c) => c.key)).not.toContain("advisor");
+    // A row that already holds the key still shows it, verbatim, so it can be turned off.
+    expect(capabilityLabels({ advisor: {} })).toEqual(["advisor"]);
+  });
+
   it("lists the worker's shell commands verbatim, sed and wget included", () => {
     expect([...SHELL_COMMANDS]).toEqual(["ls", "touch", "rm", "git", "cd", "cat", "echo", "grep", "sed", "pwd", "mkdir", "cp", "mv", "head", "tail", "curl", "wget"]);
   });

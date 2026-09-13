@@ -115,7 +115,7 @@ export function CapabilityEditor({ idPrefix, value, onChange, onError }: {
                 <input type="checkbox" checked onChange={() => toggle(k)} className="mt-0.5 accent-[var(--accent)]" />
                 <span className="min-w-0">
                   <span className="font-medium">{k}</span>
-                  <span className="block text-[12px] text-ink2">Set by the server — edit its settings as JSON.</span>
+                  <span className="block text-[12px] text-ink2">Not in this list — its settings are editable as JSON.</span>
                 </span>
               </label>
             </li>
