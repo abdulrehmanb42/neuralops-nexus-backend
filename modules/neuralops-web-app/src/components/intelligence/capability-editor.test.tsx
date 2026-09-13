@@ -80,6 +80,90 @@ describe("CapabilityEditor — the checklist", () => {
   });
 });
 
+describe("CapabilityEditor — the shell takes one list, never both", () => {
+  const shell = (allowed: string[], denied: string[]): CapabilityConfig => ({ shell: { cwd: ".", allowed_commands: allowed, denied_commands: denied } });
+  const pressed = (groupName: string, cmd: string) =>
+    within(screen.getByRole("group", { name: groupName })).getByRole("button", { name: cmd }).getAttribute("aria-pressed") === "true";
+
+  it("reads the policy from the saved lists", () => {
+    const { unmount } = render(<CapabilityEditor idPrefix="t" value={shell(["ls"], [])} onChange={() => {}} />);
+    expect(screen.getByRole("radio", { name: /only these/i })).toBeChecked();
+    expect(pressed("Allowed commands", "ls")).toBe(true);
+    expect(pressed("Allowed commands", "rm")).toBe(false);
+    unmount();
+    const second = render(<CapabilityEditor idPrefix="t" value={shell([], ["rm"])} onChange={() => {}} />);
+    expect(screen.getByRole("radio", { name: /all but these/i })).toBeChecked();
+    expect(pressed("Blocked commands", "rm")).toBe(true);
+    second.unmount();
+    render(<CapabilityEditor idPrefix="t" value={shell([], [])} onChange={() => {}} />);
+    expect(screen.getByRole("radio", { name: /any command/i })).toBeChecked();
+    expect(screen.queryByRole("group", { name: /commands$/ })).not.toBeInTheDocument();
+  });
+
+  it("picking a command writes that list and keeps the other one empty", () => {
+    const onChange = vi.fn();
+    const { unmount } = render(<CapabilityEditor idPrefix="t" value={shell(["ls"], [])} onChange={onChange} />);
+    fireEvent.click(within(screen.getByRole("group", { name: "Allowed commands" })).getByRole("button", { name: "cat" }));
+    expect(onChange).toHaveBeenLastCalledWith(shell(["ls", "cat"], []));
+    unmount();
+    render(<CapabilityEditor idPrefix="t" value={shell([], ["rm"])} onChange={onChange} />);
+    fireEvent.click(within(screen.getByRole("group", { name: "Blocked commands" })).getByRole("button", { name: "git" }));
+    expect(onChange).toHaveBeenLastCalledWith(shell([], ["rm", "git"]));
+    fireEvent.click(within(screen.getByRole("group", { name: "Blocked commands" })).getByRole("button", { name: "rm" }));
+    expect(onChange).toHaveBeenLastCalledWith(shell([], []));
+  });
+
+  it("switching the policy starts the new list empty, and an empty allow list says what it means", () => {
+    render(<Host initial={shell(["ls", "cat"], [])} />);
+    fireEvent.click(screen.getByRole("radio", { name: /all but these/i }));
+    expect(current()).toEqual(shell([], []));
+    expect(screen.getByRole("radio", { name: /all but these/i })).toBeChecked();
+    expect(pressed("Blocked commands", "ls")).toBe(false);
+    expect(screen.queryByText(/any command may run/i)).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("radio", { name: /only these/i }));
+    expect(screen.getByRole("radio", { name: /only these/i })).toBeChecked();
+    expect(screen.getByText(/nothing picked yet, so any command may run/i)).toBeInTheDocument();
+    fireEvent.click(within(screen.getByRole("group", { name: "Allowed commands" })).getByRole("button", { name: "ls" }));
+    expect(current()).toEqual(shell(["ls"], []));
+    expect(screen.queryByText(/any command may run/i)).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("radio", { name: /any command/i }));
+    expect(current()).toEqual(shell([], []));
+    expect(screen.queryByRole("group", { name: /commands$/ })).not.toBeInTheDocument();
+  });
+
+  it("shows a command saved outside the catalogue so it can be unpicked", () => {
+    const onChange = vi.fn();
+    render(<CapabilityEditor idPrefix="t" value={shell(["ls", "rg"], [])} onChange={onChange} />);
+    expect(pressed("Allowed commands", "rg")).toBe(true);
+    fireEvent.click(within(screen.getByRole("group", { name: "Allowed commands" })).getByRole("button", { name: "rg" }));
+    expect(onChange).toHaveBeenLastCalledWith(shell(["ls"], []));
+  });
+
+  it("keeps the policy when its list is emptied, however that list was reached", () => {
+    render(<Host initial={shell(["ls"], ["rm"])} />);
+    fireEvent.click(screen.getByRole("button", { name: /keep the block list/i }));
+    fireEvent.click(within(screen.getByRole("group", { name: "Blocked commands" })).getByRole("button", { name: "rm" }));
+    expect(current()).toEqual(shell([], []));
+    expect(screen.getByRole("radio", { name: /all but these/i })).toBeChecked();
+  });
+
+  it("a saved allow list and block list together is an error the user resolves, never a silent pick", () => {
+    const { unmount } = render(<Host initial={shell(["ls", "cat"], ["cd"])} />);
+    expect(screen.getByRole("alert")).toHaveTextContent(/both an allow list and a block list/i);
+    expect(screen.queryByRole("radio")).not.toBeInTheDocument();
+    expect(screen.queryByRole("group", { name: /commands$/ })).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: /keep the allow list/i }));
+    expect(current()).toEqual(shell(["ls", "cat"], []));
+    expect(screen.getByRole("radio", { name: /only these/i })).toBeChecked();
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+    unmount();
+    render(<Host initial={shell(["ls"], ["cd", "rm"])} />);
+    fireEvent.click(screen.getByRole("button", { name: /keep the block list/i }));
+    expect(current()).toEqual(shell([], ["cd", "rm"]));
+    expect(screen.getByRole("radio", { name: /all but these/i })).toBeChecked();
+  });
+});
+
 describe("CapabilityEditor — JSON view", () => {
   it("shows the whole config, applies valid edits, and blocks on invalid text", () => {
     const onChange = vi.fn();

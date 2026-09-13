@@ -96,3 +96,16 @@ export function parseCapabilityConfig(text: string): { value?: CapabilityConfig;
 }
 
 export const formatCapabilityConfig = (c: CapabilityConfig | null | undefined) => (c && Object.keys(c).length ? JSON.stringify(c, null, 2) : "");
+
+// The AI worker's Shell takes ONE list — an allow list or a block list — and
+// refuses to start with both. The editor never writes both; the JSON view and
+// rows saved before that rule can, so the hosts block Save on this.
+export function shellListsProblem(config: CapabilityConfig | null | undefined): string | null {
+  const shell = config?.shell;
+  const allowed = shell?.allowed_commands;
+  const denied = shell?.denied_commands;
+  if (Array.isArray(allowed) && Array.isArray(denied) && allowed.length > 0 && denied.length > 0) {
+    return "Shell has both an allow list and a block list. The AI worker refuses to start with both — keep one.";
+  }
+  return null;
+}

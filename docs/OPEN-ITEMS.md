@@ -417,6 +417,15 @@ pre-ticked on new personas, no cap). Verified against the merged code, 2026-09-0
   `sed` and `wget` as valid commands; `trigger.py`'s `ShellCommands` enum has neither.
   The web app's catalogue (`src/lib/mcp-capabilities.ts`) mirrors the enum, and is a
   third copy of the same shape. An endpoint serving the template would end the copies.
+- **Shell allow and block lists are exclusive in the worker, and both-empty means
+  unrestricted.** The pydantic-ai harness `Shell` raises `ValueError('Specify
+  allowed_commands or denied_commands, not both.')` at toolset construction, so a row saved
+  with both lists breaks the persona's next run rather than one command. The web app (0.18.6)
+  never writes both and blocks Save on a row that has both. Separately, nexus-ai always
+  forwards `denied_commands` explicitly (the schema defaults it to `[]`), so the harness's
+  built-in denylist of destructive commands never applies: a row with both lists empty runs
+  any command by name. The editor labels that state "Any command"; whether the worker should
+  fall back to the harness denylist instead is a nexus-ai decision.
 - **`is_protected` / `is_default` were not exposed or enforced.** Both existed on the
   model (the provisioned row sets them) but `MCPServerOut` did not carry them and
   `delete_mcp_server_standalone` did not check `is_protected`, so the default row was
